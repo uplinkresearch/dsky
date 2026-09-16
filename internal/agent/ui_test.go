@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"bytes"
+	"image/png"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -282,5 +284,33 @@ func TestTheMachineNameIsNotDoubled(t *testing.T) {
 		if got := machineName(c.vendor, c.model); got != c.want {
 			t.Errorf("machineName(%q, %q) = %q, want %q", c.vendor, c.model, got, c.want)
 		}
+	}
+}
+
+// The wordmark the status window draws has to be a real image the agent can
+// decode, at a size that fits the screen it is drawn on.
+func TestTheWordmarkDecodes(t *testing.T) {
+	img, err := png.Decode(bytes.NewReader(logoPNG))
+	if err != nil {
+		t.Fatalf("the embedded wordmark does not decode: %v", err)
+	}
+	b := img.Bounds()
+	if b.Dx() < 120 || b.Dx() > 600 || b.Dy() < 40 || b.Dy() > 300 {
+		t.Errorf("the wordmark is %dx%d; too big or small for the window", b.Dx(), b.Dy())
+	}
+	if len(logoPNG) > 100*1024 {
+		t.Errorf("the wordmark is %d KB; it travels in every agent on every stick", len(logoPNG)/1024)
+	}
+	// Something has to be drawn: an image of one flat colour would mean the
+	// mark was lost in scaling.
+	seen := map[uint32]bool{}
+	for y := b.Min.Y; y < b.Max.Y; y += 3 {
+		for x := b.Min.X; x < b.Max.X; x += 3 {
+			r, g, bb, a := img.At(x, y).RGBA()
+			seen[r>>8<<24|g>>8<<16|bb>>8<<8|a>>8] = true
+		}
+	}
+	if len(seen) < 4 {
+		t.Errorf("the wordmark has %d distinct pixels; it is not a picture of anything", len(seen))
 	}
 }

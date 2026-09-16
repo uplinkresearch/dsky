@@ -156,7 +156,15 @@ func Apply(dir string) error {
 	// there until somebody says they have seen it. Nothing is waiting on
 	// this: the work is over.
 	a.UI.Summary(summaryHeading(a.J.Failures()), summaryLines(a.J.Failures(), buildTook(a.State, start)))
+
+	// An installer that puts its icon on the desktop after it has exited --
+	// Spotify does -- would otherwise leave one behind on a machine that has
+	// been swept twice. Nothing is waiting on this: the work is done.
+	done := make(chan struct{})
+	go a.keepDesktopClear(done)
 	a.UI.WaitDismiss()
+	close(done)
+	a.tidyDesktop()
 	return nil
 }
 

@@ -4,7 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
+	"time"
 )
 
 // Shortcuts go; everything else on the desktop stays. Somebody's own file
@@ -118,4 +120,40 @@ func TestNoSettingWindowsAlwaysRefuses(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Spotify installs as the signed-in user and puts its icon on the desktop
+// after it has exited, so a machine swept twice still had one. The desktop is
+// kept clear while the finish screen is up.
+func TestAnIconAddedAfterTheSweepIsStillRemoved(t *testing.T) {
+	dir := t.TempDir()
+	prev := desktopDirsFn
+	desktopDirsFn = func() []string { return []string{dir} }
+	t.Cleanup(func() { desktopDirsFn = prev })
+
+	prevEvery := desktopSweepEvery
+	desktopSweepEvery = 50 * time.Millisecond
+	t.Cleanup(func() { desktopSweepEvery = prevEvery })
+
+	a, logDir := newAgent(t, &Manifest{Version: ManifestVersion})
+	done := make(chan struct{})
+	go a.keepDesktopClear(done)
+
+	// The installer drops its icon a moment after everything else finished.
+	late := filepath.Join(dir, "Spotify.lnk")
+	if err := os.WriteFile(late, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 300; i++ {
+		if _, err := os.Stat(late); os.IsNotExist(err) {
+			close(done)
+			if !strings.Contains(logText(t, logDir), "after it finished") {
+				t.Error("the late removal is not in the log")
+			}
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	close(done)
+	t.Fatal("an icon added after the last sweep was left on the desktop")
 }

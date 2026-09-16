@@ -3,7 +3,12 @@
 package agent
 
 import (
+	"bytes"
 	"errors"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 	"runtime"
 	"sync"
 	"syscall"
@@ -58,6 +63,7 @@ var (
 	pSetBkMode        = gdi32.NewProc("SetBkMode")
 	pSetTextColor     = gdi32.NewProc("SetTextColor")
 	pDeleteObject     = gdi32.NewProc("DeleteObject")
+	pStretchDIBits    = gdi32.NewProc("StretchDIBits")
 
 	pGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 )
@@ -121,6 +127,20 @@ type msgw struct {
 	pt      struct{ x, y int32 }
 }
 
+type bitmapInfoHeader struct {
+	size          uint32
+	width         int32
+	height        int32
+	planes        uint16
+	bitCount      uint16
+	compression   uint32
+	sizeImage     uint32
+	xPelsPerMeter int32
+	yPelsPerMeter int32
+	clrUsed       uint32
+	clrImportant  uint32
+}
+
 type paintstruct struct {
 	hdc         windows.Handle
 	erase       int32
@@ -140,20 +160,30 @@ type win32Window struct {
 	big, mid, small windows.Handle // fonts
 	bg              windows.Handle // background brush
 
+	// The wordmark, decoded once into the rows GDI wants: top-down BGRA,
+	// already composited over the background so nothing has to blend.
+	logo  []byte
+	logoW int32
+	logoH int32
+
 	ready chan error
 	once  sync.Once
 }
 
 var theWindow *win32Window
 
-// colours, as 0x00BBGGRR.
+// The Uplink Research palette the portal uses, in GDI's 0x00BBGGRR order:
+// --bg #05050f, --text #c8c8d4, --dim #8a8aa6, --ok #00ff41, --err #ff4d88,
+// --accent #00f5ff. A machine being set up should look like the tool that is
+// setting it up.
 const (
-	colBG      = 0x00140F0C // near-black, faintly blue
-	colHeading = 0x00FFFFFF
-	colBody    = 0x00D8D8D8
-	colDim     = 0x00909090
-	colOK      = 0x0060C060
-	colProblem = 0x004060E0
+	colBG      = 0x000F0505 // #05050f
+	colHeading = 0x00D4C8C8 // #c8c8d4
+	colBody    = 0x00D4C8C8 // #c8c8d4
+	colDim     = 0x00A68A8A // #8a8aa6
+	colOK      = 0x0041FF00 // #00ff41
+	colProblem = 0x00884DFF // #ff4d88
+	colAccent  = 0x00FFF500 // #00f5ff
 )
 
 // newWindow starts the window on a thread of its own and waits to hear
@@ -233,6 +263,7 @@ func (w *win32Window) create() error {
 		return err
 	}
 	w.hwnd = windows.HWND(hwnd)
+	w.loadLogo()
 	w.big = w.font(-44, 600)
 	w.mid = w.font(-22, 400)
 	w.small = w.font(-17, 400)
@@ -244,6 +275,48 @@ func (w *win32Window) create() error {
 	// installing drivers rather than looking stuck.
 	user32.NewProc("SetTimer").Call(hwnd, 1, 1000, 0)
 	return nil
+}
+
+// loadLogo decodes the wordmark over the window's background colour. A window
+// with no logo is a window with no logo: nothing here can stop a machine being
+// provisioned.
+func (w *win32Window) loadLogo() {
+	img, err := png.Decode(bytes.NewReader(logoPNG))
+	if err != nil {
+		return
+	}
+	b := img.Bounds()
+	dst := image.NewRGBA(b)
+	draw.Draw(dst, b, &image.Uniform{color.RGBA{R: 0x05, G: 0x05, B: 0x0f, A: 0xff}}, image.Point{}, draw.Src)
+	draw.Draw(dst, b, img, b.Min, draw.Over)
+
+	w.logoW, w.logoH = int32(b.Dx()), int32(b.Dy())
+	w.logo = make([]byte, 0, b.Dx()*b.Dy()*4)
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			c := dst.RGBAAt(x, y)
+			w.logo = append(w.logo, c.B, c.G, c.R, 0xff) // GDI wants BGRA
+		}
+	}
+}
+
+// drawLogo puts the wordmark at the top of the window and reports how much
+// room it took.
+func (w *win32Window) drawLogo(hdc uintptr, x, y int32) int32 {
+	if len(w.logo) == 0 {
+		return 0
+	}
+	hdr := bitmapInfoHeader{
+		size:  uint32(unsafe.Sizeof(bitmapInfoHeader{})),
+		width: w.logoW, height: -w.logoH, // negative: rows top-down
+		planes: 1, bitCount: 32, compression: 0,
+	}
+	pStretchDIBits.Call(hdc,
+		uintptr(x), uintptr(y), uintptr(w.logoW), uintptr(w.logoH),
+		0, 0, uintptr(w.logoW), uintptr(w.logoH),
+		uintptr(unsafe.Pointer(&w.logo[0])), uintptr(unsafe.Pointer(&hdr)),
+		0 /*DIB_RGB_COLORS*/, 0x00CC0020 /*SRCCOPY*/)
+	return w.logoH
 }
 
 func (w *win32Window) font(height int32, weight int32) windows.Handle {
@@ -393,7 +466,12 @@ func (w *win32Window) paint() {
 	s.mu.Unlock()
 
 	const left = 80
-	y := int32(90)
+	y := int32(56)
+	if h := w.drawLogo(hdc, left, y); h > 0 {
+		y += h + 40
+	} else {
+		y += 34
+	}
 
 	// Each line is measured before it is drawn, and the next starts below
 	// however many lines it wrapped to. Advancing by a fixed height drew a

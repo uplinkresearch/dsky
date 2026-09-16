@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // No desktop shortcuts, ever.
@@ -75,5 +76,37 @@ func (a *Agent) tidyDesktop() {
 	if len(stuck) > 0 {
 		a.J.Fail(stepDesktop, "could not remove %d desktop shortcut(s): %s",
 			len(stuck), strings.Join(stuck, ", "))
+	}
+}
+
+// desktopSweepEvery is how often the desktop is swept while the finish screen
+// is up. A variable so the tests do not wait ten seconds to watch it work.
+var desktopSweepEvery = 10 * time.Second
+
+// keepDesktopClear sweeps every few seconds until done is closed.
+//
+// Some installers put their icon there after they have exited. Spotify -- which
+// installs as the signed-in user, because it refuses an administrator -- left
+// one on a real machine that had been swept twice already. So the desktop is
+// kept clear while the finish screen is up, which costs nothing: the work is
+// over and the agent is only waiting for somebody to press a button.
+func (a *Agent) keepDesktopClear(done <-chan struct{}) {
+	if len(desktopDirsFn()) == 0 {
+		return
+	}
+	t := time.NewTicker(desktopSweepEvery)
+	defer t.Stop()
+	deadline := time.After(15 * time.Minute)
+	for {
+		select {
+		case <-done:
+			return
+		case <-deadline:
+			return
+		case <-t.C:
+			if removed, _ := removeShortcuts(desktopDirsFn()); removed > 0 {
+				a.J.Info(stepDesktop, "removed %d desktop shortcut(s) an installer added after it finished", removed)
+			}
+		}
 	}
 }
