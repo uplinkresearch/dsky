@@ -54,7 +54,7 @@ func cmdFlash(ctx context.Context, env *Env, args []string) error {
 		if err != nil {
 			return err
 		}
-		art, err = buildArtifact(ctx, env, ws, lib, what, *rebuild)
+		art, err = buildArtifact(ctx, env, ws, lib, what, *rebuild, false)
 		if err != nil {
 			return err
 		}

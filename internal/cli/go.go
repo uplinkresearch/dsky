@@ -81,7 +81,7 @@ func cmdGo(ctx context.Context, env *Env, args []string) error {
 		if err := ensureSources(ctx, ws, lib, r, *tofu); err != nil {
 			return err
 		}
-		art, err = buildArtifact(ctx, env, ws, lib, what, *rebuild)
+		art, err = buildArtifact(ctx, env, ws, lib, what, *rebuild, false)
 		if err != nil {
 			return err
 		}
@@ -250,6 +250,13 @@ func armAndFlash(ctx context.Context, art *compose.Artifact, dev device.Device, 
 // confirmed by typing how many, since making someone type twenty sizes would
 // only teach them to reach for --yes.
 func armAndFlashMany(ctx context.Context, art *compose.Artifact, devs []device.Device, yes bool) error {
+	// A payload is a zip to be run on a machine, not a disk image. Written
+	// raw to a stick it would wipe the stick and boot nothing, so it is
+	// refused before any confirmation is even offered.
+	if art.Kind == "payload" {
+		return fmt.Errorf("%s is a payload, not bootable media — copy the zip onto a machine and run it there (README.txt inside says how)",
+			filepath.Base(art.Path))
+	}
 	fmt.Println()
 	if len(devs) == 1 {
 		fmt.Println("About to WIPE this device:")

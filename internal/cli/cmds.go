@@ -293,11 +293,12 @@ func cmdRecipes(env *Env, args []string) error {
 func cmdBuild(ctx context.Context, env *Env, args []string) error {
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
 	rebuild := fs.Bool("rebuild", false, "ignore the artifact cache")
+	payload := fs.Bool("payload", false, "build the recipe's programs and drivers as a payload for a machine that already runs Windows, instead of install media")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("build <recipe-id> [--rebuild]")
+		return fmt.Errorf("build <recipe-id> [--rebuild] [--payload]")
 	}
 	ws, err := env.workspace()
 	if err != nil {
@@ -307,12 +308,18 @@ func cmdBuild(ctx context.Context, env *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	art, err := buildArtifact(ctx, env, ws, lib, fs.Arg(0), *rebuild)
+	art, err := buildArtifact(ctx, env, ws, lib, fs.Arg(0), *rebuild, *payload)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("artifact: %s\n", art.Path)
 	fmt.Printf("  kind=%s size=%d MiB sha256=%s\n", art.Kind, art.Size>>20, art.SHA256)
+	if art.Kind == "payload" {
+		fmt.Println("\nCopy it to the machine (or a stick), extract the folder, and")
+		fmt.Println("double-click \"Run DSKY.cmd\" there. README.txt inside says the rest,")
+		fmt.Println("including the quiet command for remote tools.")
+		return nil
+	}
 	// The check only exists for Windows media, and only the person holding the
 	// imaged machine can run it — so it is worth naming here rather than
 	// leaving them to find a file they did not know was written.
@@ -330,7 +337,7 @@ func cmdBuild(ctx context.Context, env *Env, args []string) error {
 }
 
 // buildArtifact lints (errors block), then composes.
-func buildArtifact(ctx context.Context, env *Env, ws *workspace.Workspace, lib *library.Library, recipeID string, rebuild bool) (*compose.Artifact, error) {
+func buildArtifact(ctx context.Context, env *Env, ws *workspace.Workspace, lib *library.Library, recipeID string, rebuild, payload bool) (*compose.Artifact, error) {
 	r, err := ws.Recipe(recipeID)
 	if err != nil {
 		return nil, err
@@ -347,11 +354,15 @@ func buildArtifact(ctx context.Context, env *Env, ws *workspace.Workspace, lib *
 	}
 	prog := &stageProgress{}
 	defer prog.finish()
-	return compose.Build(ctx, compose.Request{
+	req := compose.Request{
 		Workspace: ws, Library: lib, Recipe: r,
 		CLIVars: env.Vars, Rebuild: rebuild,
 		Progress: prog.report,
-	})
+	}
+	if payload {
+		return compose.BuildPayload(ctx, req)
+	}
+	return compose.Build(ctx, req)
 }
 
 func cmdGC(env *Env) error {

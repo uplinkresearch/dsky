@@ -184,78 +184,13 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 		stage.AddFile(p, "/sources/ei.cfg")
 	}
 
-	// Driver packs: explicit ones, then packs resolved for windows.hardware
-	// entries (manifests carrying a matching `hardware:` block).
-	var drivers recipe.ResolvedDrivers
-	packs := append([]recipe.DriverPack(nil), w.DriverPacks...)
-	hwPacks, err := hardwarePacks(ws, w.Hardware)
+	// Driver packs and payload files, as the standalone payload stages them.
+	drivers, stagedRefs, err := stageDriversAndPayload(ctx, req, stage, buildTmp)
 	if err != nil {
 		return nil, err
 	}
-	packs = append(packs, hwPacks...)
-	gateStaged := false
-	for _, pack := range packs {
-		switch pack.Install {
-		case recipe.InstallSweep:
-			dir, err := materializeDir(ctx, req, buildTmp, pack)
-			if err != nil {
-				return nil, err
-			}
-			if err := stage.AddTree(dir, path.Join(scriptsImg, "Drivers", pack.Name())); err != nil {
-				return nil, err
-			}
-			drivers.HasSweepable = true
-		case recipe.InstallExpandSweep:
-			file, err := materializeFile(ctx, req, pack.Ref)
-			if err != nil {
-				return nil, err
-			}
-			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
-			refFiles[pack.Ref] = file.name
-			drivers.Cabs = append(drivers.Cabs, struct {
-				File string
-				Dir  string
-			}{File: file.name, Dir: pack.Name()})
-			drivers.HasSweepable = true
-		case recipe.InstallExtractSweep:
-			file, err := materializeFile(ctx, req, pack.Ref)
-			if err != nil {
-				return nil, err
-			}
-			if len(pack.Extract) == 0 {
-				return nil, fmt.Errorf("compose: driver pack %s uses extract-then-sweep but has no extract args (e.g. Dell: /s /e={dir})", pack.Ref)
-			}
-			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
-			refFiles[pack.Ref] = file.name
-			drivers.Extracts = append(drivers.Extracts, struct {
-				File string
-				Dir  string
-				Args []string
-			}{File: file.name, Dir: pack.Name(), Args: pack.Extract})
-			drivers.HasSweepable = true
-		case recipe.InstallExe:
-			file, err := materializeFile(ctx, req, pack.Ref)
-			if err != nil {
-				return nil, err
-			}
-			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
-			refFiles[pack.Ref] = file.name
-			drivers.Exes = append(drivers.Exes, struct {
-				File       string
-				Args       []string
-				Log        string
-				OnlyVendor string
-				OnlyModel  string
-			}{File: file.name, Args: pack.Args, Log: pack.Log, OnlyVendor: pack.OnlyVendor, OnlyModel: pack.OnlyModel})
-			if pack.OnlyModel != "" && !gateStaged {
-				gatePath := filepath.Join(buildTmp, recipe.ModelInstallerScriptName)
-				if err := writePS(gatePath, recipe.ModelInstallerScriptFile()); err != nil {
-					return nil, err
-				}
-				stage.AddFile(gatePath, path.Join(scriptsImg, recipe.ModelInstallerScriptName))
-				gateStaged = true
-			}
-		}
+	for k, v := range stagedRefs {
+		refFiles[k] = v
 	}
 
 	// Boot-critical WinPE drivers: Setup loads $WinpeDriver$ from removable
@@ -270,37 +205,8 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 		}
 	}
 
-	// Payload.
-	for _, item := range w.Payload {
-		if item.Ref != "" {
-			file, err := materializeFile(ctx, req, item.Ref)
-			if err != nil {
-				return nil, err
-			}
-			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
-			refFiles[item.Ref] = file.name
-			continue
-		}
-		host := filepath.Join(ws.Dir, filepath.FromSlash(item.Path))
-		if _, err := os.Stat(host); err != nil {
-			return nil, fmt.Errorf("compose: payload path %s: %w", item.Path, err)
-		}
-		stage.AddFile(host, path.Join(scriptsImg, filepath.Base(host)))
-	}
-
 	// First-boot script.
-	resolveRef := func(ref string) (string, error) {
-		if name, ok := refFiles[ref]; ok {
-			return name, nil
-		}
-		file, err := materializeFile(ctx, req, ref)
-		if err != nil {
-			return "", fmt.Errorf("compose: firstboot step references %q: %w", ref, err)
-		}
-		stage.AddFile(file.host, path.Join(scriptsImg, file.name))
-		refFiles[ref] = file.name
-		return file.name, nil
-	}
+	resolveRef := refResolver(ctx, req, stage, refFiles)
 	// First boot: the agent where it covers the recipe, the generated scripts
 	// otherwise. The agent is a compiled program with one manifest, which is
 	// why it exists: the scripts were assembled per build and so could only
@@ -686,4 +592,125 @@ func splitOversizeWIM(ctx context.Context, req Request, stage fsimg.StageMap) er
 		stage.AddFile(m, "/sources/"+filepath.Base(m))
 	}
 	return nil
+}
+
+// stageDriversAndPayload stages what the agent works with on the machine: the
+// driver packs, and the recipe's payload files. Shared by the install image
+// and the standalone payload, so the two cannot drift apart in how a pack is
+// staged or what it is called.
+func stageDriversAndPayload(ctx context.Context, req Request, stage fsimg.StageMap, buildTmp string) (drivers recipe.ResolvedDrivers, refFiles map[string]string, err error) {
+	r := req.Recipe
+	w := r.Windows
+	ws := req.Workspace
+	refFiles = map[string]string{} // source ref -> staged filename under Scripts/
+
+	// Driver packs: explicit ones, then packs resolved for windows.hardware
+	// entries (manifests carrying a matching `hardware:` block).
+	packs := append([]recipe.DriverPack(nil), w.DriverPacks...)
+	hwPacks, err := hardwarePacks(ws, w.Hardware)
+	if err != nil {
+		return drivers, nil, err
+	}
+	packs = append(packs, hwPacks...)
+	gateStaged := false
+	for _, pack := range packs {
+		switch pack.Install {
+		case recipe.InstallSweep:
+			dir, err := materializeDir(ctx, req, buildTmp, pack)
+			if err != nil {
+				return drivers, nil, err
+			}
+			if err := stage.AddTree(dir, path.Join(scriptsImg, "Drivers", pack.Name())); err != nil {
+				return drivers, nil, err
+			}
+			drivers.HasSweepable = true
+		case recipe.InstallExpandSweep:
+			file, err := materializeFile(ctx, req, pack.Ref)
+			if err != nil {
+				return drivers, nil, err
+			}
+			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
+			refFiles[pack.Ref] = file.name
+			drivers.Cabs = append(drivers.Cabs, struct {
+				File string
+				Dir  string
+			}{File: file.name, Dir: pack.Name()})
+			drivers.HasSweepable = true
+		case recipe.InstallExtractSweep:
+			file, err := materializeFile(ctx, req, pack.Ref)
+			if err != nil {
+				return drivers, nil, err
+			}
+			if len(pack.Extract) == 0 {
+				return drivers, nil, fmt.Errorf("compose: driver pack %s uses extract-then-sweep but has no extract args (e.g. Dell: /s /e={dir})", pack.Ref)
+			}
+			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
+			refFiles[pack.Ref] = file.name
+			drivers.Extracts = append(drivers.Extracts, struct {
+				File string
+				Dir  string
+				Args []string
+			}{File: file.name, Dir: pack.Name(), Args: pack.Extract})
+			drivers.HasSweepable = true
+		case recipe.InstallExe:
+			file, err := materializeFile(ctx, req, pack.Ref)
+			if err != nil {
+				return drivers, nil, err
+			}
+			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
+			refFiles[pack.Ref] = file.name
+			drivers.Exes = append(drivers.Exes, struct {
+				File       string
+				Args       []string
+				Log        string
+				OnlyVendor string
+				OnlyModel  string
+			}{File: file.name, Args: pack.Args, Log: pack.Log, OnlyVendor: pack.OnlyVendor, OnlyModel: pack.OnlyModel})
+			if pack.OnlyModel != "" && !gateStaged {
+				gatePath := filepath.Join(buildTmp, recipe.ModelInstallerScriptName)
+				if err := writePS(gatePath, recipe.ModelInstallerScriptFile()); err != nil {
+					return drivers, nil, err
+				}
+				stage.AddFile(gatePath, path.Join(scriptsImg, recipe.ModelInstallerScriptName))
+				gateStaged = true
+			}
+		}
+	}
+
+	// Payload.
+	for _, item := range w.Payload {
+		if item.Ref != "" {
+			file, err := materializeFile(ctx, req, item.Ref)
+			if err != nil {
+				return drivers, nil, err
+			}
+			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
+			refFiles[item.Ref] = file.name
+			continue
+		}
+		host := filepath.Join(ws.Dir, filepath.FromSlash(item.Path))
+		if _, err := os.Stat(host); err != nil {
+			return drivers, nil, fmt.Errorf("compose: payload path %s: %w", item.Path, err)
+		}
+		stage.AddFile(host, path.Join(scriptsImg, filepath.Base(host)))
+	}
+
+	return drivers, refFiles, nil
+}
+
+// refResolver finds the staged name of a source a first-boot step names,
+// staging it if nothing has yet.
+func refResolver(ctx context.Context, req Request, stage fsimg.StageMap, refFiles map[string]string) func(string) (string, error) {
+	return func(ref string) (string, error) {
+		if name, ok := refFiles[ref]; ok {
+			return name, nil
+		}
+		file, err := materializeFile(ctx, req, ref)
+		if err != nil {
+			return "", fmt.Errorf("compose: firstboot step references %q: %w", ref, err)
+		}
+		stage.AddFile(file.host, path.Join(scriptsImg, file.name))
+		refFiles[ref] = file.name
+		return file.name, nil
+	}
 }

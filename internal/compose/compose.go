@@ -28,6 +28,10 @@ import (
 // the caller has not set SOURCE_DATE_EPOCH (an arbitrary fixed date).
 const defaultSourceDateEpoch = "1756800000"
 
+// defaultSourceDateEpochUnix is the same moment as a number, for the zip
+// writer, which takes a time rather than an environment variable.
+const defaultSourceDateEpochUnix = 1756800000
+
 // Request is one build.
 type Request struct {
 	Workspace *workspace.Workspace
