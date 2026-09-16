@@ -64,6 +64,14 @@ type Artifact struct {
 	MinStick  int64     `json:"min_stick,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	Tool      string    `json:"tool"`
+
+	// Name and Choices belong to whoever asked for the build: a name somebody
+	// gave it, and the options it was built from, so it can be shown by that
+	// name and built again with those options changed. Compose neither reads
+	// nor needs them, and keeps them only because the description beside the
+	// file is the one place that goes wherever the file goes.
+	Name    string          `json:"name,omitempty"`
+	Choices json.RawMessage `json:"choices,omitempty"`
 }
 
 // MetaPath is the sidecar location for an artifact image path.
@@ -147,6 +155,10 @@ func LoadArtifact(metaPath string) (*Artifact, error) {
 	}
 	return &a, nil
 }
+
+// Save rewrites the description beside the file, for a caller that has
+// changed its Name or Choices.
+func (a *Artifact) Save() error { return a.save() }
 
 func (a *Artifact) save() error {
 	b, err := json.MarshalIndent(a, "", "  ")

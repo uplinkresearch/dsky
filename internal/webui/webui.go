@@ -35,6 +35,7 @@ import (
 	"github.com/uplinkresearch/dsky/internal/drivers/catalog"
 	"github.com/uplinkresearch/dsky/internal/filepicker"
 	"github.com/uplinkresearch/dsky/internal/flashrun"
+	"github.com/uplinkresearch/dsky/internal/fsimg"
 	"github.com/uplinkresearch/dsky/internal/helpers"
 	"github.com/uplinkresearch/dsky/internal/hwdetect"
 	"github.com/uplinkresearch/dsky/internal/jobs"
@@ -214,6 +215,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /api/recipes/save", s.auth(s.handleSaveRecipe))
 	mux.HandleFunc("POST /api/artifacts/delete", s.auth(s.handleDeleteArtifact))
 	mux.HandleFunc("POST /api/artifacts/copy", s.auth(s.handleCopyArtifact))
+	mux.HandleFunc("POST /api/payloads/write", s.auth(s.handleWritePayload))
 	mux.HandleFunc("GET /api/recipes/get", s.auth(s.handleRecipeGet))
 	mux.HandleFunc("POST /api/recipes/update", s.auth(s.handleRecipeUpdate))
 	mux.HandleFunc("POST /api/recipes/file", s.auth(s.handleRecipeFile))
@@ -425,57 +427,123 @@ type artifactInfo struct {
 	// name to tell them apart, and "10 MiB, built at 19:58" is not a way to
 	// tell which one has the programs a customer asked for.
 	Contents string `json:"contents,omitempty"`
+	// Name is what somebody called the payload, if they did.
+	Name string `json:"name,omitempty"`
+	// Payload is the rest of what the Payload screen shows when one is
+	// opened, and what editing it starts from.
+	Payload *payloadSummary `json:"payload,omitempty"`
 }
 
-// payloadContents summarises a payload from the manifest it carries, in the
-// words the Payload screen uses: program names where DSKY knows them, then the
-// operator's own installers, then drivers and bloatware. Empty when the file
-// cannot be read -- the row still shows, it just says less.
-func payloadContents(path string) string {
-	zr, err := zip.OpenReader(path)
+// payloadChoices are the Payload screen's options, kept with each payload
+// built from it so that editing one starts from what it was built with.
+type payloadChoices struct {
+	Apps       []string `json:"apps"`
+	DriversFor string   `json:"drivers_for"`
+	Debloat    string   `json:"debloat"`
+}
+
+// payloadSummary is what a payload carries, read from the manifest inside it.
+type payloadSummary struct {
+	Programs    []string `json:"programs"`
+	Installers  []string `json:"installers"`
+	DriverPacks []string `json:"driver_packs"`
+	Debloat     string   `json:"debloat,omitempty"`
+	Build       string   `json:"build,omitempty"`
+	// Choices are the options to edit it from: the ones it was built with
+	// when they were kept, otherwise as much as the manifest can say --
+	// programs and bloatware, but not which computer models its driver packs
+	// were for, which the manifest does not record.
+	Choices      payloadChoices `json:"choices"`
+	ChoicesKnown bool           `json:"choices_known"`
+}
+
+// Contents is the summary in one line, for a list row.
+func (p *payloadSummary) Contents() string {
+	var parts []string
+	parts = append(parts, p.Programs...)
+	parts = append(parts, p.Installers...)
+	switch n := len(p.DriverPacks); {
+	case n == 1:
+		parts = append(parts, "1 driver pack")
+	case n > 1:
+		parts = append(parts, fmt.Sprintf("%d driver packs", n))
+	}
+	if p.Debloat != "" {
+		parts = append(parts, "removes bloatware ("+p.Debloat+")")
+	}
+	return strings.Join(parts, ", ")
+}
+
+// readPayload summarises a payload from the manifest it carries, in the words
+// the Payload screen uses: program names where DSKY knows them, the operator's
+// own installers by file, then drivers and bloatware. Nil when the file cannot
+// be read -- the row still shows, it just says less.
+func readPayload(a *compose.Artifact) *payloadSummary {
+	zr, err := zip.OpenReader(a.Path)
 	if err != nil {
-		return ""
+		return nil
 	}
 	defer zr.Close()
 	f, err := zr.Open(agent.ManifestName)
 	if err != nil {
-		return ""
+		return nil
 	}
 	defer f.Close()
 	var m agent.Manifest
 	if err := json.NewDecoder(f).Decode(&m); err != nil {
-		return ""
+		return nil
 	}
-	names := map[string]string{}
-	for _, a := range appcatalog.Catalog() {
-		if a.Winget != "" {
-			names[strings.ToLower(a.Winget)] = a.Name
+	byWinget := map[string]appcatalog.App{}
+	for _, app := range appcatalog.Catalog() {
+		if app.Winget != "" {
+			byWinget[strings.ToLower(app.Winget)] = app
 		}
 	}
-	var parts []string
+	byFile := map[string]appcatalog.Custom{}
+	for _, c := range appcatalog.CustomApps() {
+		byFile[strings.ToLower(c.Filename)] = c
+	}
+	p := &payloadSummary{Programs: []string{}, Installers: []string{}, DriverPacks: []string{}, Build: m.Build}
+	derived := payloadChoices{Apps: []string{}, Debloat: "off"}
 	if m.Apps != nil {
 		for _, id := range m.Apps.Winget {
-			if n, ok := names[strings.ToLower(id)]; ok {
-				parts = append(parts, n)
+			if app, ok := byWinget[strings.ToLower(id)]; ok {
+				p.Programs = append(p.Programs, app.Name)
+				derived.Apps = append(derived.Apps, app.ID)
 			} else {
-				parts = append(parts, id)
+				p.Programs = append(p.Programs, id)
+				derived.Apps = append(derived.Apps, "winget:"+id)
 			}
 		}
 		for _, in := range m.Apps.Installers {
-			parts = append(parts, in.File)
+			if c, ok := byFile[strings.ToLower(in.File)]; ok {
+				p.Installers = append(p.Installers, c.Name)
+				derived.Apps = append(derived.Apps, c.ID)
+			} else {
+				p.Installers = append(p.Installers, in.File)
+			}
 		}
 	}
-	if packs := len(m.Drivers.Cabs) + len(m.Drivers.Extracts) + len(m.Drivers.Exes); packs > 0 {
-		if packs == 1 {
-			parts = append(parts, "1 driver pack")
-		} else {
-			parts = append(parts, fmt.Sprintf("%d driver packs", packs))
-		}
+	for _, c := range m.Drivers.Cabs {
+		p.DriverPacks = append(p.DriverPacks, c.File)
+	}
+	for _, x := range m.Drivers.Extracts {
+		p.DriverPacks = append(p.DriverPacks, x.File)
+	}
+	for _, x := range m.Drivers.Exes {
+		p.DriverPacks = append(p.DriverPacks, x.File)
 	}
 	if m.Debloat != nil {
-		parts = append(parts, "removes bloatware ("+m.Debloat.Preset+")")
+		p.Debloat = m.Debloat.Preset
+		derived.Debloat = m.Debloat.Preset
 	}
-	return strings.Join(parts, ", ")
+	var kept payloadChoices
+	if len(a.Choices) > 0 && json.Unmarshal(a.Choices, &kept) == nil {
+		p.Choices, p.ChoicesKnown = kept, true
+	} else {
+		p.Choices = derived
+	}
+	return p
 }
 
 // deviceInfoOf is the one place a device becomes a page row, so the devices
@@ -600,7 +668,11 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 				Created: a.CreatedAt.Format("2006-01-02 15:04"), Kind: a.Kind,
 			}
 			if a.Kind == "payload" {
-				info.Contents = payloadContents(a.Path)
+				info.Name = a.Name
+				if p := readPayload(a); p != nil {
+					info.Payload = p
+					info.Contents = p.Contents()
+				}
 			}
 			resp.Artifacts = append(resp.Artifacts, info)
 		}
@@ -956,8 +1028,11 @@ type installRequest struct {
 	Mode     string `json:"mode"`
 	DeviceID string `json:"device_id"`
 	Confirm  string `json:"confirm"`
-	// Name is the recipe name, for /api/recipes/save.
+	// Name is the recipe name, for /api/recipes/save, or the payload's name.
 	Name string `json:"name"`
+	// Replaces is a payload being edited: once the new one is built, the old
+	// one is removed, so editing a payload does not leave two behind.
+	Replaces string `json:"replaces"`
 }
 
 // installOptions validates a request's options and turns them into what the
@@ -1088,6 +1163,15 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, "%s is not Windows; a payload sets up programs on a machine that already runs Windows", e.Name)
 		return
 	}
+	var replaces string
+	if mode == "payload" && strings.TrimSpace(req.Replaces) != "" {
+		old, err := s.libraryArtifact(req.Replaces)
+		if err != nil {
+			httpErr(w, 400, "%v", err)
+			return
+		}
+		replaces = old
+	}
 	var opts oscatalog.Options
 	if mode != "download" {
 		var err error
@@ -1133,7 +1217,26 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 				job.Fail(err)
 				return
 			}
-			job.Finish("the payload is in Built payloads — copy it to the machine and run it there: " + filepath.Base(art.Path))
+			// Kept beside the file: the name it is listed by, and the
+			// options it was built from, which is what editing starts with.
+			art.Name = strings.TrimSpace(req.Name)
+			art.Choices, _ = json.Marshal(payloadChoices{Apps: req.Apps, DriversFor: req.DriversFor, Debloat: req.Debloat})
+			if err := art.Save(); err != nil {
+				job.Fail(err)
+				return
+			}
+			// The old one goes only once the new one exists, and never when
+			// the edit changed nothing that is built -- a rename, say -- in
+			// which case they are the same file.
+			if replaces != "" && !sameFile(replaces, art.Path) {
+				_ = os.Remove(replaces)
+				_ = os.Remove(compose.MetaPath(replaces))
+			}
+			label := art.Name
+			if label == "" {
+				label = filepath.Base(art.Path)
+			}
+			job.Finish("the payload is in Built payloads — write it to a USB drive, or save a copy: " + label)
 		case "setup":
 			art, err := oscatalog.BuildQuick(context.Background(), s.Lib, e, opts, progress)
 			if err != nil {
@@ -1275,6 +1378,153 @@ func isArtifactFile(p string) bool {
 	return strings.HasSuffix(p, ".img") || strings.HasSuffix(p, ".exe") || strings.HasSuffix(p, ".zip")
 }
 
+// libraryArtifact checks that a path names a payload this library built, and
+// returns it cleaned. The path comes from the page, and the page is not
+// trusted to name anything else on the disk.
+func (s *Server) libraryArtifact(path string) (string, error) {
+	dir, _ := filepath.Abs(s.Lib.ArtifactsDir())
+	p, err := filepath.Abs(path)
+	if err != nil || filepath.Dir(p) != dir || !isArtifactFile(p) {
+		return "", fmt.Errorf("%s is not something this library built", path)
+	}
+	a, err := compose.LoadArtifact(compose.MetaPath(p))
+	if err != nil || a.Kind != "payload" {
+		return "", fmt.Errorf("%s is not a payload", filepath.Base(path))
+	}
+	return p, nil
+}
+
+// stickLabel is the volume name a payload stick gets: FAT allows eleven
+// characters, and this is what somebody sees in Explorer at the customer's
+// machine.
+const stickLabel = "DSKYPAYLOAD"
+
+// stickFileName is what the payload is called on the stick: its name, if it
+// has one, so the file at the customer's machine says which payload it is,
+// rather than a recipe id and a hash.
+func stickFileName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == ' ', r == '-', r == '_', r == '(', r == ')', r == '&', r == ',':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	base := strings.TrimRight(strings.TrimSpace(b.String()), ". -")
+	if len(base) > 60 {
+		base = strings.TrimRight(base[:60], ". -")
+	}
+	if base == "" {
+		return "DSKY payload.exe"
+	}
+	return base + ".exe"
+}
+
+// handleWritePayload writes a payload to a USB drive: the stick is erased and
+// becomes one FAT32 volume holding the payload and nothing else.
+//
+// It goes through the same write as every stick DSKY makes -- a disk image,
+// written, then read back and compared -- rather than formatting the stick and
+// copying a file onto it. That would need the stick mounted afterwards, which
+// is a different job on each of three operating systems and one this tool
+// does not otherwise do; the image works the same everywhere, and the readback
+// says the file on the stick is the file that was built. Anyone who wants the
+// payload on a stick without erasing what is on it saves a copy to it.
+func (s *Server) handleWritePayload(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path     string `json:"path"`
+		DeviceID string `json:"device_id"`
+		Confirm  string `json:"confirm"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" || req.DeviceID == "" {
+		httpErr(w, 400, "body must include path, device_id and confirm")
+		return
+	}
+	src, err := s.libraryArtifact(req.Path)
+	if err != nil {
+		httpErr(w, 400, "%v", err)
+		return
+	}
+	art, err := compose.LoadArtifact(compose.MetaPath(src))
+	if err != nil {
+		httpErr(w, 400, "%v", err)
+		return
+	}
+	// Re-enumerate now; never trust a stale listing for a destructive op.
+	dev, err := s.findDevice(r.Context(), req.DeviceID)
+	if err != nil {
+		httpErr(w, 400, "%v", err)
+		return
+	}
+	if !dev.Flashable() {
+		httpErr(w, 400, "%s is not flashable (bus=%s, system=%v)", dev.ID, dev.Bus, dev.System)
+		return
+	}
+	if strings.TrimSpace(req.Confirm) != dev.SizeConfirmation() {
+		httpErr(w, 400, "confirmation mismatch: device %s is %s GiB — type exactly %q to arm",
+			dev.ID, dev.SizeConfirmation(), dev.SizeConfirmation())
+		return
+	}
+	name := stickFileName(art.Name)
+	job := s.Reg.New("flash", fmt.Sprintf("payload %s → %s", name, dev.ID))
+	go func() {
+		s.deviceMu.Lock()
+		defer s.deviceMu.Unlock()
+		progress := progressFor(job)
+		img, err := buildPayloadStick(s.Lib.TmpDir(), src, name, progress)
+		if img != "" {
+			defer os.Remove(img)
+		}
+		if err != nil {
+			job.Fail(err)
+			return
+		}
+		stick, _, err := compose.ResolveImage(img)
+		if err != nil {
+			job.Fail(err)
+			return
+		}
+		if err := flashrun.RunFlash(context.Background(), stick, dev, progress); err != nil {
+			job.Fail(err)
+			return
+		}
+		job.Finish("written and verified — " + name + " is on the stick; safe to remove")
+	}()
+	writeJSON(w, 202, map[string]string{"job_id": job.ID})
+}
+
+// buildPayloadStick lays out the stick as an image: one FAT32 volume, sized
+// for the payload with room to spare rather than for the whole stick, so a
+// small payload writes in seconds instead of writing gigabytes of nothing.
+// Disk utility's Erase and prepare gives the whole stick back.
+func buildPayloadStick(tmpDir, src, name string, progress func(string, int64, int64)) (string, error) {
+	st, err := os.Stat(src)
+	if err != nil {
+		return "", err
+	}
+	f, err := os.CreateTemp(tmpDir, "payload-stick-*.img")
+	if err != nil {
+		return "", err
+	}
+	img := f.Name()
+	f.Close()
+	stage := fsimg.StageMap{}
+	stage.AddFile(src, "/"+name)
+	opts := fsimg.Options{
+		Scheme: fsimg.SchemeMBR, Label: stickLabel,
+		SizeBytes: fsimg.SizeForContent(st.Size(), 1),
+	}
+	if err := fsimg.BuildStaged(img, opts, stage, func(done, total int64) {
+		progress("laying out the stick", done, total)
+	}); err != nil {
+		return img, err
+	}
+	return img, nil
+}
+
 // handleCopyArtifact copies a built payload somewhere the operator chose: a
 // stick, a share, a folder on this machine. A payload is carried to a machine
 // rather than written to one, so copying it is the useful act -- and doing it
@@ -1300,7 +1550,15 @@ func (s *Server) handleCopyArtifact(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, "%s is not a folder on this machine", req.To)
 		return
 	}
-	dst := filepath.Join(req.To, filepath.Base(src))
+	// A named payload is saved under its name: a backup folder of
+	// "windows-11-payload-249016a39fc58f54.exe" files says nothing about which
+	// customer each one is for. Saving the same payload again replaces the
+	// older copy, which is what a backup wants.
+	base := filepath.Base(src)
+	if a, err := compose.LoadArtifact(compose.MetaPath(src)); err == nil && a.Kind == "payload" && strings.TrimSpace(a.Name) != "" {
+		base = stickFileName(a.Name)
+	}
+	dst := filepath.Join(req.To, base)
 	if sameFile(src, dst) {
 		httpErr(w, 400, "that is where it already is")
 		return

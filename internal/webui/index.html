@@ -70,6 +70,10 @@
   .row .title { font-weight: 600; }
   .row .sub { color: var(--dim); font-size: 12px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; }
+  /* A payload row says what it carries, which is a list and can be long; cut
+     short with an ellipsis it hid the one thing that tells two payloads
+     apart. It wraps, and the size and date get a line of their own. */
+  #payloads .row .sub.wrap { white-space: normal; }
   .empty { color: var(--dim); padding: 12px 14px; font-style: italic; }
   /* The OS picker. One dropdown rather than a wall of rows: the list is thirty
      entries and growing, and scrolling past twenty-nine things you are not
@@ -406,10 +410,10 @@
     </section>
     <section data-door="install advanced" id="downloadsSec"><h2>Downloaded <span class="spacer"></span><span class="sub" id="downloadsTotal"></span></h2><div class="rows" id="downloads"></div></section>
     <section data-door="install advanced" id="recipesSec"><h2>Recipes <span class="spacer"></span><span class="sub" id="recipesWhere"></span></h2><div class="rows" id="recipes"></div></section>
-    <section data-door="payload" id="payloadSec"><h2>Build a payload</h2>
-      <div class="picknote">For a machine that already runs Windows. Choose what goes on it; DSKY builds one file you double-click there.</div>
+    <section data-door="payload" id="payloadSec"><h2 id="payloadHead">Build a payload</h2>
+      <div class="picknote" id="payloadNote">For a machine that already runs Windows. Choose what goes on it; DSKY builds one file you double-click there.</div>
       <div id="payloadOpts"><div class="empty">Loading…</div></div>
-      <div class="pick"><span class="spacer"></span><button class="primary" id="payloadGo">Build payload</button></div>
+      <div class="pick"><span class="spacer"></span><button id="payloadCancel" hidden>Cancel editing</button><button class="primary" id="payloadGo">Build payload</button></div>
     </section>
     <section data-door="payload" id="payloadRecipesSec"><h2>From a recipe <span class="spacer"></span><span class="sub">the same programs and drivers, without the OS</span></h2><div class="rows" id="payloadRecipes"></div></section>
     <section data-door="install advanced" id="imagesSec"><h2>Built images <span class="spacer"></span><span class="sub">ready to write, no rebuilding</span></h2><div class="rows" id="artifacts"></div></section>
@@ -466,6 +470,22 @@
       <button id="rcSaveFile" class="primary" hidden>Save file</button>
       <button id="rcEdit" class="primary" title="Change these options in the install dialog">Edit</button>
       <button onclick="recipeDialog.close()">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="payloadDialog">
+  <div class="body">
+    <h3 id="pdTitle"></h3>
+    <div class="sub" id="pdPath" style="color:var(--dim);font-size:12px;overflow-wrap:anywhere"></div>
+    <dl class="facts" id="pdFacts"></dl>
+    <p id="pdErr" hidden style="color:var(--danger)"></p>
+    <div class="actions">
+      <button id="pdDelete" style="margin-right:auto">Delete payload</button>
+      <button id="pdEdit" title="Change what is in it, and build it again">Edit</button>
+      <button id="pdCopy" title="Save a copy to a folder — a backup, a share, or a stick you don't want erased">Save a copy…</button>
+      <button id="pdWrite" class="primary" title="Erase a USB drive and put this payload on it">Write to USB…</button>
+      <button onclick="payloadDialog.close()">Close</button>
     </div>
   </div>
 </dialog>
@@ -831,49 +851,128 @@ function el(tag, cls, text) {
 function artifactRow(a) {
   const row = el("div", "row");
   const grow = el("div", "grow");
-  const rc = state.recipes.find(r => r.id === a.recipe_id);
-  const os = (state.catalog || []).find(o => o.id === a.recipe_id);
   const payload = a.kind === "payload";
-  // A payload built from the Payload screen has no recipe of its own -- its
-  // id is the OS entry it borrowed defaults from, which is not what it is --
-  // so what it carries is its name. One built from a recipe keeps the
-  // recipe's name, with what it carries underneath.
-  const fromForm = payload && !rc;
-  const label = (rc && rc.name) || (fromForm ? (a.contents || "Programs and drivers") : (os && os.name)) || a.recipe_id;
-  const sub = (payload && rc && a.contents ? a.contents + " · " : "") + a.size_mb + " MiB · built " + a.created;
-  grow.append(el("div", "title", label), el("div", "sub", sub));
+  const label = artifactLabel(a);
+  const rc = state.recipes.find(r => r.id === a.recipe_id);
+  // What a payload carries goes under its name, unless it is its name.
+  const named = payload && (a.name || rc);
+  const title = el("div", "title" + (payload ? " link" : ""), label);
+  grow.append(title);
+  if (named && a.contents) grow.append(el("div", "sub wrap", a.contents));
+  // The date is kept in one piece -- non-breaking hyphens and space -- so a
+  // narrow row wraps at the dot rather than halfway through the month.
+  const when = a.created.replace(/-/g, "\u2011").replace(" ", "\u00a0");
+  grow.append(el("div", "sub" + (payload ? " wrap" : ""), a.size_mb + "\u00a0MiB · built\u00a0" + when));
   grow.title = a.path;
   row.append(grow);
+  if (payload) {
+    title.title = "Open to see what's in it";
+    title.onclick = () => openPayload(a);
+    const open = el("button", "", "Open");
+    open.title = "See what's in it, edit or delete it";
+    open.onclick = () => openPayload(a);
+    const copy = el("button", "", "Save a copy…");
+    copy.title = "Save a copy to a folder — a backup, a share, or a stick you don't want erased";
+    copy.onclick = () => savePayloadCopy(a, copy);
+    const write = el("button", "primary", "Write to USB…");
+    write.title = "Erase a USB drive and put this payload on it";
+    write.onclick = () => writePayload(a);
+    row.append(open, copy, write);
+    return row;
+  }
   const del = el("button", "", "Delete");
   del.onclick = async () => {
-    const what = payload ? `the payload ${label}` : `the built image for ${label}`;
-    if (!confirm(`Delete ${what}? It can be built again later.`)) return;
+    if (!confirm(`Delete the built image for ${label}? It can be built again later.`)) return;
     try { await api("/api/artifacts/delete", { path: a.path }); loadState(); }
     catch (e) { showErr(e.message); }
   };
-  row.append(del);
-  if (payload) {
-    // Nothing to write: it is a program to carry to a machine. Copying it
-    // somewhere is the useful act, and the page can ask the host for a
-    // folder the way it does for a workspace.
-    const copy = el("button", "primary", "Copy to…");
-    copy.title = "Copy this payload to a folder — a stick, a share, anywhere the machine can reach";
-    copy.onclick = async () => {
-      const was = copy.textContent;
-      copy.textContent = "Choose…"; copy.disabled = true;
-      try {
-        const r = await api("/api/browse", {});
-        if (r.path) await api("/api/artifacts/copy", { path: a.path, to: r.path });
-      } catch (e) { showErr(e.message); }
-      finally { copy.textContent = was; copy.disabled = false; }
-    };
-    row.append(copy);
-  } else {
-    const flash = el("button", "primary", "Write to stick…");
-    flash.onclick = () => armFlash({ artifact: a.path, label });
-    row.append(flash);
-  }
+  const flash = el("button", "primary", "Write to stick…");
+  flash.onclick = () => armFlash({ artifact: a.path, label });
+  row.append(del, flash);
   return row;
+}
+
+// artifactLabel is what a built thing is called. A payload is called what
+// somebody named it; otherwise by its recipe; and one built from the Payload
+// screen with no name at all by what it carries -- its recipe id is only the
+// OS entry it borrowed defaults from, which is not what it is.
+function artifactLabel(a) {
+  const rc = state.recipes.find(r => r.id === a.recipe_id);
+  const os = (state.catalog || []).find(o => o.id === a.recipe_id);
+  if (a.kind === "payload")
+    return a.name || (rc && rc.name) || a.contents || "Programs and drivers";
+  return (rc && rc.name) || (os && os.name) || a.recipe_id;
+}
+
+// openPayload shows what a payload carries, and is where it is edited,
+// copied, written or deleted.
+function openPayload(a) {
+  const p = a.payload || { programs: [], installers: [], driver_packs: [] };
+  const label = artifactLabel(a);
+  const rc = state.recipes.find(r => r.id === a.recipe_id);
+  const err = $("pdErr"); err.hidden = true;
+  $("pdTitle").textContent = label;
+  $("pdPath").textContent = a.path;
+  const facts = $("pdFacts"); facts.replaceChildren();
+  const fact = (k, v) => facts.append(el("dt", null, k), el("dd", null, v));
+  if (rc) fact("Recipe", rc.name || rc.id);
+  fact("Programs", p.programs.length ? p.programs.join(", ") : "none");
+  if (p.installers.length) fact("Your installers", p.installers.join(", "));
+  fact("Drivers", p.driver_packs.length ? p.driver_packs.join(", ") : "none");
+  fact("Bloatware", p.debloat ? "removed (" + p.debloat + ")" : "left alone");
+  fact("Built", a.created + " · " + a.size_mb + " MiB");
+
+  // A payload built from a recipe is changed by changing the recipe; one
+  // built here is changed here.
+  const edit = $("pdEdit");
+  edit.textContent = rc ? "Edit recipe" : "Edit";
+  edit.onclick = () => {
+    payloadDialog.close();
+    if (rc) openRecipe(rc.id);
+    else editPayload(a);
+  };
+  $("pdCopy").onclick = () => savePayloadCopy(a, $("pdCopy"));
+  $("pdWrite").onclick = () => { payloadDialog.close(); writePayload(a); };
+  $("pdDelete").onclick = async () => {
+    if (!confirm(`Delete the payload ${label}? Copies already saved or written to a USB drive are not touched.`)) return;
+    try {
+      await api("/api/artifacts/delete", { path: a.path });
+      payloadDialog.close(); showOk("Deleted " + label);
+      if (payloadForm && payloadForm.editing && payloadForm.editing.path === a.path) payloadForm.reset();
+      loadState();
+    } catch (e) { err.textContent = e.message; err.hidden = false; }
+  };
+  payloadDialog.showModal();
+}
+
+// savePayloadCopy is the backup: a copy in a folder somebody chooses, which
+// may be a share, a backup drive, or a stick whose other files must stay.
+async function savePayloadCopy(a, btn) {
+  const was = btn.textContent;
+  btn.textContent = "Choose…"; btn.disabled = true;
+  try {
+    const r = await api("/api/browse", {});
+    if (r.path) {
+      await api("/api/artifacts/copy", { path: a.path, to: r.path });
+      showOk("Saving a copy to " + r.path);
+    }
+  } catch (e) { showErr(e.message); }
+  finally { btn.textContent = was; btn.disabled = false; }
+}
+
+// writePayload erases a USB drive and puts the payload on it, through the same
+// armed, verified write every stick gets.
+async function writePayload(a) {
+  await loadState();
+  const usable = state.devices.filter(d => d.flashable);
+  if (!usable.length) { showErr("No USB drive is plugged in — plug one in and Rescan."); return; }
+  const label = artifactLabel(a);
+  openArm(usable, `Write ${label} to a USB drive`,
+    "This <b>permanently erases</b> the drive. It will hold this payload and nothing else, " +
+    "then be read back to check the copy.<br><br>To keep what is already on a drive, " +
+    "use <b>Save a copy…</b> and choose the drive instead.",
+    (dev, confirm) => api("/api/payloads/write", { path: a.path, device_id: dev.id, confirm })
+      .catch(e => showErr(e.message)));
 }
 
 // ── Payload ───────────────────────────────────────────────────────────────
@@ -892,23 +991,61 @@ function renderPayloadForm() {
   const cat = state.catalog || [];
   const win = cat.find(o => o.id === "windows-11") || cat.find(o => o.family === "windows");
   if (!win) return;
+  const nm = textOpt("Name", "e.g. Acme Dental front desk", "What it's called in the list and on the USB drive. Leave empty to name it by what's in it.");
   const ap = appsOpt("payload");
   const df = modelPickerOpt(win, "payload");
   df.wrap.querySelector("label").textContent = "Drivers for these computer models";
   const db = selectOpt("Remove bloatware", [["off", "Keep everything"], ["standard", "Standard"], ["aggressive", "Aggressive"]]);
-  $("payloadOpts").replaceChildren(ap.wrap, df.wrap, db.wrap);
-  payloadForm = { win, ap, df, db };
+  $("payloadOpts").replaceChildren(nm.wrap, ap.wrap, df.wrap, db.wrap);
+  const nameInput = nm.wrap.querySelector("input");
+
+  const reset = () => {
+    payloadForm.editing = null;
+    nameInput.value = ""; ap.set([]); df.set(""); db.set("off");
+    $("payloadHead").textContent = "Build a payload";
+    $("payloadNote").textContent = "For a machine that already runs Windows. Choose what goes on it; DSKY builds one file you double-click there.";
+    $("payloadGo").textContent = "Build payload";
+    $("payloadCancel").hidden = true;
+  };
+  const edit = a => {
+    const p = a.payload || {};
+    const c = p.choices || {};
+    payloadForm.editing = a;
+    nameInput.value = a.name || "";
+    ap.set(c.apps || []); df.set(c.drivers_for || ""); db.set(c.debloat || "off");
+    $("payloadHead").textContent = "Edit payload: " + artifactLabel(a);
+    $("payloadNote").textContent = p.choices_known
+      ? "Change what goes on it, then save. The payload is built again and replaces the old one."
+      : "This payload was built before DSKY kept its options, so its programs and bloatware setting are filled in from the payload itself — its driver packs are not. Add the computer models again before saving.";
+    $("payloadGo").textContent = "Save changes";
+    $("payloadCancel").hidden = false;
+    $("payloadSec").scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  payloadForm = { win, nm, ap, df, db, editing: null, reset, edit };
+  $("payloadCancel").onclick = reset;
   $("payloadGo").onclick = () => {
-    const body = { os_id: win.id, mode: "payload", drivers: false,
+    const body = { os_id: win.id, mode: "payload", drivers: false, name: nameInput.value.trim(),
       apps: ap.get(), drivers_for: df.get(), debloat: db.get() };
     if (!body.apps.length && !body.drivers_for.length && body.debloat === "off") {
       showErr("Choose at least one program, a computer model, or bloatware removal — otherwise there is nothing for the payload to do.");
       return;
     }
+    const editing = payloadForm.editing;
+    if (editing) body.replaces = editing.path;
     api("/api/install", body)
-      .then(() => showOk("Building the payload. It shows up under Built payloads."))
+      .then(() => {
+        showOk(editing ? "Rebuilding the payload. The new one replaces the old one when it's done."
+                       : "Building the payload. It shows up under Built payloads.");
+        reset();
+      })
       .catch(e => showErr(e.message));
   };
+}
+
+function editPayload(a) {
+  if (door !== "payload") setDoor("payload");
+  renderPayloadForm();
+  if (payloadForm) payloadForm.edit(a);
 }
 
 // ── Doors ─────────────────────────────────────────────────────────────────
@@ -1597,7 +1734,17 @@ function modelPickerOpt(os, carrier = "stick") {
   // Started as the dialog opens rather than on first focus, so the lists are
   // ready by the time somebody types.
   load();
-  return { wrap, get: () => [...picked.keys()].join(",") };
+  // set puts back models chosen earlier, named properly once the lists are in
+  // and by their spec until then.
+  const set = specs => {
+    picked.clear();
+    for (const spec of String(specs || "").split(",").map(x => x.trim()).filter(Boolean)) {
+      const m = (all || []).find(x => x.spec === spec);
+      picked.set(spec, m ? m.vendorName + " " + m.model : spec);
+    }
+    drawChips();
+  };
+  return { wrap, get: () => [...picked.keys()].join(","), set };
 }
 
 function checkOpt(label) {
@@ -1839,7 +1986,10 @@ function appsOpt(target = "windows") {
   };
   setNote();
   // set fills the picker from a saved recipe.
+  // set replaces what is picked: the Payload form reuses one picker for
+  // building, editing and starting over.
   const set = ids => {
+    picked.clear();
     for (const id of ids || []) {
       const a = (state.apps || []).find(x => x.id === id);
       if (a) addApp(a);
@@ -2728,12 +2878,12 @@ const GUIDES = {
     {
       door: "payload", target: onScreen("payloadSec"),
       title: "Build a payload",
-      text: "For a machine that already runs Windows: pick programs, drivers for its model, and whether to remove bloatware. Nothing is erased and no operating system is installed.",
+      text: "For a machine that already runs Windows: name it, pick programs, drivers for its model, and whether to remove bloatware. Nothing is erased on that machine and no operating system is installed.",
     },
     {
       door: "payload", target: onScreen("payloadsSec"),
       title: "Built payloads",
-      text: "Each payload is one file. Copy it to a stick or a share, double-click it on the machine and approve the prompt. It shows what it's doing, and leaves the owner's own desktop shortcuts alone.",
+      text: "Each payload is one file. Write to USB… puts it on a drive to carry to the machine; Save a copy… keeps a backup in any folder. Open shows what's in it, and is where you edit or delete it. On the machine, double-click it and approve the prompt.",
     },
     {
       door: "payload", target: onScreen("payloadRecipesSec"),
