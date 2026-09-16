@@ -286,14 +286,46 @@ func machineName(vendor, model string) string {
 // Main is the agent's entry point, kept here so the command is three lines
 // and the behaviour is testable.
 func Main(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: dsky-agent apply [dir] [--quiet] [--unattended] | dsky-agent verify [dir] | dsky-agent user-install <job> <result>")
+	// No arguments at all is somebody double-clicking a payload that is one
+	// file, which is the way it is meant to be started; options with no
+	// command is a script running that same file, where "apply" is the only
+	// thing it could have meant. Anywhere else it is somebody who does not
+	// know what this program is, and the usage line is the answer.
+	if len(args) == 0 || strings.HasPrefix(args[0], "--") {
+		zr, err := selfPayload()
+		if err != nil {
+			return err
+		}
+		if zr == nil {
+			if len(args) > 0 {
+				return fmt.Errorf("unknown command %q (this agent carries no payload; try: dsky-agent apply %s)", args[0], strings.Join(args, " "))
+			}
+			return fmt.Errorf("usage: dsky-agent apply [dir] [--quiet] [--unattended] | dsky-agent verify [dir] | dsky-agent user-install <job> <result>")
+		}
+		args = append([]string{"apply"}, args...)
 	}
 	switch args[0] {
 	case "apply":
 		dir, opts, err := parseApplyArgs(args[1:])
 		if err != nil {
 			return err
+		}
+		// A payload carried inside this file is what to run, unless a
+		// directory was named -- which is how the copy on the machine is
+		// started, and how a resume after a restart carries on.
+		if dir == "" {
+			zr, err := selfPayload()
+			if err != nil {
+				return err
+			}
+			if zr != nil {
+				problems, err := startAttached(zr, opts)
+				if err != nil {
+					return err
+				}
+				exitWith(problems)
+				return nil
+			}
 		}
 		if dir == "" {
 			exe, err := os.Executable()

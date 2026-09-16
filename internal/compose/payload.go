@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/uplinkresearch/dsky/internal/agent"
+	"github.com/uplinkresearch/dsky/internal/agentbin"
 	"github.com/uplinkresearch/dsky/internal/fsimg"
 	"github.com/uplinkresearch/dsky/internal/recipe"
 )
@@ -55,9 +56,9 @@ func BuildPayload(ctx context.Context, req Request) (*Artifact, error) {
 		return nil, err
 	}
 	lib := req.Library
-	zipPath := filepath.Join(lib.ArtifactsDir(), fmt.Sprintf("%s-payload-%s.zip", r.ID, key))
+	outPath := filepath.Join(lib.ArtifactsDir(), fmt.Sprintf("%s-payload-%s.exe", r.ID, key))
 	if !req.Rebuild {
-		if a, err := LoadArtifact(MetaPath(zipPath)); err == nil {
+		if a, err := LoadArtifact(MetaPath(outPath)); err == nil {
 			if _, err := os.Stat(a.Path); err == nil {
 				req.progress("cached", 1, 1)
 				return a, nil
@@ -121,27 +122,42 @@ func BuildPayload(ctx context.Context, req Request) (*Artifact, error) {
 	stage.AddFile(readme, path.Join(scriptsImg, "README.txt"))
 
 	req.progress("payload", 0, -1)
-	if err := writePayloadZip(zipPath, stage); err != nil {
+	if err := writePayloadExe(outPath, stage); err != nil {
 		return nil, err
 	}
-	sum, size, err := hashFileWithProgress(zipPath, func(done, total int64) {
+	sum, size, err := hashFileWithProgress(outPath, func(done, total int64) {
 		req.progress("hash", done, total)
 	})
 	if err != nil {
 		return nil, err
 	}
 	a := &Artifact{
-		RecipeID: r.ID, Kind: "payload", Path: zipPath, Size: size, SHA256: sum,
+		RecipeID: r.ID, Kind: "payload", Path: outPath, Size: size, SHA256: sum,
 		InputsKey: key, CreatedAt: nowUTC(), Tool: toolVersion(),
 	}
 	return a, a.save()
 }
 
-// writePayloadZip writes the staged files at the zip's root, where an install
-// image puts them under /sources/$OEM$/$$/Setup/Scripts. Deterministic --
-// sorted, one fixed timestamp -- so the same inputs are the same zip, which
-// is what lets the build be cached by its inputs.
-func writePayloadZip(zipPath string, stage fsimg.StageMap) error {
+// writePayloadExe writes the payload as one file that is both a program and a
+// zip: the agent, then the staged files as a zip appended to it. Windows runs
+// the program and ignores what follows it; a zip reader finds the archive from
+// its own end and ignores what comes before it. Double-click it and it runs;
+// open it with anything that opens zips and out comes the folder.
+//
+// One file because the folder form has a wrong way to start it. Explorer will
+// run "Run DSKY.cmd" from inside the un-extracted zip, in a temporary folder
+// beside none of the files it needs, and the launcher has to catch that and
+// tell somebody to go back and extract it properly. There is no equivalent
+// mistake to make with one file.
+//
+// The zip is deterministic -- sorted entries, one fixed timestamp -- and the
+// agent ahead of it is the same embedded bytes every time, so the same inputs
+// are the same file and the build caches by its inputs.
+func writePayloadExe(outPath string, stage fsimg.StageMap) error {
+	exe, err := agentbin.Binary(agentbin.AMD64)
+	if err != nil {
+		return err
+	}
 	imgPaths := make([]string, 0, len(stage))
 	for p := range stage {
 		if !strings.HasPrefix(p, scriptsImg+"/") {
@@ -154,11 +170,18 @@ func writePayloadZip(zipPath string, stage fsimg.StageMap) error {
 	}
 	sort.Strings(imgPaths)
 
-	f, err := os.Create(zipPath + ".partial")
+	f, err := os.Create(outPath + ".partial")
 	if err != nil {
 		return err
 	}
+	if _, err := f.Write(exe); err != nil {
+		f.Close()
+		return err
+	}
 	zw := zip.NewWriter(f)
+	// The archive begins after the agent, and every offset inside it is
+	// written relative to that, which is what makes both halves readable.
+	zw.SetOffset(int64(len(exe)))
 	stamp := time.Unix(defaultSourceDateEpochUnix, 0).UTC()
 	for _, p := range imgPaths {
 		rel := strings.TrimPrefix(p, scriptsImg+"/")
@@ -183,7 +206,10 @@ func writePayloadZip(zipPath string, stage fsimg.StageMap) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(zipPath+".partial", zipPath)
+	if err := os.Chmod(outPath+".partial", 0o755); err != nil {
+		return err
+	}
+	return os.Rename(outPath+".partial", outPath)
 }
 
 // payloadLauncher is the double-click way to run a payload: elevate the agent
@@ -210,8 +236,10 @@ func payloadLauncher() string {
 	return strings.Join(lines, "\r\n")
 }
 
-// payloadReadme says what the zip is to whoever is holding it, and how a
-// remote tool runs it with nobody at the machine.
+// payloadReadme says what this is to whoever is holding it, and how a remote
+// tool runs it with nobody at the machine. It is read by somebody who opened
+// the file with a zip program instead of running it, so it starts by saying
+// that running it is all there is to do.
 func payloadReadme(r *recipe.Recipe, m *agent.Manifest) string {
 	var b strings.Builder
 	p := func(s string) { b.WriteString(s); b.WriteString("\r\n") }
@@ -220,12 +248,19 @@ func payloadReadme(r *recipe.Recipe, m *agent.Manifest) string {
 	p("Sets up programs and drivers on a machine that already runs Windows.")
 	p("It does not install an operating system and does not erase anything.")
 	p("")
-	p("To run it: extract this folder onto the machine (or a stick), then")
-	p("double-click \"" + launcherName + "\" and approve the administrator prompt.")
-	p("A window shows what is being done; the log is firstboot.log, beside")
-	p("the copy of this payload under C:\\ProgramData\\DSKY\\payloads.")
+	p("To run it: copy the .exe this came out of onto the machine and")
+	p("double-click it, then approve the administrator prompt. A window shows")
+	p("what is being done. Nothing has to be extracted first -- that file is")
+	p("both a program and this zip.")
+	p("")
+	p("The payload is copied to C:\\ProgramData\\DSKY\\payloads as it runs, and")
+	p("the log is firstboot.log there.")
 	p("")
 	p("From a remote tool or a script, as an administrator, with no window:")
+	p("")
+	p("  <payload>.exe apply --quiet --unattended")
+	p("")
+	p("or, from these files extracted into a folder:")
 	p("")
 	p("  dsky-agent.exe apply --quiet --unattended")
 	p("")

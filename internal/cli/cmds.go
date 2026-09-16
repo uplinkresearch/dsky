@@ -315,9 +315,9 @@ func cmdBuild(ctx context.Context, env *Env, args []string) error {
 	fmt.Printf("artifact: %s\n", art.Path)
 	fmt.Printf("  kind=%s size=%d MiB sha256=%s\n", art.Kind, art.Size>>20, art.SHA256)
 	if art.Kind == "payload" {
-		fmt.Println("\nCopy it to the machine (or a stick), extract the folder, and")
-		fmt.Println("double-click \"Run DSKY.cmd\" there. README.txt inside says the rest,")
-		fmt.Println("including the quiet command for remote tools.")
+		fmt.Println("\nCopy it to the machine (or a stick) and double-click it. Nothing")
+		fmt.Println("needs extracting first -- though it is also a zip, and README.txt")
+		fmt.Println("inside it says the rest, including the quiet command for remote tools.")
 		return nil
 	}
 	// The check only exists for Windows media, and only the person holding the

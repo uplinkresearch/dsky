@@ -52,7 +52,7 @@ func startStandalone(dir string, m *Manifest, opts RunOptions) (ranElsewhere boo
 	if err := copyPayload(dir, home); err != nil {
 		return true, 0, fmt.Errorf("could not copy the payload onto this machine: %w", err)
 	}
-	code, err := runPayloadCopyFn(filepath.Join(home, "dsky-agent.exe"), append([]string{"apply", home}, opts.Args()...))
+	code, err := runPayloadCopyFn(filepath.Join(home, AgentName), append([]string{"apply", home}, opts.Args()...))
 	return true, code, err
 }
 

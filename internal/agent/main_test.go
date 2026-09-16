@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"archive/zip"
+	"errors"
 	"os"
 	"testing"
 )
@@ -32,7 +34,19 @@ func TestMain(m *testing.M) {
 	isElevatedFn = func() bool { return true }
 	exitFn = func(int) {}
 	verifySignatureFn = func(string) (string, string, error) { return "NotSigned", "", nil }
+	elevateFn = func([]string) (int, error) { return 0, errors.New("the tests do not raise UAC prompts") }
+	selfPayloadFn = func() (*zip.Reader, error) { return nil, nil }
 	os.Exit(m.Run())
+}
+
+// swap replaces one of those stand-ins for the length of one test, and puts
+// the old one back afterwards, so tests that need different behaviour do not
+// leak it into the next one.
+func swap[T any](t *testing.T, p *T, v T) {
+	t.Helper()
+	old := *p
+	*p = v
+	t.Cleanup(func() { *p = old })
 }
 
 // If a future change calls the real thing directly instead of through these,
@@ -44,5 +58,8 @@ func TestTestsNeverTouchTheRealMachine(t *testing.T) {
 	}
 	if dirs := desktopDirsFn(); len(dirs) != 0 {
 		t.Errorf("the tests would sweep real desktops: %v", dirs)
+	}
+	if _, err := elevateFn(nil); err == nil {
+		t.Error("the tests can raise a UAC prompt")
 	}
 }

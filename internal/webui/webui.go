@@ -520,8 +520,13 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metas, _ := filepath.Glob(filepath.Join(s.Lib.ArtifactsDir(), "*.img.json"))
-	if zips, err := filepath.Glob(filepath.Join(s.Lib.ArtifactsDir(), "*.zip.json")); err == nil {
-		metas = append(metas, zips...)
+	// Payloads are programs rather than disk images, and .zip is what they
+	// were before they became one file that runs itself. Both are listed:
+	// the library may still hold one built by an earlier release.
+	for _, pat := range []string{"*.exe.json", "*.zip.json"} {
+		if more, err := filepath.Glob(filepath.Join(s.Lib.ArtifactsDir(), pat)); err == nil {
+			metas = append(metas, more...)
+		}
 	}
 	{
 		for _, m := range metas {
@@ -1202,9 +1207,10 @@ func (s *Server) defaultWorkspace() (dir string, created bool, err error) {
 // in the library's artifacts directory: the path comes from the page, and the
 // page is not trusted to name anything else on the disk.
 // isArtifactFile reports whether a path is one of the things a build
-// produces: a disk image, or a payload zip.
+// produces: a disk image, or a payload -- which is one file that both runs
+// and unzips, and was a plain .zip before that.
 func isArtifactFile(p string) bool {
-	return strings.HasSuffix(p, ".img") || strings.HasSuffix(p, ".zip")
+	return strings.HasSuffix(p, ".img") || strings.HasSuffix(p, ".exe") || strings.HasSuffix(p, ".zip")
 }
 
 // handleCopyArtifact copies a built payload somewhere the operator chose: a

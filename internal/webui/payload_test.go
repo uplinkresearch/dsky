@@ -75,8 +75,8 @@ func TestBuildingAPayloadFetchesNoOperatingSystem(t *testing.T) {
 	if ev.Err != "" {
 		t.Fatalf("the payload build failed: %s", ev.Err)
 	}
-	if !strings.HasSuffix(ev.Result, ".zip") {
-		t.Errorf("built %q, want a payload zip", ev.Result)
+	if !strings.HasSuffix(ev.Result, ".exe") {
+		t.Errorf("built %q, want a payload that can be double-clicked", ev.Result)
 	}
 	if _, err := os.Stat(ev.Result); err != nil {
 		t.Fatalf("the payload is not on disk: %v", err)
@@ -192,9 +192,9 @@ func TestTheInstallScreenBuildsAPayloadWithoutAnOS(t *testing.T) {
 	if ev.Err != "" {
 		t.Fatalf("the payload build failed: %s", ev.Err)
 	}
-	zips, _ := filepath.Glob(filepath.Join(s.Lib.ArtifactsDir(), "*payload*.zip"))
-	if len(zips) != 1 {
-		t.Fatalf("payload zips built: %v", zips)
+	payloads, _ := filepath.Glob(filepath.Join(s.Lib.ArtifactsDir(), "*payload*.exe"))
+	if len(payloads) != 1 {
+		t.Fatalf("payloads built: %v", payloads)
 	}
 	imgs, _ := filepath.Glob(filepath.Join(s.Lib.ArtifactsDir(), "*.img"))
 	if len(imgs) != 0 {

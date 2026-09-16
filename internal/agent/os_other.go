@@ -55,3 +55,8 @@ func payloadRoot() string { return filepath.Join(os.TempDir(), "dsky-payloads") 
 
 // refreshDesktop has no shell to tell anywhere but Windows.
 func refreshDesktop(dirs []string) {}
+
+// runElevated has nowhere to ask off Windows; the tests replace it.
+func runElevated(args []string) (int, error) {
+	return 0, errors.New("run this as root")
+}

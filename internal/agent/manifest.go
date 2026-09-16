@@ -17,6 +17,7 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -24,6 +25,10 @@ import (
 
 // ManifestName is the manifest's filename beside the agent on the stick.
 const ManifestName = "dsky-agent.json"
+
+// AgentName is the agent's own filename, which a payload carries a copy of
+// and runs once it is on the machine.
+const AgentName = "dsky-agent.exe"
 
 // LogName is the human-readable log, kept at the name earlier versions used
 // so `verify.ps1` and everything written about it still find it.
@@ -176,14 +181,26 @@ func LoadManifest(path string) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
+	m, err := parseManifest(b)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return m, nil
+}
+
+// parseManifest reads and checks a manifest's bytes, wherever they came from:
+// a file beside the agent, or the copy inside a payload that is one file. The
+// checks belong here rather than at the file, so a payload carrying a manifest
+// this agent cannot read is refused before it unpacks a gigabyte.
+func parseManifest(b []byte) (*Manifest, error) {
 	var m Manifest
 	dec := json.NewDecoder(newTrimmer(b))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&m); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, err
 	}
 	if m.Version != ManifestVersion {
-		return nil, fmt.Errorf("%s: manifest version %d, this agent reads %d", path, m.Version, ManifestVersion)
+		return nil, fmt.Errorf("manifest version %d, this agent reads %d", m.Version, ManifestVersion)
 	}
 	switch m.Mode {
 	case "", ModeFirstBoot, ModeStandalone:
@@ -191,10 +208,10 @@ func LoadManifest(path string) (*Manifest, error) {
 		// An unknown mode is refused rather than guessed at: guessing
 		// "first boot" on a machine somebody uses would take over its
 		// screen and delete its owner's shortcuts.
-		return nil, fmt.Errorf("%s: unknown mode %q", path, m.Mode)
+		return nil, fmt.Errorf("unknown mode %q", m.Mode)
 	}
 	if m.Standalone() && m.Build == "" {
-		return nil, fmt.Errorf("%s: a standalone payload must name its build", path)
+		return nil, errors.New("a standalone payload must name its build")
 	}
 	return &m, nil
 }

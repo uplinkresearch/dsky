@@ -18,6 +18,8 @@ import (
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
+
+	"github.com/uplinkresearch/dsky/internal/elevate"
 )
 
 // shell32 is loaded for the one call the agent makes into the shell: telling
@@ -529,4 +531,12 @@ func refreshDesktop(dirs []string) {
 		}
 		notify.Call(shcneUpdateDir, shcnfPathW|shcnfFlush, uintptr(unsafe.Pointer(p)), 0)
 	}
+}
+
+// runElevated starts this program again with an administrator's token, one
+// UAC prompt, and returns what it exited with. A payload that arrived as one
+// file is double-clicked by a person, so asking Windows is the only way it
+// gets the rights it needs; telling them to find PowerShell is not an answer.
+func runElevated(args []string) (int, error) {
+	return elevate.RunElevated(args)
 }

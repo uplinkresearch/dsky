@@ -2,9 +2,11 @@ package compose
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -82,7 +84,8 @@ windows:
 	return Request{Workspace: ws, Library: lib, Recipe: r}
 }
 
-// readZip returns every file in the zip by name.
+// readZip returns every file in the archive by name -- opened from the whole
+// file, agent and all, which is how anything that opens zips will meet it.
 func readZip(t *testing.T, path string) map[string][]byte {
 	t.Helper()
 	zr, err := zip.OpenReader(path)
@@ -119,8 +122,21 @@ func TestAPayloadCarriesTheRecipeWithoutTheOS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if art.Kind != "payload" || !strings.HasSuffix(art.Path, ".zip") {
+	if art.Kind != "payload" || !strings.HasSuffix(art.Path, ".exe") {
 		t.Fatalf("artifact: %+v", art)
+	}
+	// One file that is both: the agent runs, and the same bytes open as the
+	// zip. A payload that is only one of the two is useless as the other.
+	head, err := os.ReadFile(art.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exe, err := agentbin.Binary(agentbin.AMD64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(head, exe) {
+		t.Error("the payload does not start with the agent, so double-clicking it runs nothing")
 	}
 
 	files := readZip(t, art.Path)
