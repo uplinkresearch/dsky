@@ -18,6 +18,11 @@ type Agent struct {
 	J        *Journal
 	State    *State
 	UI       *screen
+	Opts     RunOptions
+
+	// ownShortcuts are the desktop shortcuts that were there before a
+	// standalone payload started: the owner's, and never touched.
+	ownShortcuts map[string]bool
 
 	// rebootWanted is set by a step that Windows told to restart the
 	// machine, with the reason in the operator's words. It is acted on
@@ -29,18 +34,52 @@ type Agent struct {
 // records what happened. It returns an error only when it could not start:
 // a step that fails is logged and the rest still run, because a machine with
 // drivers and no Spotify is worth more than a machine with neither.
-func Apply(dir string) error {
-	// The window first, before anything is read from disk: at first sign-in
-	// the desktop is already up by the time Windows runs the agent, and every
-	// moment after that is somebody looking at a machine that appears to be
-	// finished.
-	ui := openScreenFn(machineName(machineModel()))
-	defer ui.Close()
+// RunOptions are how the agent was started, as opposed to what the manifest
+// asks it to do.
+type RunOptions struct {
+	// Quiet runs without a window: from a script, or from a remote tool with
+	// nobody at the machine to read one.
+	Quiet bool
+	// Unattended says nobody is at the machine, so a standalone payload may
+	// restart it by itself when Windows asks. A first boot always may: nobody
+	// is using a machine that is still being set up.
+	Unattended bool
+}
 
+// Args are the options as they appear on the command line, for starting the
+// agent again with the same ones -- after a restart, or from its own copy.
+func (o RunOptions) Args() []string {
+	var a []string
+	if o.Quiet {
+		a = append(a, "--quiet")
+	}
+	if o.Unattended {
+		a = append(a, "--unattended")
+	}
+	return a
+}
+
+// Apply does everything the manifest asks for, in the recipe's order, and
+// records what happened. It returns how many problems there were -- the
+// agent's exit code, so a remote tool can tell success from failure -- and an
+// error only when it could not start: a step that fails is logged and the
+// rest still run, because a machine with drivers and no Spotify is worth more
+// than a machine with neither.
+func Apply(dir string, opts RunOptions) (int, error) {
 	m, err := LoadManifest(filepath.Join(dir, ManifestName))
 	if err != nil {
-		return err
+		return 0, err
 	}
+
+	// The window next, before anything slower: at first sign-in the desktop
+	// is already up by the time Windows runs the agent, and every moment
+	// after that is somebody looking at a machine that appears to be finished.
+	var ui *screen
+	if !opts.Quiet {
+		ui = openScreenFn(machineName(machineModel()), !m.Standalone())
+	}
+	defer ui.Close()
+
 	j, err := OpenJournal(dir)
 	if err != nil {
 		// Windows says "Access is denied." and leaves the operator to work
@@ -48,23 +87,36 @@ func Apply(dir string) error {
 		// administrator, and the agent needs to write there before it can
 		// say anything at all -- including this.
 		if os.IsPermission(err) {
-			return fmt.Errorf("%s cannot be written to: run this from a PowerShell or Command Prompt "+
+			return 0, fmt.Errorf("%s cannot be written to: run this from a PowerShell or Command Prompt "+
 				"started with Run as administrator", dir)
 		}
-		return err
+		return 0, err
 	}
 	defer j.Close()
 
-	a := &Agent{Dir: dir, Manifest: m, J: j, State: LoadState(dir)}
+	a := &Agent{Dir: dir, Manifest: m, J: j, State: LoadState(dir), Opts: opts}
 	start := time.Now()
 	machine := machineName(machineModel())
-	a.J.Info("", "first-boot agent starting for recipe %s on %s (%s)", m.Recipe, machine, runtime.GOOS)
+	if m.Standalone() {
+		a.J.Info("", "agent starting payload %s (recipe %s) on %s, which is already in use", m.Build, m.Recipe, machine)
+	} else {
+		a.J.Info("", "first-boot agent starting for recipe %s on %s (%s)", m.Recipe, machine, runtime.GOOS)
+	}
 
 	// What the person at the machine sees. A nil screen -- no window, or not
 	// Windows -- costs nothing: every call on it does nothing.
 	a.UI = ui
 	if a.UI == nil {
-		a.J.Info("", "no status window on this machine; the log is the only record")
+		a.J.Info("", "no status window; the log is the only record")
+	}
+
+	// On a machine somebody already uses, the shortcuts on its desktops are
+	// theirs. Only the ones that appear while the payload runs are ours to
+	// take away. Taken once, on the first run of this payload, so a run that
+	// resumes after a restart does not adopt the installers' icons as the
+	// owner's.
+	if m.Standalone() {
+		a.ownShortcuts = a.State.OwnShortcuts(currentShortcuts)
 	}
 
 	// The display stays on and the machine stays awake while there is work
@@ -112,7 +164,7 @@ func Apply(dir string) error {
 		// recorded, so the machine comes back and carries on at the next
 		// one rather than repeating this one.
 		if a.rebootWanted != "" && a.restartAndResume() {
-			return nil
+			return len(a.J.Failures()), nil
 		}
 	}
 
@@ -148,7 +200,7 @@ func Apply(dir string) error {
 	// Finished for good: stop asking to be started again, and hand the
 	// machine over without the automatic sign-in provisioning needed.
 	a.finishUp()
-	a.J.Info("", "first-boot agent done")
+	a.J.Info("", "agent done")
 
 	release()
 
@@ -165,7 +217,7 @@ func Apply(dir string) error {
 	a.UI.WaitDismiss()
 	close(done)
 	a.tidyDesktop()
-	return nil
+	return len(a.J.Failures()), nil
 }
 
 // buildTook is how long the machine has been being set up, across restarts.
@@ -235,13 +287,13 @@ func machineName(vendor, model string) string {
 // and the behaviour is testable.
 func Main(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: dsky-agent apply [dir] | dsky-agent verify [dir] | dsky-agent user-install <job> <result>")
+		return fmt.Errorf("usage: dsky-agent apply [dir] [--quiet] [--unattended] | dsky-agent verify [dir] | dsky-agent user-install <job> <result>")
 	}
 	switch args[0] {
 	case "apply":
-		dir := ""
-		if len(args) > 1 {
-			dir = args[1]
+		dir, opts, err := parseApplyArgs(args[1:])
+		if err != nil {
+			return err
 		}
 		if dir == "" {
 			exe, err := os.Executable()
@@ -250,7 +302,26 @@ func Main(args []string) error {
 			}
 			dir = filepath.Dir(exe)
 		}
-		return Apply(dir)
+		m, err := LoadManifest(filepath.Join(dir, ManifestName))
+		if err != nil {
+			return err
+		}
+		if m.Standalone() {
+			ranElsewhere, problems, err := startStandalone(dir, m, opts)
+			if err != nil {
+				return err
+			}
+			if ranElsewhere {
+				exitWith(problems)
+				return nil
+			}
+		}
+		problems, err := Apply(dir, opts)
+		if err != nil {
+			return err
+		}
+		exitWith(problems)
+		return nil
 	case "verify":
 		dir := ""
 		if len(args) > 1 {

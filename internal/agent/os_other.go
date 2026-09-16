@@ -2,7 +2,11 @@
 
 package agent
 
-import "errors"
+import (
+	"errors"
+	"os"
+	"path/filepath"
+)
 
 // The agent only ever runs on Windows. These stubs exist so the package
 // builds and its logic can be tested on the machine DSKY is developed on.
@@ -42,3 +46,9 @@ func keepAwake() (release func()) { return func() {} }
 func verifySignature(file string) (status, subject string, err error) {
 	return "", "", errors.New("Authenticode signatures are a Windows feature")
 }
+
+// isElevated is root, where root exists; the agent only provisions Windows.
+func isElevated() bool { return os.Geteuid() == 0 }
+
+// payloadRoot keeps payloads in the temporary directory off Windows.
+func payloadRoot() string { return filepath.Join(os.TempDir(), "dsky-payloads") }

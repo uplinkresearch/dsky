@@ -78,36 +78,37 @@ var (
 )
 
 const (
-	wsPopup       = 0x80000000
-	wsVisible     = 0x10000000
-	wsChild       = 0x40000000
-	wsExTopmost   = 0x00000008
-	wsExNoActive  = 0x08000000
-	bsPushButton  = 0x00000000
-	swShow        = 5
-	swHide        = 0
-	wmDestroy     = 0x0002
-	wmPaint       = 0x000F
-	wmClose       = 0x0010
-	wmCommand     = 0x0111
-	wmTimer       = 0x0113
-	wmKeyDown     = 0x0100
-	wmSetFont     = 0x0030
-	wmApp         = 0x8000
-	vkEscape      = 0x1B
-	smCXScreen    = 0
-	smCYScreen    = 1
-	dtLeft        = 0x0000
-	dtWordBreak   = 0x0010
-	dtNoPrefix    = 0x0800
-	dtCalcRect    = 0x0400
-	transparent   = 1
-	idcArrow      = 32512
-	firstButtonID = 1000
-	hwndTopmost   = ^uintptr(0) // (HWND)-1
-	swpNoSize     = 0x0001
-	swpNoMove     = 0x0002
-	swpNoActivate = 0x0010
+	wsPopup            = 0x80000000
+	wsOverlappedWindow = 0x00CF0000
+	wsVisible          = 0x10000000
+	wsChild            = 0x40000000
+	wsExTopmost        = 0x00000008
+	wsExNoActive       = 0x08000000
+	bsPushButton       = 0x00000000
+	swShow             = 5
+	swHide             = 0
+	wmDestroy          = 0x0002
+	wmPaint            = 0x000F
+	wmClose            = 0x0010
+	wmCommand          = 0x0111
+	wmTimer            = 0x0113
+	wmKeyDown          = 0x0100
+	wmSetFont          = 0x0030
+	wmApp              = 0x8000
+	vkEscape           = 0x1B
+	smCXScreen         = 0
+	smCYScreen         = 1
+	dtLeft             = 0x0000
+	dtWordBreak        = 0x0010
+	dtNoPrefix         = 0x0800
+	dtCalcRect         = 0x0400
+	transparent        = 1
+	idcArrow           = 32512
+	firstButtonID      = 1000
+	hwndTopmost        = ^uintptr(0) // (HWND)-1
+	swpNoSize          = 0x0001
+	swpNoMove          = 0x0002
+	swpNoActivate      = 0x0010
 
 	spiSetForegroundLockTimeout = 0x2001
 	spifSendChange              = 0x0002
@@ -264,12 +265,21 @@ func (w *win32Window) create() error {
 	if cx == 0 || cy == 0 {
 		return errors.New("no screen to draw on")
 	}
+	// A first boot takes the whole screen; a payload on somebody's machine
+	// gets an ordinary window in the middle of it.
+	exStyle, style := uintptr(wsExTopmost), uintptr(wsPopup|wsVisible)
+	x, y, width, height := uintptr(0), uintptr(0), cx, cy
+	if !w.screen.takeover {
+		exStyle, style = 0, wsOverlappedWindow|wsVisible
+		width, height = min(cx, 1100), min(cy, 760)
+		x, y = (cx-width)/2, (cy-height)/2
+	}
 	hwnd, _, err := pCreateWindowExW.Call(
-		wsExTopmost,
+		exStyle,
 		uintptr(unsafe.Pointer(class)),
 		uintptr(unsafe.Pointer(windows.StringToUTF16Ptr("DSKY"))),
-		wsPopup|wsVisible,
-		0, 0, cx, cy,
+		style,
+		x, y, width, height,
 		0, 0, uintptr(inst), 0)
 	if hwnd == 0 {
 		return err
@@ -282,8 +292,11 @@ func (w *win32Window) create() error {
 
 	// Windows makes a window wait before it may take the foreground. On a
 	// machine being provisioned there is nothing to protect: this window is
-	// the only thing that should be in front.
-	pSystemParamInfo.Call(spiSetForegroundLockTimeout, 0, 0, spifSendChange)
+	// the only thing that should be in front. On a machine somebody is
+	// using, that setting is theirs, and it is left alone.
+	if w.screen.takeover {
+		pSystemParamInfo.Call(spiSetForegroundLockTimeout, 0, 0, spifSendChange)
+	}
 
 	pShowWindow.Call(hwnd, swShow)
 	pUpdateWindow.Call(hwnd)
@@ -366,7 +379,9 @@ func wndProc(hwnd windows.HWND, message uint32, wParam, lParam uintptr) uintptr 
 	case wmApp, wmTimer:
 		if w != nil {
 			w.syncButtons()
-			w.keepInFront()
+			if w.screen.takeover {
+				w.keepInFront()
+			}
 		}
 		pInvalidateRect.Call(uintptr(hwnd), 0, 1)
 		return 0

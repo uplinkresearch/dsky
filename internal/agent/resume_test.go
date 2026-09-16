@@ -78,7 +78,7 @@ func TestAStepThatWindowsSaysNeedsARestartGetsOne(t *testing.T) {
 	if err := m.Save(filepath.Join(dir, ManifestName)); err != nil {
 		t.Fatal(err)
 	}
-	if err := Apply(dir); err != nil {
+	if _, err := Apply(dir, RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -133,7 +133,7 @@ func TestTheRunAfterARestartCarriesOn(t *testing.T) {
 	st.Finish("drivers")
 	st.CountReboot()
 
-	if err := Apply(dir); err != nil {
+	if _, err := Apply(dir, RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	log := logText(t, dir)
@@ -172,7 +172,7 @@ func TestNoRestartWhenItCouldNotArrangeToCarryOn(t *testing.T) {
 	if err := m.Save(filepath.Join(dir, ManifestName)); err != nil {
 		t.Fatal(err)
 	}
-	if err := Apply(dir); err != nil {
+	if _, err := Apply(dir, RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(res.restarts) != 0 {
@@ -212,7 +212,7 @@ func TestRestartsAreCapped(t *testing.T) {
 		st.CountReboot()
 	}
 
-	if err := Apply(dir); err != nil {
+	if _, err := Apply(dir, RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(res.restarts) != 0 {
@@ -245,7 +245,7 @@ func TestItArrangesToCarryOnBeforeDoingAnything(t *testing.T) {
 	if err := m.Save(filepath.Join(dir, ManifestName)); err != nil {
 		t.Fatal(err)
 	}
-	if err := Apply(dir); err != nil {
+	if _, err := Apply(dir, RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if res.ensured == 0 {
@@ -258,7 +258,7 @@ func TestItArrangesToCarryOnBeforeDoingAnything(t *testing.T) {
 // it means a machine that quietly stops provisioning, which is the failure
 // this whole file exists to end. So it is parsed and read here.
 func TestTheResumeTaskSaysWhatItMustSay(t *testing.T) {
-	x := resumeTaskXML(`WIN-I79\user`, `C:\Windows\Setup\Scripts\dsky-agent.exe`, `C:\Windows\Setup\Scripts`)
+	x := resumeTaskXML(`WIN-I79\user`, `C:\Windows\Setup\Scripts\dsky-agent.exe`, `C:\Windows\Setup\Scripts`, nil)
 
 	var task struct {
 		Triggers struct {
@@ -324,7 +324,7 @@ func TestTheResumeTaskSaysWhatItMustSay(t *testing.T) {
 
 // A machine name or account with an ampersand in it must not break the XML.
 func TestTheResumeTaskEscapesTheUserName(t *testing.T) {
-	x := resumeTaskXML(`SALES&CO\a "user"`, `C:\x\dsky-agent.exe`, `C:\x`)
+	x := resumeTaskXML(`SALES&CO\a "user"`, `C:\x\dsky-agent.exe`, `C:\x`, nil)
 	var task struct {
 		Principals struct {
 			Principal struct {
@@ -369,7 +369,7 @@ func TestAFinishedMachineStopsSigningItselfIn(t *testing.T) {
 	if err := m.Save(filepath.Join(dir, ManifestName)); err != nil {
 		t.Fatal(err)
 	}
-	if err := Apply(dir); err != nil {
+	if _, err := Apply(dir, RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if cleared != 1 || disarmed != 1 {
@@ -403,7 +403,7 @@ func TestARestartKeepsWhatItNeedsToComeBack(t *testing.T) {
 	if err := m.Save(filepath.Join(dir, ManifestName)); err != nil {
 		t.Fatal(err)
 	}
-	if err := Apply(dir); err != nil {
+	if _, err := Apply(dir, RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(res.restarts) != 1 {
@@ -419,7 +419,7 @@ func TestARestartKeepsWhatItNeedsToComeBack(t *testing.T) {
 // A minute's delay meant a minute of somebody watching an ordinary desktop
 // after a restart, wondering whether provisioning was still happening.
 func TestTheResumeTaskDoesNotDawdle(t *testing.T) {
-	x := resumeTaskXML(`WIN\user`, `C:\x\dsky-agent.exe`, `C:\x`)
+	x := resumeTaskXML(`WIN\user`, `C:\x\dsky-agent.exe`, `C:\x`, nil)
 	var task struct {
 		Triggers struct {
 			Logon struct {

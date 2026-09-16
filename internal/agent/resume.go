@@ -44,7 +44,7 @@ const MaxRestarts = maxReboots
 // resumeTaskXML describes the task: at sign-in, elevated, once, with no time
 // limit, and not held back by running on battery -- a laptop part way through
 // provisioning is often on its own.
-func resumeTaskXML(user, exe, dir string) string {
+func resumeTaskXML(user, exe, dir string, extra []string) string {
 	esc := func(s string) string {
 		r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
 		return r.Replace(s)
@@ -92,11 +92,23 @@ func resumeTaskXML(user, exe, dir string) string {
   <Actions Context="Author">
     <Exec>
       <Command>` + esc(exe) + `</Command>
-      <Arguments>apply "` + esc(dir) + `"</Arguments>
+      <Arguments>` + esc(taskArgs(dir, extra)) + `</Arguments>
     </Exec>
   </Actions>
 </Task>
 `
+}
+
+// taskArgs is the command line the resume task starts the agent with: the
+// same directory and the same options as the run it is carrying on. A quiet
+// payload resumed with a window, or an attended one resumed as unattended,
+// would not be the same run.
+func taskArgs(dir string, extra []string) string {
+	args := `apply "` + dir + `"`
+	for _, e := range extra {
+		args += " " + e
+	}
+	return args
 }
 
 // The two acts that cannot be watched on the machine DSKY is developed on,
@@ -117,7 +129,12 @@ var (
 // machine still needs both of them to come back.
 func (a *Agent) finishUp() {
 	clearResumeFn(a)
-	disarmAutoLogonFn(a)
+	// Only a first boot arranged an automatic sign-in, so only a first boot
+	// puts one away. A machine a payload is deployed onto may sign itself in
+	// on purpose -- a kiosk, a lab machine -- and that is its owner's choice.
+	if !a.Manifest.Standalone() {
+		disarmAutoLogonFn(a)
+	}
 }
 
 // restartAndResume restarts the machine and reports whether this run is over.
@@ -140,14 +157,37 @@ func (a *Agent) restartAndResume() bool {
 		a.J.FailDetail("", "not restarting: the machine would not carry on by itself afterwards", err.Error())
 		return false
 	}
-	// In front of whoever is there. Nobody there means the countdown runs
-	// out and the machine restarts, which is what a bench of machines being
-	// built unattended needs.
-	switch a.UI.AskRestart(reason, restartCountdown) {
-	case choiceNow:
-		a.J.Info("", "%s; restarting now, at the operator's say-so", reason)
-	default:
-		a.J.Info("", "%s; restarting and carrying on at the next sign-in", reason)
+	if a.Manifest.Standalone() {
+		// Somebody is using this machine, so it is theirs to restart. Asked,
+		// with no countdown: a document half written is not ours to lose.
+		// Either way the work stops here -- carrying on without the restart
+		// Windows asked for is what crashed an HP EliteBook -- and picks up at
+		// the next sign-in, whenever that is.
+		switch {
+		case a.UI != nil:
+			if a.UI.AskRestartOrLater(reason) != choiceNow {
+				a.J.Info("", "%s; left for later, and carries on after the next restart", reason)
+				a.UI.Note("Restart when it suits you. Setting up carries on by itself afterwards.")
+				a.UI.WaitDismiss()
+				return true
+			}
+			a.J.Info("", "%s; restarting now, at the user's say-so", reason)
+		case !a.Opts.Unattended:
+			a.J.Info("", "%s; not restarting a machine somebody may be using, so this carries on after its next restart", reason)
+			return true
+		default:
+			a.J.Info("", "%s; restarting, as the run is unattended", reason)
+		}
+	} else {
+		// In front of whoever is there. Nobody there means the countdown
+		// runs out and the machine restarts, which is what a bench of
+		// machines being built unattended needs.
+		switch a.UI.AskRestart(reason, restartCountdown) {
+		case choiceNow:
+			a.J.Info("", "%s; restarting now, at the operator's say-so", reason)
+		default:
+			a.J.Info("", "%s; restarting and carrying on at the next sign-in", reason)
+		}
 	}
 	a.UI.Restarting(reason)
 	a.State.CountReboot()

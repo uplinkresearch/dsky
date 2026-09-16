@@ -220,7 +220,7 @@ func waitForButtons(s *screen) {
 func TestAResumedRunStillListsWhatWasDoneBefore(t *testing.T) {
 	s := testScreen()
 	prev := openScreenFn
-	openScreenFn = func(string) *screen { return s }
+	openScreenFn = func(string, bool) *screen { return s }
 	t.Cleanup(func() { openScreenFn = prev })
 
 	dir := t.TempDir()
@@ -235,7 +235,7 @@ func TestAResumedRunStillListsWhatWasDoneBefore(t *testing.T) {
 	f := &fakeRun{}
 	f.install(t)
 	go func() { waitForButtons(s); s.clicked <- 0 }() // press Finish when it appears
-	if err := Apply(dir); err != nil {
+	if _, err := Apply(dir, RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
 

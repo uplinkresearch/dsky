@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -38,7 +39,7 @@ func (a *Agent) ensureResume() error {
 	}
 	user := os.Getenv("USERDOMAIN") + `\` + os.Getenv("USERNAME")
 	xmlPath := filepath.Join(os.TempDir(), "dsky-resume-task.xml")
-	if err := os.WriteFile(xmlPath, utf16LE(resumeTaskXML(user, self, a.Dir)), 0o644); err != nil {
+	if err := os.WriteFile(xmlPath, utf16LE(resumeTaskXML(user, self, a.Dir, a.Opts.Args())), 0o644); err != nil {
 		return err
 	}
 	defer os.Remove(xmlPath)
@@ -486,4 +487,18 @@ func verifySignature(file string) (status, subject string, err error) {
 		return "", "", fmt.Errorf("no answer from Get-AuthenticodeSignature: %s", trimOut(r.Out))
 	}
 	return status, subject, nil
+}
+
+// isElevated reports whether the agent holds an administrator's token.
+func isElevated() bool {
+	return windows.GetCurrentProcessToken().IsElevated()
+}
+
+// payloadRoot is where standalone payloads are kept while they run.
+func payloadRoot() string {
+	base := os.Getenv("ProgramData")
+	if base == "" {
+		base = `C:\ProgramData`
+	}
+	return filepath.Join(base, "DSKY", "payloads")
 }

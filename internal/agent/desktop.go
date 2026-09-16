@@ -35,7 +35,7 @@ func shortcutExt(name string) bool {
 // removeShortcuts clears every shortcut out of dirs, and says what it could
 // not remove. A directory that is not there is not a problem: not every
 // machine has every profile.
-func removeShortcuts(dirs []string) (removed int, stuck []string) {
+func removeShortcuts(dirs []string, keep map[string]bool) (removed int, stuck []string) {
 	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -46,6 +46,9 @@ func removeShortcuts(dirs []string) (removed int, stuck []string) {
 				continue
 			}
 			p := filepath.Join(dir, e.Name())
+			if keep[strings.ToLower(p)] {
+				continue // the machine owner's, not ours
+			}
 			if err := os.Remove(p); err != nil {
 				stuck = append(stuck, e.Name())
 				continue
@@ -69,7 +72,7 @@ func (a *Agent) tidyDesktop() {
 	if len(dirs) == 0 {
 		return
 	}
-	removed, stuck := removeShortcuts(dirs)
+	removed, stuck := removeShortcuts(dirs, a.ownShortcuts)
 	if removed > 0 {
 		a.J.Info(stepDesktop, "removed %d desktop shortcut(s)", removed)
 	}
@@ -104,9 +107,26 @@ func (a *Agent) keepDesktopClear(done <-chan struct{}) {
 		case <-deadline:
 			return
 		case <-t.C:
-			if removed, _ := removeShortcuts(desktopDirsFn()); removed > 0 {
+			if removed, _ := removeShortcuts(desktopDirsFn(), a.ownShortcuts); removed > 0 {
 				a.J.Info(stepDesktop, "removed %d desktop shortcut(s) an installer added after it finished", removed)
 			}
 		}
 	}
+}
+
+// currentShortcuts lists every shortcut on every desktop, as full paths.
+func currentShortcuts() []string {
+	var out []string
+	for _, dir := range desktopDirsFn() {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() && shortcutExt(e.Name()) {
+				out = append(out, filepath.Join(dir, e.Name()))
+			}
+		}
+	}
+	return out
 }

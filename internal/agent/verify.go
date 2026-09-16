@@ -37,7 +37,8 @@ func Verify(dir string) ([]Check, error) {
 	switch {
 	case logErr != nil:
 		add("first boot ran", false, "there is no "+LogName+" on this machine")
-	case strings.Contains(log, "first-boot agent done"):
+	case strings.Contains(log, "agent done"):
+		// "first-boot agent done" in logs written before payloads existed.
 		add("first boot ran", true, "finished")
 	default:
 		add("first boot ran", false, "the log stops before the end; it may still be running")

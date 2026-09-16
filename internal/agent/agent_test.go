@@ -278,7 +278,7 @@ func TestApplyRunsEveryStepInOrder(t *testing.T) {
 	}}
 	f.install(t)
 
-	if err := Apply(dir); err != nil {
+	if _, err := Apply(dir, RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	log := logText(t, dir)
@@ -286,7 +286,7 @@ func TestApplyRunsEveryStepInOrder(t *testing.T) {
 		"first-boot agent starting for recipe flow",
 		"1 driver file(s) present",
 		"installed agent.msi",
-		"first-boot agent done",
+		"agent done",
 	} {
 		if !strings.Contains(log, want) {
 			t.Errorf("the log is missing %q:\n%s", want, log)
@@ -312,7 +312,7 @@ func TestApplyRunsEveryStepInOrder(t *testing.T) {
 
 	// A second run repeats nothing.
 	before := len(f.calls)
-	if err := Apply(dir); err != nil {
+	if _, err := Apply(dir, RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.calls) != before {

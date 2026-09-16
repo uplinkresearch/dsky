@@ -26,7 +26,7 @@ func TestOnlyShortcutsAreSweptOff(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	removed, stuck := removeShortcuts([]string{dir})
+	removed, stuck := removeShortcuts([]string{dir}, nil)
 	if removed != len(gone) {
 		t.Errorf("removed %d shortcut(s), want %d", removed, len(gone))
 	}
@@ -72,7 +72,7 @@ func TestSweepsEveryDesktopItIsGiven(t *testing.T) {
 	}
 	missing := filepath.Join(root, "nobody", "Desktop")
 
-	removed, stuck := removeShortcuts([]string{public, user, def, missing})
+	removed, stuck := removeShortcuts([]string{public, user, def, missing}, nil)
 	if removed != 3 {
 		t.Errorf("removed %d, want one from each of the three desktops", removed)
 	}
@@ -90,7 +90,7 @@ func TestSweepsEveryDesktopItIsGiven(t *testing.T) {
 func TestNothingToSweepIsSilent(t *testing.T) {
 	dir := t.TempDir()
 	a, _ := newAgent(t, &Manifest{Version: ManifestVersion})
-	removed, stuck := removeShortcuts([]string{dir})
+	removed, stuck := removeShortcuts([]string{dir}, nil)
 	if removed != 0 || len(stuck) != 0 {
 		t.Fatalf("removed %d, stuck %v", removed, stuck)
 	}

@@ -22,13 +22,15 @@ import (
 // watch one of these calls installs its own fake over the stand-in, and puts
 // the stand-in back when it is done.
 func TestMain(m *testing.M) {
-	openScreenFn = func(string) *screen { return nil }
+	openScreenFn = func(string, bool) *screen { return nil }
 	desktopDirsFn = func() []string { return nil }
 	ensureResumeFn = func(*Agent) error { return nil }
 	clearResumeFn = func(*Agent) {}
 	disarmAutoLogonFn = func(*Agent) {}
 	restartFn = func(*Agent, string) error { return nil }
 	keepAwakeFn = func() func() { return func() {} }
+	isElevatedFn = func() bool { return true }
+	exitFn = func(int) {}
 	verifySignatureFn = func(string) (string, string, error) { return "NotSigned", "", nil }
 	os.Exit(m.Run())
 }
@@ -37,7 +39,7 @@ func TestMain(m *testing.M) {
 // this is where it will be noticed first: on the machine running the tests,
 // nothing real is reachable.
 func TestTestsNeverTouchTheRealMachine(t *testing.T) {
-	if openScreenFn("test") != nil {
+	if openScreenFn("test", true) != nil {
 		t.Error("the tests can open a real status window")
 	}
 	if dirs := desktopDirsFn(); len(dirs) != 0 {

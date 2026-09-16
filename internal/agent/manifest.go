@@ -57,7 +57,34 @@ type Manifest struct {
 	// VerifyScript, when set, is run at the end (the status screen paints the
 	// result on the lock screen). Relative to the agent's own directory.
 	VerifyScript string `json:"verify_script,omitempty"`
+
+	// Mode is how the agent is being used, which decides how it treats the
+	// machine it is on. Empty is first boot, so every manifest written before
+	// this field existed means what it always meant.
+	//
+	// The same agent does both jobs. What differs is whose machine it is: at
+	// first boot nobody is using it yet, so the agent takes the whole screen,
+	// clears every desktop shortcut and turns off the automatic sign-in that
+	// setup needed. Deployed onto a machine somebody already uses, any of
+	// those would be vandalism.
+	Mode string `json:"mode,omitempty"`
+
+	// Build names this particular payload, so running it a second time
+	// carries on where the first left off and a newer payload starts fresh.
+	// Only standalone payloads carry one; at first boot there is only ever
+	// one build on the machine.
+	Build string `json:"build,omitempty"`
 }
+
+// The modes a manifest can ask for.
+const (
+	ModeFirstBoot  = "firstboot"
+	ModeStandalone = "standalone"
+)
+
+// Standalone reports whether this manifest is a payload deployed onto a
+// machine that is already in use, rather than a machine's first boot.
+func (m *Manifest) Standalone() bool { return m.Mode == ModeStandalone }
 
 // Drivers is the driver material staged beside the agent.
 type Drivers struct {
@@ -157,6 +184,17 @@ func LoadManifest(path string) (*Manifest, error) {
 	}
 	if m.Version != ManifestVersion {
 		return nil, fmt.Errorf("%s: manifest version %d, this agent reads %d", path, m.Version, ManifestVersion)
+	}
+	switch m.Mode {
+	case "", ModeFirstBoot, ModeStandalone:
+	default:
+		// An unknown mode is refused rather than guessed at: guessing
+		// "first boot" on a machine somebody uses would take over its
+		// screen and delete its owner's shortcuts.
+		return nil, fmt.Errorf("%s: unknown mode %q", path, m.Mode)
+	}
+	if m.Standalone() && m.Build == "" {
+		return nil, fmt.Errorf("%s: a standalone payload must name its build", path)
 	}
 	return &m, nil
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,13 @@ type State struct {
 	// Reboots counts restarts this agent asked for, so a step that asks
 	// every time cannot put the machine in a loop.
 	Reboots int `json:"reboots,omitempty"`
+
+	// OwnerShortcuts are the desktop shortcuts a standalone payload found
+	// when it first ran: the machine owner's, never to be removed. Recorded
+	// once, before anything is installed, so a run that resumes after a
+	// restart does not take the installers' icons for the owner's.
+	OwnerShortcuts []string `json:"owner_shortcuts,omitempty"`
+	Snapshotted    bool     `json:"shortcuts_recorded,omitempty"`
 }
 
 // LoadState reads the state beside the agent, or starts a fresh one.
@@ -29,6 +37,8 @@ func LoadState(dir string) *State {
 			s.Done = prev.Done
 			s.Started = prev.Started
 			s.Reboots = prev.Reboots
+			s.OwnerShortcuts = prev.OwnerShortcuts
+			s.Snapshotted = prev.Snapshotted
 		}
 	}
 	if s.Started == "" {
@@ -45,6 +55,21 @@ func (s *State) Finished(step string) bool { return s.Done[step] }
 func (s *State) Finish(step string) {
 	s.Done[step] = true
 	s.save()
+}
+
+// OwnShortcuts returns the shortcuts that belong to the machine's owner,
+// recording them the first time it is asked.
+func (s *State) OwnShortcuts(list func() []string) map[string]bool {
+	if !s.Snapshotted {
+		s.OwnerShortcuts = list()
+		s.Snapshotted = true
+		s.save()
+	}
+	own := make(map[string]bool, len(s.OwnerShortcuts))
+	for _, p := range s.OwnerShortcuts {
+		own[strings.ToLower(p)] = true
+	}
+	return own
 }
 
 // CountReboot records that the agent is about to restart the machine. It is

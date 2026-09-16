@@ -65,6 +65,12 @@ type screen struct {
 	dismiss  chan struct{}
 	dismissD sync.Once
 
+	// takeover is a first boot's window: the whole screen, kept in front,
+	// the Start menu closed over it. A payload deployed onto a machine
+	// somebody is using gets an ordinary window that can be moved, covered
+	// and minimised, because taking over their screen would be hostile.
+	takeover bool
+
 	w window // the platform's window, nil when there is none
 }
 
@@ -84,13 +90,14 @@ var openScreenFn = openScreen
 // openScreen puts the window up. It returns nil when there can be no window --
 // another operating system, a session with no desktop, or a window that would
 // not create -- and every method below does nothing on a nil screen.
-func openScreen(machine string) *screen {
+func openScreen(machine string, takeover bool) *screen {
 	s := &screen{
-		machine: machine,
-		heading: "Setting up this machine",
-		sub:     "This takes a while. Please don't turn it off.",
-		clicked: make(chan int, 4),
-		dismiss: make(chan struct{}),
+		takeover: takeover,
+		machine:  machine,
+		heading:  "Setting up this machine",
+		sub:      "This takes a while. Please don't turn it off.",
+		clicked:  make(chan int, 4),
+		dismiss:  make(chan struct{}),
 	}
 	w, err := newWindow(s)
 	if err != nil || w == nil {
@@ -210,6 +217,38 @@ func (s *screen) AskRestart(reason string, d time.Duration) choice {
 			break
 		}
 	}
+}
+
+// AskRestartOrLater asks whoever is at the machine, and waits for them. It
+// has no countdown, because a payload runs on a machine somebody is using,
+// and restarting it by the clock could cost them their work.
+func (s *screen) AskRestartOrLater(reason string) choice {
+	if s == nil {
+		return choiceNone
+	}
+	s.mu.Lock()
+	s.note = "Windows needs a restart to " + reason + ". Save your work first."
+	s.buttons = []string{"Restart now", "Later"}
+	s.mu.Unlock()
+	s.w.refresh()
+	n := <-s.clicked
+	s.clearButtons()
+	if n == 0 {
+		return choiceNow
+	}
+	return choiceWait
+}
+
+// Note puts one line under the checklist, with a button to close the window.
+func (s *screen) Note(line string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.note = line
+	s.buttons = []string{"Close"}
+	s.mu.Unlock()
+	s.w.refresh()
 }
 
 func (s *screen) clearButtons() {
