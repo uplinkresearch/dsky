@@ -974,8 +974,8 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 	if mode == "" {
 		mode = "install"
 	}
-	if mode != "install" && mode != "setup" && mode != "download" {
-		httpErr(w, 400, "mode must be install, setup or download")
+	if mode != "install" && mode != "setup" && mode != "download" && mode != "payload" {
+		httpErr(w, 400, "mode must be install, setup, download or payload")
 		return
 	}
 	e, ok := oscatalog.Get(req.OSID)
@@ -1017,6 +1017,10 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if mode == "payload" && e.Family != oscatalog.Windows {
+		httpErr(w, 400, "%s is not Windows; a payload sets up programs on a machine that already runs Windows", e.Name)
+		return
+	}
 	var opts oscatalog.Options
 	if mode != "download" {
 		var err error
@@ -1032,6 +1036,8 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 		job = s.Reg.New("install", fmt.Sprintf("%s → %s", e.Name, dev.ID))
 	case "setup":
 		job = s.Reg.New("setup", "set up "+e.Name)
+	case "payload":
+		job = s.Reg.New("build", "apps only for "+e.Name)
 	default:
 		job = s.Reg.New("download", "download "+e.Name)
 	}
@@ -1054,6 +1060,13 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			job.Finish(e.Name + " is downloaded — setting up or installing it will not download it again")
+		case "payload":
+			art, err := oscatalog.BuildQuickPayload(context.Background(), s.Lib, e, opts, progress)
+			if err != nil {
+				job.Fail(err)
+				return
+			}
+			job.Finish("the payload is in Built images — copy it to the machine and run it there: " + filepath.Base(art.Path))
 		case "setup":
 			art, err := oscatalog.BuildQuick(context.Background(), s.Lib, e, opts, progress)
 			if err != nil {

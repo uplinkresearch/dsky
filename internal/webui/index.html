@@ -487,6 +487,7 @@
       <div class="laterbtns">
         <button id="instDownload" title="Save the OS download in the library, nothing else">Download only</button>
         <button id="instSetup" title="Download and build the installer with these options, to write to a stick later">Set up image</button>
+        <button id="instPayload" title="Build just these programs and drivers, to run on a machine that already has Windows — no operating system is downloaded">Apps only…</button>
         <button id="instSave" title="Keep these options as a named recipe, to set up or install again later">Save as recipe…</button>
       </div>
       <div class="sub" id="instLaterNote">No stick needed for these.</div>
@@ -1977,6 +1978,11 @@ function openInstall(os, edit) {
   // downloaded, so "set up" would just be the download under another name.
   $("instSetup").hidden = !windows && !os.programs;
   $("instSetup").onclick = () => run("setup");
+  // Programs and drivers for a machine that already runs Windows. Windows
+  // only, and never while editing a recipe, where the buttons are about the
+  // recipe rather than about doing something now.
+  $("instPayload").hidden = !windows || !!editing;
+  $("instPayload").onclick = () => run("payload");
   $("instSave").onclick = async () => {
     const opts = getOpts();
     const suggestion = os.name + (windows && opts.edition ? " " + opts.edition : "");
@@ -1996,6 +2002,7 @@ function openInstall(os, edit) {
   if (editing) {
     dl.hidden = true;
     $("instSetup").hidden = true;
+    $("instPayload").hidden = true;
     $("instSave").textContent = "Save changes";
     $("instLaterNote").textContent = "Saves over " + (editing.name || editing.id) + ". Images already built from it stay as they were until set up again.";
     $("instSave").onclick = async () => {

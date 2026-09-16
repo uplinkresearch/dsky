@@ -430,6 +430,54 @@ func BuildQuick(ctx context.Context, lib *library.Library, e Entry, opts Options
 	})
 }
 
+// BuildQuickPayload builds the chosen programs and drivers as a payload for a
+// machine that already runs Windows -- the Install screen's options, without
+// installing anything.
+//
+// It is BuildQuick without the operating system, and that is the whole point:
+// no ISO is fetched, and the media tools are not needed, because nothing reads
+// an ISO or splits a WIM. The quick workspace it builds through still names
+// the catalog entry, which is how the recipe knows what edition's programs
+// were chosen; the bytes of that entry are never touched.
+func BuildQuickPayload(ctx context.Context, lib *library.Library, e Entry, opts Options, progress func(stage string, done, total int64)) (*compose.Artifact, error) {
+	quickMu.Lock()
+	defer quickMu.Unlock()
+	if e.Family != Windows {
+		return nil, fmt.Errorf("%s is not Windows; a payload sets up programs on a machine that already runs Windows", e.Name)
+	}
+	opts.defaults(e)
+	if err := checkPrograms(e, opts.Apps); err != nil {
+		return nil, err
+	}
+	wsDir, err := scaffoldQuickWorkspace(lib, e, opts, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(opts.Hardware) > 0 || len(opts.Models) > 0 {
+		specs, err := resolveDrivers(ctx, lib, wsDir, opts, progress)
+		if err != nil {
+			return nil, err
+		}
+		if len(specs) > 0 {
+			if err := writeQuickRecipe(wsDir, e, opts, specs); err != nil {
+				return nil, err
+			}
+		}
+	}
+	ws, err := workspace.Load(wsDir)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ws.Recipe(e.ID)
+	if err != nil {
+		return nil, err
+	}
+	return compose.BuildPayload(ctx, compose.Request{
+		Workspace: ws, Library: lib, Recipe: r,
+		Progress: progress,
+	})
+}
+
 // InLibrary reports whether this entry's OS image is already local, so a
 // caller can skip both the fetch and a re-import.
 func InLibrary(lib *library.Library, e Entry) bool {

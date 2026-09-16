@@ -171,3 +171,45 @@ func TestAPayloadIsCopiedNotFlashed(t *testing.T) {
 		t.Error("the payload is still there")
 	}
 }
+
+// The Install screen builds a payload straight from the options on it, with no
+// recipe and no workspace -- and still without fetching an operating system.
+// This is the path for a machine that already has Windows and only needs the
+// programs.
+func TestTheInstallScreenBuildsAPayloadWithoutAnOS(t *testing.T) {
+	if !agentbin.Available(agentbin.AMD64) {
+		t.Skip("this build has no agent embedded (`./build-agent.sh`)")
+	}
+	s := testServer(t)
+	h := s.handler()
+
+	body := `{"os_id":"windows-11","mode":"payload","edition":"Pro","account_mode":"local","debloat":"standard","apps":["7zip"]}`
+	w := post(t, h, "/api/install", body)
+	if w.Code != 202 {
+		t.Fatalf("refused: %d %s", w.Code, w.Body)
+	}
+	ev := waitJob(t, s.Reg, w.Body.Bytes())
+	if ev.Err != "" {
+		t.Fatalf("the payload build failed: %s", ev.Err)
+	}
+	zips, _ := filepath.Glob(filepath.Join(s.Lib.ArtifactsDir(), "*payload*.zip"))
+	if len(zips) != 1 {
+		t.Fatalf("payload zips built: %v", zips)
+	}
+	imgs, _ := filepath.Glob(filepath.Join(s.Lib.ArtifactsDir(), "*.img"))
+	if len(imgs) != 0 {
+		t.Errorf("an operating system image was built too: %v", imgs)
+	}
+	if _, err := s.Lib.Resolve("windows-11"); err == nil {
+		t.Error("the Windows ISO was fetched for a payload that never reads one")
+	}
+}
+
+// Only Windows. A payload sets up programs on a machine that already runs it.
+func TestTheInstallScreenRefusesANonWindowsPayload(t *testing.T) {
+	s := testServer(t)
+	w := post(t, s.handler(), "/api/install", `{"os_id":"ubuntu-26.04-desktop","mode":"payload"}`)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "already runs Windows") {
+		t.Errorf("got %d %s", w.Code, w.Body)
+	}
+}
