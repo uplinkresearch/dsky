@@ -10,6 +10,10 @@ import (
 
 const stepApps = "apps"
 
+// msiPackageInvalid is msiexec's ERROR_INSTALL_PACKAGE_INVALID: the file is
+// not a Windows Installer package, whatever it is named.
+const msiPackageInvalid = 1620
+
 // userInstallDeadline bounds one install run as the signed-in user.
 const userInstallDeadline = 12 * time.Minute
 
@@ -197,6 +201,13 @@ func (a *Agent) runInstaller(in Installer) {
 		a.J.FailDetail(stepApps, in.File+" did not finish", r.Err.Error())
 	case r.Code == 0 || r.Code == 3010: // 3010: installed, wants a restart
 		a.J.Info(stepApps, "installed %s (exit %d)", in.File, r.Code)
+	case r.Code == msiPackageInvalid:
+		// Windows will not open the file as an installer package. Seen on a
+		// bench: a ScreenConnect client saved as .msi that was really a
+		// program, staged onto a stick and carried to a machine before
+		// anybody found out.
+		a.J.Fail(stepApps, "%s: Windows could not open this as an installer package (1620). %s",
+			in.File, installerLooksLike(filepath.Join(a.Dir, in.File)))
 	default:
 		a.J.FailDetail(stepApps, in.File+" exited "+itoa(r.Code), trimOut(r.Out))
 	}
@@ -224,3 +235,28 @@ func itoa(n int) string {
 
 // quoteArgs renders an argument list for a log line.
 func quoteArgs(args []string) string { return strings.Join(args, " ") }
+
+// installerLooksLike says what the file on the stick actually is, so the line
+// in the log is something to act on rather than a number to look up.
+func installerLooksLike(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return "The file could not be read on this machine."
+	}
+	defer f.Close()
+	head := make([]byte, 8)
+	n, _ := f.Read(head)
+	head = head[:n]
+	switch {
+	case n >= 2 && head[0] == 'M' && head[1] == 'Z':
+		return "It is a Windows program, not an MSI: add it to the recipe as the .exe installer."
+	case n >= 4 && head[0] == 'P' && head[1] == 'K':
+		return "It is a zip file: unpack it and add the installer inside."
+	case n >= 4 && head[0] == '<':
+		return "It is a web page: the download that produced it failed, so fetch the installer again."
+	case n == 0:
+		return "The file is empty."
+	default:
+		return "Whatever it is, it is not a Windows Installer package."
+	}
+}

@@ -192,7 +192,7 @@ func TestAddInstallerReturnsWhatWasStored(t *testing.T) {
 	root := freshStore(t)
 	dir := t.TempDir()
 	msi := filepath.Join(dir, "MaculaAgent.msi")
-	if err := os.WriteFile(msi, []byte("installer"), 0o644); err != nil {
+	if err := os.WriteFile(msi, fakeMSI("installer"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := fakeStore{sum: strings.Repeat("e", 64)}
@@ -225,7 +225,7 @@ func TestAddInstallerRefusesBeforeCopying(t *testing.T) {
 	root := freshStore(t)
 	dir := t.TempDir()
 	msi := filepath.Join(dir, "Thing.msi")
-	os.WriteFile(msi, []byte("x"), 0o644)
+	os.WriteFile(msi, fakeMSI("x"), 0o644)
 	txt := filepath.Join(dir, "Thing.txt")
 	os.WriteFile(txt, []byte("x"), 0o644)
 
@@ -267,7 +267,7 @@ func TestAddInstallerReportsProgress(t *testing.T) {
 	root := freshStore(t)
 	dir := t.TempDir()
 	msi := filepath.Join(dir, "Agent.msi")
-	if err := os.WriteFile(msi, []byte("installer"), 0o644); err != nil {
+	if err := os.WriteFile(msi, fakeMSI("installer"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var stages []string
@@ -348,4 +348,12 @@ func TestStoreFromNewerBuildIsRefused(t *testing.T) {
 	if err := LoadCustom(root); err == nil {
 		t.Error("a store from a newer build was accepted")
 	}
+}
+
+// fakeMSI is a stand-in installer that starts the way a Windows Installer
+// package does: an OLE compound file. These tests are about what AddInstaller
+// stores and reports, and a file named .msi that is not one is refused before
+// any of that happens -- which is the point of FormatForFile's own test.
+func fakeMSI(body string) []byte {
+	return append([]byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}, body...)
 }

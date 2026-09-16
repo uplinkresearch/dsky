@@ -157,3 +157,23 @@ func TestAnIconAddedAfterTheSweepIsStillRemoved(t *testing.T) {
 	close(done)
 	t.Fatal("an icon added after the last sweep was left on the desktop")
 }
+
+// The machine says what a refused installer actually is, rather than leaving
+// somebody to look up 1620.
+func TestARefusedInstallerIsExplained(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct{ name, head, want string }{
+		{"prog.msi", "MZ\x90\x00", "Windows program"},
+		{"zipped.msi", "PK\x03\x04", "zip file"},
+		{"page.msi", "<!DOCTYPE html>", "web page"},
+		{"empty.msi", "", "empty"},
+	} {
+		p := filepath.Join(dir, c.name)
+		if err := os.WriteFile(p, []byte(c.head), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got := installerLooksLike(p); !strings.Contains(got, c.want) {
+			t.Errorf("%s: %q does not mention %q", c.name, got, c.want)
+		}
+	}
+}

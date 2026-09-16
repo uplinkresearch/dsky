@@ -1,8 +1,11 @@
 package appcatalog
 
 import (
+	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -254,17 +257,82 @@ func RemoveCustom(root, id string) (Custom, error) {
 	return Custom{}, fmt.Errorf("no program %q — see `dsky apps`", id)
 }
 
-// FormatForFile reports how an installer will be run, from its extension.
-// Only these two can be driven silently by the first-boot script.
+// FormatForFile reports how an installer will be run, from its extension and
+// from what is actually inside the file.
+//
+// The name is not enough. A ScreenConnect client saved as
+// ScreenConnect.ClientSetup.msi reached a machine, was handed to msiexec at
+// first boot, and came back 1620 -- "this installation package could not be
+// opened" -- because whatever had been downloaded was not a Windows Installer
+// package. That is a bad moment to find out: the file had been staged onto a
+// stick, carried to a bench, and installed onto a machine somebody was
+// waiting for. Both formats say what they are in their first bytes, so it is
+// checked when the installer is added.
 func FormatForFile(path string) (string, error) {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".msi":
-		return "msi", nil
-	case ".exe":
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".msi", ".exe":
+	default:
+		return "", fmt.Errorf("%s is not a .msi or .exe — those are what the first-boot script can run",
+			filepath.Base(path))
+	}
+	head, err := headOf(path)
+	if err != nil {
+		// Unreadable here is somebody else's error to report; the extension
+		// is all this function promised.
+		if ext == ".msi" {
+			return "msi", nil
+		}
 		return "exe", nil
 	}
-	return "", fmt.Errorf("%s is not a .msi or .exe — those are what the first-boot script can run",
-		filepath.Base(path))
+	switch ext {
+	case ".msi":
+		// A Windows Installer package is an OLE compound file.
+		if !bytes.HasPrefix(head, []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}) {
+			return "", fmt.Errorf("%s is named .msi but is not a Windows Installer package (%s) — "+
+				"Windows refuses these at first boot with error 1620; re-download it, or add it as the .exe installer",
+				filepath.Base(path), describeHead(head))
+		}
+		return "msi", nil
+	default:
+		if !bytes.HasPrefix(head, []byte("MZ")) {
+			return "", fmt.Errorf("%s is named .exe but is not a Windows program (%s) — re-download it",
+				filepath.Base(path), describeHead(head))
+		}
+		return "exe", nil
+	}
+}
+
+// headOf reads the first few bytes of a file, which is all any of this needs.
+func headOf(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	head := make([]byte, 8)
+	n, err := io.ReadFull(f, head)
+	if err != nil && n == 0 {
+		return nil, err
+	}
+	return head[:n], nil
+}
+
+// describeHead says what the file looks like instead, in the words somebody
+// would use to go and find the right one.
+func describeHead(head []byte) string {
+	switch {
+	case bytes.HasPrefix(head, []byte("MZ")):
+		return "it is a Windows program; rename it .exe"
+	case bytes.HasPrefix(head, []byte("PK\x03\x04")):
+		return "it is a zip file"
+	case bytes.HasPrefix(head, []byte("<!DO")), bytes.HasPrefix(head, []byte("<htm")), bytes.HasPrefix(head, []byte("<HTM")):
+		return "it is a web page — the download was probably an error page"
+	case len(head) < 8:
+		return "the file is empty or truncated"
+	default:
+		return "it starts with " + hex.EncodeToString(head)
+	}
 }
 
 // DeriveID makes a usable picker id from a filename, so the common case needs
