@@ -154,7 +154,9 @@ jobs:
           }
           $log = Get-Content "$d\firstboot.log" -Raw
           Write-Output $log
-          foreach ($want in @('unpacked no driver files', 'no driver files to install', 'first-boot agent done')) {
+          # 'agent done' rather than 'first-boot agent done': the agent does
+          # two jobs now, and the line was renamed when it learned the second.
+          foreach ($want in @('unpacked no driver files', 'no driver files to install', 'agent done')) {
             if ($log -notmatch [regex]::Escape($want)) { throw "the agent did not report: $want" }
           }
           if ($log -match 'pnputil added') { throw "the agent ran pnputil with nothing to install" }
