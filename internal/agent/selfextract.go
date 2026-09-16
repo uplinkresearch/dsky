@@ -176,14 +176,31 @@ func safeJoin(dir, name string) (string, error) {
 	return out, nil
 }
 
-// elevateFn asks Windows for an administrator's token by starting this
-// program again, as a variable so the tests never raise a UAC prompt.
-var elevateFn = runElevated
+// elevateExeFn starts a named program with an administrator's token, as a
+// variable so the tests never raise a UAC prompt.
+var elevateExeFn = runElevatedExe
 
-// startAttached runs a payload that arrived as one file: elevate, unpack onto
-// the machine, and hand over to the copy that is now on it. The copy is what
-// runs the payload, and what a resume task starts after a restart, because
-// this file may be on a stick that is gone by then.
+// selfPathFn is the file this program is running from -- the payload, when one
+// was double-clicked. scratchRootFn is where the agent is unpacked to be the
+// program the elevation prompt names. Both are variables for the tests.
+var (
+	selfPathFn    = os.Executable
+	scratchRootFn = scratchRoot
+)
+
+// startAttached runs a payload that arrived as one file.
+//
+// The order here is about what the UAC prompt says. A payload is built on the
+// operator's machine, so nobody can sign it, and appending the archive would
+// break a signature the agent already had -- an unsigned file elevating itself
+// is the yellow "unknown publisher" banner on somebody's laptop. So this
+// program, running as whoever double-clicked it, unpacks only the agent, and
+// asks Windows to elevate that: one binary, built and signed by us, named in
+// the prompt no matter who built the payload around it.
+//
+// The elevated agent is pointed back at this file with --from, so the payload
+// itself is unpacked once, by an administrator, straight into its home under
+// ProgramData -- where it is not writable by the user whose machine it is.
 func startAttached(p *payload, opts RunOptions) (problems int, err error) {
 	m, err := manifestFrom(p.Reader)
 	if err != nil {
@@ -192,17 +209,25 @@ func startAttached(p *payload, opts RunOptions) (problems int, err error) {
 	if !m.Standalone() {
 		return 0, errors.New("this file carries a first-boot payload, which belongs on install media rather than on a machine already in use")
 	}
-	// Elevated first, before anything is written: the payload's home is under
-	// ProgramData, and every step after it -- drivers, installers, removing
-	// consumer apps -- needs an administrator anyway. Asking at the start is
-	// one prompt at the moment somebody is watching, rather than a failure
-	// half an hour in.
 	if !isElevatedFn() {
-		code, err := elevateFn(append([]string{"apply"}, opts.Args()...))
+		// With no window there is nobody to answer a prompt, so say what is
+		// needed instead of raising one into an empty room.
+		if opts.Quiet {
+			return 0, errors.New("this payload changes the whole machine, so it has to run as an administrator: " +
+				"start it from PowerShell with Run as administrator, or from a remote tool that runs as SYSTEM")
+		}
+		self, err := selfPathFn()
 		if err != nil {
 			return 0, err
 		}
-		return code, nil
+		exe, err := unpackAgentFor(p, m)
+		if err != nil {
+			return 0, err
+		}
+		if cerr := p.Close(); cerr != nil {
+			return 0, cerr
+		}
+		return elevateExeFn(exe, append([]string{"apply", "--from", self}, opts.Args()...))
 	}
 
 	home := payloadHome(m)
@@ -224,6 +249,43 @@ func startAttached(p *payload, opts RunOptions) (problems int, err error) {
 		return 0, err
 	}
 	return runPayloadCopyFn(filepath.Join(home, AgentName), append([]string{"apply", home}, opts.Args()...))
+}
+
+// unpackAgentFor writes out the agent alone, to be the program the elevation
+// prompt names. Only the agent: the payload beside it may be a gigabyte of
+// drivers, and writing that here would write it twice -- once as this user,
+// once as the administrator who actually installs it.
+func unpackAgentFor(p *payload, m *Manifest) (string, error) {
+	dir := filepath.Join(scratchRootFn(), safeName(m.Recipe+"-"+m.Build))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	f, err := p.Open(AgentName)
+	if err != nil {
+		return "", fmt.Errorf("this payload has no %s in it: %w", AgentName, err)
+	}
+	defer f.Close()
+	exe := filepath.Join(dir, AgentName)
+	// Written whole, then put in place: an agent half copied is still the
+	// right name, and the elevation prompt would name it just the same.
+	tmp := exe + ".partial"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(out, f); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmp)
+		return "", err
+	}
+	if err := os.Rename(tmp, exe); err != nil {
+		return "", err
+	}
+	return exe, nil
 }
 
 // unpackScreen is the window while the payload is being written to the disk.
@@ -291,3 +353,23 @@ var selfPayloadFn = func() (*payload, error) {
 }
 
 func selfPayload() (*payload, error) { return selfPayloadFn() }
+
+// carriedPayload is the payload to run: the one inside the file named by
+// --from, or the one inside this program, or none at all.
+func carriedPayload(from string) (*payload, error) {
+	if from == "" {
+		return selfPayloadFn()
+	}
+	return attachedPayload(from)
+}
+
+// fromOption reads --from out of arguments that have no command in front of
+// them, so that "--from x --quiet" is understood as the apply it can only be.
+func fromOption(args []string) string {
+	for i, a := range args {
+		if a == "--from" && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}

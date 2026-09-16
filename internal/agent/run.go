@@ -44,6 +44,10 @@ type RunOptions struct {
 	// restart it by itself when Windows asks. A first boot always may: nobody
 	// is using a machine that is still being set up.
 	Unattended bool
+	// From is the file the payload is inside, when that is not this program.
+	// It is not passed on to a later run: by then the payload is unpacked on
+	// the machine and the file it came in may be gone.
+	From string
 }
 
 // Args are the options as they appear on the command line, for starting the
@@ -292,7 +296,7 @@ func Main(args []string) error {
 	// thing it could have meant. Anywhere else it is somebody who does not
 	// know what this program is, and the usage line is the answer.
 	if len(args) == 0 || strings.HasPrefix(args[0], "--") {
-		carried, err := selfPayload()
+		carried, err := carriedPayload(fromOption(args))
 		if err != nil {
 			return err
 		}
@@ -313,22 +317,28 @@ func Main(args []string) error {
 		if err != nil {
 			return err
 		}
-		// A payload carried inside this file is what to run, unless a
-		// directory was named -- which is how the copy on the machine is
-		// started, and how a resume after a restart carries on.
+		// A payload carried inside a file is what to run, unless a directory
+		// was named -- which is how the copy on the machine is started, and
+		// how a resume after a restart carries on. The file is usually this
+		// one; with --from it is the payload this agent was unpacked out of,
+		// so that the elevation prompt could name the agent instead.
 		if dir == "" {
-			carried, err := selfPayload()
+			carried, err := carriedPayload(opts.From)
 			if err != nil {
 				return err
 			}
 			if carried != nil {
 				defer carried.Close()
+				opts.From = ""
 				problems, err := startAttached(carried, opts)
 				if err != nil {
 					return err
 				}
 				exitWith(problems)
 				return nil
+			}
+			if opts.From != "" {
+				return fmt.Errorf("%s carries no payload", opts.From)
 			}
 		}
 		if dir == "" {

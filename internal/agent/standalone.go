@@ -149,15 +149,25 @@ func samePath(a, b string) bool {
 
 // parseApplyArgs reads `apply [dir] [--quiet] [--unattended]`, in any order.
 func parseApplyArgs(args []string) (dir string, opts RunOptions, err error) {
-	for _, a := range args {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		switch a {
 		case "--quiet":
 			opts.Quiet = true
 		case "--unattended":
 			opts.Unattended = true
+		case "--from":
+			// The payload is inside the file named here rather than inside
+			// this one. It is how an agent unpacked for the sake of the
+			// elevation prompt finds the payload it was started for.
+			if i+1 >= len(args) {
+				return "", opts, errors.New("--from needs the file the payload is in")
+			}
+			i++
+			opts.From = args[i]
 		default:
 			if strings.HasPrefix(a, "--") {
-				return "", opts, fmt.Errorf("unknown option %s (known: --quiet, --unattended)", a)
+				return "", opts, fmt.Errorf("unknown option %s (known: --quiet, --unattended, --from)", a)
 			}
 			if dir != "" {
 				return "", opts, fmt.Errorf("apply takes one directory, got %q and %q", dir, a)

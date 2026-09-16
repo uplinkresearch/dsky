@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 	isElevatedFn = func() bool { return true }
 	exitFn = func(int) {}
 	verifySignatureFn = func(string) (string, string, error) { return "NotSigned", "", nil }
-	elevateFn = func([]string) (int, error) { return 0, errors.New("the tests do not raise UAC prompts") }
+	elevateExeFn = func(string, []string) (int, error) { return 0, errors.New("the tests do not raise UAC prompts") }
 	selfPayloadFn = func() (*payload, error) { return nil, nil }
 	os.Exit(m.Run())
 }
@@ -58,7 +58,7 @@ func TestTestsNeverTouchTheRealMachine(t *testing.T) {
 	if dirs := desktopDirsFn(); len(dirs) != 0 {
 		t.Errorf("the tests would sweep real desktops: %v", dirs)
 	}
-	if _, err := elevateFn(nil); err == nil {
+	if _, err := elevateExeFn("", nil); err == nil {
 		t.Error("the tests can raise a UAC prompt")
 	}
 }

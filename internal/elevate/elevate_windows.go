@@ -26,6 +26,15 @@ func RunElevated(args []string) (int, error) {
 	if err != nil {
 		return -1, err
 	}
+	return RunElevatedExe(exe, args)
+}
+
+// RunElevatedExe is RunElevated for a program other than this one. The UAC
+// prompt names the program being started, so what goes here decides what the
+// person is asked to trust: a payload picks its own unpacked agent, which is
+// the binary we sign, rather than the file it happened to arrive in, which
+// nobody can sign because it is built on the operator's machine.
+func RunElevatedExe(exe string, args []string) (int, error) {
 	quoted := make([]string, len(args))
 	for i, a := range args {
 		quoted[i] = "'" + strings.ReplaceAll(a, "'", "''") + "'"
@@ -35,7 +44,7 @@ func RunElevated(args []string) (int, error) {
 		strings.ReplaceAll(exe, "'", "''"), strings.Join(quoted, ","))
 	cmd := hidewin.Cmd(exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script))
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	err = cmd.Run()
+	err := cmd.Run()
 	if ee, ok := err.(*exec.ExitError); ok {
 		return ee.ExitCode(), nil
 	}

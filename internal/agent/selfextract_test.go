@@ -175,24 +175,31 @@ func TestExtractingTwiceDoesNotRewriteWhatIsThere(t *testing.T) {
 	}
 }
 
-// Double-clicked with no administrator's token, it asks Windows for one and
-// hands back what that run exited with -- rather than writing a thing to the
-// machine and failing at the first driver.
-func TestAPayloadAsksForAnAdministratorBeforeItWritesAnything(t *testing.T) {
+// Double-clicked with no administrator's token, it unpacks the agent alone
+// and asks Windows to elevate THAT, pointing it back at the payload. The
+// prompt then names the binary we build and sign; the payload around it is
+// built on the operator's machine and can never be signed, so a file that
+// elevated itself would always say "unknown publisher".
+func TestTheElevationPromptNamesTheAgentAndNotThePayload(t *testing.T) {
 	path := payloadFile(t, []byte("MZ"), map[string][]byte{
 		ManifestName: standaloneJSON(t),
 		AgentName:    []byte("agent bytes"),
+		"big.bin":    bytes.Repeat([]byte("driver"), 1000),
 	})
 	zr := openPayload(t, path)
 	home := t.TempDir()
+	scratch := t.TempDir()
 	swap(t, &payloadRootFn, func() string { return home })
+	swap(t, &scratchRootFn, func() string { return scratch })
+	swap(t, &selfPathFn, func() (string, error) { return path, nil })
 	swap(t, &isElevatedFn, func() bool { return false })
+	var askedExe string
 	var asked []string
-	swap(t, &elevateFn, func(args []string) (int, error) { asked = args; return 3, nil })
+	swap(t, &elevateExeFn, func(exe string, args []string) (int, error) { askedExe, asked = exe, args; return 3, nil })
 	ran := false
 	swap(t, &runPayloadCopyFn, func(exe string, args []string) (int, error) { ran = true; return 0, nil })
 
-	problems, err := startAttached(zr, RunOptions{Quiet: true, Unattended: true})
+	problems, err := startAttached(zr, RunOptions{Unattended: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,11 +209,43 @@ func TestAPayloadAsksForAnAdministratorBeforeItWritesAnything(t *testing.T) {
 	if ran {
 		t.Error("the payload ran without an administrator's token")
 	}
-	if strings.Join(asked, " ") != "apply --quiet --unattended" {
-		t.Errorf("the elevated run was started as %v, losing the options it was given", asked)
+	if filepath.Base(askedExe) != AgentName || !strings.HasPrefix(askedExe, scratch) {
+		t.Errorf("the elevation prompt would name %s", askedExe)
+	}
+	if b, err := os.ReadFile(askedExe); err != nil || string(b) != "agent bytes" {
+		t.Errorf("the agent was not unpacked for the prompt: %q %v", b, err)
+	}
+	if strings.Join(asked, " ") != "apply --from "+path+" --unattended" {
+		t.Errorf("the elevated run was started as %v", asked)
+	}
+	// Only the agent. The payload beside it may be a gigabyte of drivers, and
+	// writing it here would write it twice -- once as this user, once as the
+	// administrator who installs from it.
+	if _, err := os.Stat(filepath.Join(filepath.Dir(askedExe), "big.bin")); err == nil {
+		t.Error("it unpacked the whole payload as the user, before elevating")
 	}
 	if entries, err := os.ReadDir(home); err == nil && len(entries) > 0 {
 		t.Errorf("it wrote %d thing(s) to the machine before asking", len(entries))
+	}
+}
+
+// With no window there is nobody to answer a prompt, so it says what is
+// needed instead of raising one into an empty room and waiting forever.
+func TestAQuietPayloadSaysItNeedsAnAdministratorRatherThanPrompting(t *testing.T) {
+	path := payloadFile(t, []byte("MZ"), map[string][]byte{
+		ManifestName: standaloneJSON(t),
+		AgentName:    []byte("agent bytes"),
+	})
+	zr := openPayload(t, path)
+	swap(t, &isElevatedFn, func() bool { return false })
+	swap(t, &elevateExeFn, func(string, []string) (int, error) {
+		t.Error("it raised a UAC prompt with nobody at the machine")
+		return 0, nil
+	})
+
+	_, err := startAttached(zr, RunOptions{Quiet: true, Unattended: true})
+	if err == nil || !strings.Contains(err.Error(), "administrator") {
+		t.Errorf("a quiet run without a token said %v", err)
 	}
 }
 
@@ -227,7 +266,7 @@ func TestAPayloadUnpacksOntoTheMachineAndRunsFromThere(t *testing.T) {
 	root := t.TempDir()
 	swap(t, &payloadRootFn, func() string { return root })
 	swap(t, &isElevatedFn, func() bool { return true })
-	swap(t, &elevateFn, func([]string) (int, error) {
+	swap(t, &elevateExeFn, func(string, []string) (int, error) {
 		t.Error("it asked for an administrator when it already had one")
 		return 0, nil
 	})
@@ -321,5 +360,45 @@ func TestNoArgumentsRunsTheCarriedPayload(t *testing.T) {
 	}
 	if err := Main([]string{"--quiet"}); err == nil || !strings.Contains(err.Error(), "carries no payload") {
 		t.Errorf("a plain agent given bare options said %v", err)
+	}
+}
+
+// The elevated agent is a loose copy with no payload inside it: it is told
+// where the payload is with --from, and runs that. This is the second half of
+// the elevation prompt naming the agent -- without it, the signed binary that
+// was elevated would have nothing to do.
+func TestAnUnpackedAgentRunsThePayloadItIsPointedAt(t *testing.T) {
+	path := payloadFile(t, []byte("MZ"), map[string][]byte{
+		ManifestName:  standaloneJSON(t),
+		AgentName:     []byte("agent bytes"),
+		"Drivers/a.i": []byte("inf"),
+	})
+	root := t.TempDir()
+	swap(t, &payloadRootFn, func() string { return root })
+	swap(t, &isElevatedFn, func() bool { return true })
+	// This program is the unpacked agent: it carries nothing of its own.
+	swap(t, &selfPayloadFn, func() (*payload, error) { return nil, nil })
+	var gotExe string
+	swap(t, &runPayloadCopyFn, func(exe string, args []string) (int, error) { gotExe = exe; return 0, nil })
+
+	if err := Main([]string{"apply", "--from", path, "--quiet"}); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(root, "office-apps-abc123")
+	if gotExe != filepath.Join(home, AgentName) {
+		t.Errorf("it handed over to %q", gotExe)
+	}
+	if _, err := os.Stat(filepath.Join(home, "Drivers", "a.i")); err != nil {
+		t.Errorf("the payload was not unpacked from the file it was pointed at: %v", err)
+	}
+
+	// A file that holds no payload is said so plainly, rather than the agent
+	// falling back to looking beside itself and reporting a missing manifest.
+	empty := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(empty, []byte("nothing here"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Main([]string{"apply", "--from", empty}); err == nil || !strings.Contains(err.Error(), "carries no payload") {
+		t.Errorf("--from a file with no payload said %v", err)
 	}
 }

@@ -533,10 +533,16 @@ func refreshDesktop(dirs []string) {
 	}
 }
 
-// runElevated starts this program again with an administrator's token, one
-// UAC prompt, and returns what it exited with. A payload that arrived as one
-// file is double-clicked by a person, so asking Windows is the only way it
-// gets the rights it needs; telling them to find PowerShell is not an answer.
-func runElevated(args []string) (int, error) {
-	return elevate.RunElevated(args)
+// runElevatedExe starts a program with an administrator's token, one UAC
+// prompt, and returns what it exited with. A payload that arrived as one file
+// is double-clicked by a person, so asking Windows is the only way it gets the
+// rights it needs; telling them to find PowerShell is not an answer.
+func runElevatedExe(exe string, args []string) (int, error) {
+	return elevate.RunElevatedExe(exe, args)
+}
+
+// scratchRoot is where the agent is unpacked to be elevated: the user's own
+// temporary folder, since this part runs as them and needs no rights at all.
+func scratchRoot() string {
+	return filepath.Join(os.TempDir(), "DSKY")
 }

@@ -138,8 +138,15 @@ func TestAPayloadCarriesTheRecipeWithoutTheOS(t *testing.T) {
 	if !bytes.HasPrefix(head, exe) {
 		t.Error("the payload does not start with the agent, so double-clicking it runs nothing")
 	}
-
 	files := readZip(t, art.Path)
+	// The agent inside is our binary byte for byte. It is the one that gets
+	// elevated on the machine, and the only one anybody can sign: the file
+	// around it is built here, on an operator's machine, and carries the
+	// archive appended, which would break a signature even if it had one.
+	if inside := files[agentbin.Name]; !bytes.Equal(inside, exe) {
+		t.Errorf("the agent inside the payload is %d bytes, ours is %d; a signature on ours would not be on it",
+			len(inside), len(exe))
+	}
 	for _, want := range []string{
 		"dsky-agent.exe", "dsky-agent.json", "Run DSKY.cmd", "README.txt",
 		"intel-sst.cab", "ScreenConnect.ClientSetup.msi",
