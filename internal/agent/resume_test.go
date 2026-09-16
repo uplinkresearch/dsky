@@ -437,3 +437,34 @@ func TestTheResumeTaskDoesNotDawdle(t *testing.T) {
 		t.Error("no delay at all: the session may not be ready to draw on")
 	}
 }
+
+// A machine that restarts part way through the drivers -- Windows does this
+// for its own display driver -- must not unpack the vendor's pack again on the
+// way back. On an HP EliteBook that is a 1.2 GB file and several minutes,
+// spent to arrive at files that were already on the disk.
+func TestAnAlreadyUnpackedPackIsNotUnpackedAgain(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "sp142792.exe"), []byte("pack"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// As the interrupted boot left it: unpacked, into the pack's own folder.
+	packDir := filepath.Join(dir, "Drivers", "hp-pack")
+	if err := os.MkdirAll(packDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packDir, "net.inf"), []byte("[Version]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	f := &fakeRun{}
+	f.install(t)
+	a, _ := newAgent(t, &Manifest{Version: ManifestVersion})
+	a.Dir = dir
+	a.extractPack(Extract{File: "sp142792.exe", Dir: "hp-pack", Args: []string{"/s", "/e", "/f", "{dir}"}}, filepath.Join(dir, "Drivers"))
+
+	for _, c := range f.calls {
+		if strings.Contains(c, "sp142792.exe") {
+			t.Errorf("unpacked the pack again: %q", c)
+		}
+	}
+}

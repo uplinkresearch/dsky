@@ -104,6 +104,15 @@ func (a *Agent) extractPack(ex Extract, driversDir string) {
 	}
 	dest := filepath.Join(driversDir, ex.Dir)
 	os.MkdirAll(dest, 0o755)
+	// Already unpacked on an earlier boot: the files are right there. Watched
+	// on an HP EliteBook, Windows restarted the machine part way through
+	// installing the drivers -- for its own display driver -- and the agent
+	// came back and unpacked the same 1.2 GB pack from scratch before getting
+	// to the part it had not finished.
+	if n := countINF(dest); n > 0 {
+		a.J.Info(stepDrivers, "%s: already unpacked on an earlier boot, %d driver file(s) present", ex.File, n)
+		return
+	}
 	a.UI.Detail("unpacking " + ex.File)
 
 	attempts := [][]string{ex.Args}

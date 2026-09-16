@@ -54,6 +54,10 @@ var (
 	pGetClientRect    = user32.NewProc("GetClientRect")
 	pGetForegroundWin = user32.NewProc("GetForegroundWindow")
 	pIsWindowVisible  = user32.NewProc("IsWindowVisible")
+	pAttachThreadInp  = user32.NewProc("AttachThreadInput")
+	pGetWindowThread  = user32.NewProc("GetWindowThreadProcessId")
+	pBringWindowTop   = user32.NewProc("BringWindowToTop")
+	pSystemParamInfo  = user32.NewProc("SystemParametersInfoW")
 	pMoveWindow       = user32.NewProc("MoveWindow")
 	pSetWindowPos     = user32.NewProc("SetWindowPos")
 
@@ -66,6 +70,7 @@ var (
 	pStretchDIBits    = gdi32.NewProc("StretchDIBits")
 
 	pGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
+	pGetCurrentThread = kernel32.NewProc("GetCurrentThreadId")
 )
 
 const (
@@ -99,6 +104,9 @@ const (
 	swpNoSize     = 0x0001
 	swpNoMove     = 0x0002
 	swpNoActivate = 0x0010
+
+	spiSetForegroundLockTimeout = 0x2001
+	spifSendChange              = 0x0002
 )
 
 type rect struct{ left, top, right, bottom int32 }
@@ -268,6 +276,11 @@ func (w *win32Window) create() error {
 	w.mid = w.font(-22, 400)
 	w.small = w.font(-17, 400)
 
+	// Windows makes a window wait before it may take the foreground. On a
+	// machine being provisioned there is nothing to protect: this window is
+	// the only thing that should be in front.
+	pSystemParamInfo.Call(spiSetForegroundLockTimeout, 0, 0, spifSendChange)
+
 	pShowWindow.Call(hwnd, swShow)
 	pUpdateWindow.Call(hwnd)
 	pSetForegroundWin.Call(hwnd)
@@ -402,10 +415,26 @@ func (w *win32Window) keepInFront() {
 		return
 	}
 	fg, _, _ := pGetForegroundWin.Call()
-	if windows.HWND(fg) == w.hwnd {
+	if fg == 0 || windows.HWND(fg) == w.hwnd {
 		return
 	}
 	pSetWindowPos.Call(uintptr(w.hwnd), hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate)
+
+	// Windows refuses SetForegroundWindow to a process that does not already
+	// own the foreground, silently, which is why asking politely once a second
+	// left the Start menu sitting over the window for a whole build. A thread
+	// attached to the one that does own it is allowed to ask on its behalf:
+	// the documented way in, and what every launcher and installer does.
+	mine, _, _ := pGetCurrentThread.Call()
+	theirs, _, _ := pGetWindowThread.Call(fg, 0)
+	if theirs != 0 && theirs != mine {
+		pAttachThreadInp.Call(mine, theirs, 1)
+		pBringWindowTop.Call(uintptr(w.hwnd))
+		pSetForegroundWin.Call(uintptr(w.hwnd))
+		pAttachThreadInp.Call(mine, theirs, 0)
+		return
+	}
+	pBringWindowTop.Call(uintptr(w.hwnd))
 	pSetForegroundWin.Call(uintptr(w.hwnd))
 }
 
