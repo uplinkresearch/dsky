@@ -42,10 +42,18 @@ func list(ctx context.Context) ([]Device, error) {
 	}
 	var devs []Device
 	for _, d := range parsed.Blockdevices {
-		if d.Type != "disk" {
+		if d.Type != "disk" || virtualDisk(d.Name) {
 			continue
 		}
 		size, _ := strconv.ParseInt(d.Size.String(), 10, 64)
+		// A disk of no size is a kernel placeholder, not a disk. Loading the
+		// nbd module -- which is how a virtual machine's disk gets read --
+		// creates sixteen of them, and they filled the device list on a
+		// machine whose real stick was not plugged in, burying the one line
+		// that said so.
+		if size == 0 {
+			continue
+		}
 		dev := Device{
 			ID:        "/dev/" + d.Name,
 			Index:     -1,
@@ -59,6 +67,19 @@ func list(ctx context.Context) ([]Device, error) {
 		devs = append(devs, dev)
 	}
 	return devs, nil
+}
+
+// virtualDisk reports whether a name belongs to a kernel construct rather
+// than hardware: network block devices, loopbacks, RAM disks, compressed swap,
+// device-mapper and software RAID. None of them is something to write an
+// installer to, and listing them only makes the real disk harder to find.
+func virtualDisk(name string) bool {
+	for _, prefix := range []string{"nbd", "loop", "ram", "zram", "dm-", "md", "zd"} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // collectMounts walks children marking mounts; "/", "/boot", "/home" (or
