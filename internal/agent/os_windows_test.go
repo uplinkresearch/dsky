@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf16"
+	"unsafe"
 )
 
 // The task description must ask for a standard-user token in the signed-in
@@ -92,4 +93,19 @@ func TestUserHandoffFilesAreWritableByAStandardUser(t *testing.T) {
 		t.Errorf("writing the job: %v", err)
 	}
 	os.Remove(job)
+}
+
+// SendInput takes a size and refuses anything but the real INPUT's, silently.
+// On 64-bit Windows INPUT is 40 bytes with the key fields at fixed offsets.
+func TestTheKeystrokeStructureIsTheSizeWindowsExpects(t *testing.T) {
+	var k keyInput
+	if unsafe.Sizeof(k) != 40 {
+		t.Errorf("keyInput is %d bytes; Windows' INPUT is 40, and SendInput would refuse it", unsafe.Sizeof(k))
+	}
+	if off := unsafe.Offsetof(k.vk); off != 8 {
+		t.Errorf("the virtual key is at offset %d, want 8", off)
+	}
+	if off := unsafe.Offsetof(k.extraInfo); off != 24 {
+		t.Errorf("dwExtraInfo is at offset %d, want 24", off)
+	}
 }

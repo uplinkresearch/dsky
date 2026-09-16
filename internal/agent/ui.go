@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -286,4 +287,20 @@ func shortDur(d time.Duration) string {
 	default:
 		return itoa(sec) + " seconds"
 	}
+}
+
+// isShellFlyoutImage reports whether a program path is the Windows 11 Start
+// menu or its search box. Kept apart from the Windows calls that find the
+// path, so the decision -- which is the part that must never send an Escape to
+// the wrong program -- is testable anywhere.
+func isShellFlyoutImage(path string) bool {
+	base := strings.ToLower(path)
+	if i := strings.LastIndexAny(base, `\/`); i >= 0 {
+		base = base[i+1:]
+	}
+	switch base {
+	case "startmenuexperiencehost.exe", "searchhost.exe", "searchapp.exe":
+		return true
+	}
+	return false
 }

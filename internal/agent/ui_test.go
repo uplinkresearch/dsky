@@ -314,3 +314,29 @@ func TestTheWordmarkDecodes(t *testing.T) {
 		t.Errorf("the wordmark has %d distinct pixels; it is not a picture of anything", len(seen))
 	}
 }
+
+// Escape goes only to the Start menu and its search box. Sent anywhere else it
+// could close somebody's dialog, and sent to the status window it hides it.
+func TestOnlyTheStartMenuGetsAnEscape(t *testing.T) {
+	for _, p := range []string{
+		`C:\Windows\SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperienceHost.exe`,
+		`C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\SearchHost.exe`,
+		`C:\WINDOWS\SYSTEMAPPS\X\STARTMENUEXPERIENCEHOST.EXE`,
+	} {
+		if !isShellFlyoutImage(p) {
+			t.Errorf("%s is the Start menu and would not be closed", p)
+		}
+	}
+	for _, p := range []string{
+		`C:\Windows\Setup\Scripts\dsky-agent.exe`,
+		`C:\Windows\explorer.exe`,
+		`C:\Program Files\Google\Chrome\Application\chrome.exe`,
+		`C:\Windows\System32\msiexec.exe`,
+		`C:\Users\user\AppData\Local\StartMenuExperienceHost.exe.bak`,
+		``,
+	} {
+		if isShellFlyoutImage(p) {
+			t.Errorf("%q would be sent an Escape", p)
+		}
+	}
+}

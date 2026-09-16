@@ -60,6 +60,7 @@ var (
 	pSystemParamInfo  = user32.NewProc("SystemParametersInfoW")
 	pMoveWindow       = user32.NewProc("MoveWindow")
 	pSetWindowPos     = user32.NewProc("SetWindowPos")
+	pSendInput        = user32.NewProc("SendInput")
 
 	pCreateFontW      = gdi32.NewProc("CreateFontW")
 	pCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
@@ -71,6 +72,9 @@ var (
 
 	pGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 	pGetCurrentThread = kernel32.NewProc("GetCurrentThreadId")
+	pOpenProcess      = kernel32.NewProc("OpenProcess")
+	pQueryImageName   = kernel32.NewProc("QueryFullProcessImageNameW")
+	pCloseHandle      = kernel32.NewProc("CloseHandle")
 )
 
 const (
@@ -418,6 +422,15 @@ func (w *win32Window) keepInFront() {
 	if fg == 0 || windows.HWND(fg) == w.hwnd {
 		return
 	}
+	// Windows 11's Start menu is its own shell process, drawn above even a
+	// topmost window, and taking the foreground away from it does not close
+	// it: two releases tried exactly that on an HP EliteBook and it sat over
+	// the window for the whole build both times. Escape closes it, as it does
+	// by hand. Only when the Start menu or its search box has the foreground:
+	// an Escape that reached this window instead would hide it.
+	if shellFlyout(fg) {
+		pressEscape()
+	}
 	pSetWindowPos.Call(uintptr(w.hwnd), hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate)
 
 	// Windows refuses SetForegroundWindow to a process that does not already
@@ -436,6 +449,53 @@ func (w *win32Window) keepInFront() {
 	}
 	pBringWindowTop.Call(uintptr(w.hwnd))
 	pSetForegroundWin.Call(uintptr(w.hwnd))
+}
+
+// shellFlyout reports whether a window belongs to the Start menu or the search
+// box that opens from it, by the program that owns it. Their window classes
+// are shared with every other modern app; the process is what is specific.
+func shellFlyout(hwnd uintptr) bool {
+	var pid uint32
+	pGetWindowThread.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+	if pid == 0 {
+		return false
+	}
+	const processQueryLimitedInformation = 0x1000
+	h, _, _ := pOpenProcess.Call(processQueryLimitedInformation, 0, uintptr(pid))
+	if h == 0 {
+		return false
+	}
+	defer pCloseHandle.Call(h)
+	buf := make([]uint16, 520)
+	n := uint32(len(buf))
+	if ok, _, _ := pQueryImageName.Call(h, 0, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&n))); ok == 0 {
+		return false
+	}
+	return isShellFlyoutImage(windows.UTF16ToString(buf[:n]))
+}
+
+// keyInput is Windows' INPUT carrying a KEYBDINPUT. Its size is checked in a
+// test: SendInput refuses a structure of the wrong size by returning 0, which
+// is to say it fails without a word, and that is the failure this whole
+// function exists to get past.
+type keyInput struct {
+	typ       uint32
+	_         uint32 // alignment: the union starts on an 8-byte boundary
+	vk        uint16
+	scan      uint16
+	flags     uint32
+	time      uint32
+	extraInfo uintptr
+	_         [8]byte // the union is as large as MOUSEINPUT, its largest member
+}
+
+// pressEscape sends one Escape keystroke to whatever has the foreground.
+func pressEscape() {
+	const inputKeyboard, keyUp = 1, 0x0002
+	down := keyInput{typ: inputKeyboard, vk: vkEscape}
+	up := keyInput{typ: inputKeyboard, vk: vkEscape, flags: keyUp}
+	inputs := []keyInput{down, up}
+	pSendInput.Call(uintptr(len(inputs)), uintptr(unsafe.Pointer(&inputs[0])), unsafe.Sizeof(inputs[0]))
 }
 
 // syncButtons makes the real buttons match what the screen is asking for.
