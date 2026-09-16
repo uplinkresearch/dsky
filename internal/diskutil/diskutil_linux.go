@@ -112,12 +112,7 @@ func prepare(ctx context.Context, dev device.Device, opts Options, progress func
 	}
 	exec.CommandContext(ctx, "wipefs", "--all", dev.ID).Run()
 
-	// One partition spanning the disk, in sfdisk's script format.
-	label := "gpt"
-	if opts.Scheme == MBR {
-		label = "dos"
-	}
-	script := fmt.Sprintf("label: %s\n,,\n", label)
+	label, script := sfdiskScript(opts)
 	progress(fmt.Sprintf("writing a %s table on %s", label, dev.ID))
 	cmd := exec.CommandContext(ctx, "sfdisk", "--wipe", "always", "--wipe-partitions", "always", dev.ID)
 	cmd.Stdin = strings.NewReader(script)
