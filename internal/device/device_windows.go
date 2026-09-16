@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/yusufpapurcu/wmi"
+	"github.com/uplinkresearch/dsky/internal/winwmi"
 	"golang.org/x/sys/windows"
 )
 
@@ -24,7 +24,7 @@ type win32DiskDrive struct {
 
 func list(_ context.Context) ([]Device, error) {
 	var drives []win32DiskDrive
-	if err := wmi.Query("SELECT Index, Model, SerialNumber, Size, InterfaceType, MediaType FROM Win32_DiskDrive", &drives); err != nil {
+	if err := winwmi.Query("SELECT Index, Model, SerialNumber, Size, InterfaceType, MediaType FROM Win32_DiskDrive", &drives); err != nil {
 		return nil, fmt.Errorf("device: WMI disk query: %w", err)
 	}
 	sysDisk, sysErr := systemDiskNumber()

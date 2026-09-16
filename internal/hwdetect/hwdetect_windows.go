@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yusufpapurcu/wmi"
+	"github.com/uplinkresearch/dsky/internal/winwmi"
 )
 
 type win32System struct {
@@ -28,18 +28,18 @@ func detect(_ context.Context) (*Hardware, error) {
 	h := &Hardware{}
 
 	var sys []win32System
-	if err := wmi.Query("SELECT Manufacturer, Model FROM Win32_ComputerSystem", &sys); err == nil && len(sys) > 0 {
+	if err := winwmi.Query("SELECT Manufacturer, Model FROM Win32_ComputerSystem", &sys); err == nil && len(sys) > 0 {
 		h.Vendor = strings.TrimSpace(sys[0].Manufacturer)
 		h.Model = strings.TrimSpace(sys[0].Model)
 	}
 	var cpu []win32Processor
-	if err := wmi.Query("SELECT Name FROM Win32_Processor", &cpu); err == nil && len(cpu) > 0 {
+	if err := winwmi.Query("SELECT Name FROM Win32_Processor", &cpu); err == nil && len(cpu) > 0 {
 		h.CPU = strings.TrimSpace(cpu[0].Name)
 	}
 
 	var ents []win32PnPEntity
 	// Present devices only; a null PNPClass is fine (some devices lack it).
-	_ = wmi.Query("SELECT Name, PNPClass, HardwareID, PNPDeviceID FROM Win32_PnPEntity", &ents)
+	_ = winwmi.Query("SELECT Name, PNPClass, HardwareID, PNPDeviceID FROM Win32_PnPEntity", &ents)
 
 	seen := map[string]bool{}
 	for _, e := range ents {
