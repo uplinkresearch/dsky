@@ -34,6 +34,19 @@ func post(t *testing.T, h http.Handler, path, body string) *httptest.ResponseRec
 	return w
 }
 
+// postObj is post for a body built from Go values. Anything carrying a
+// filesystem path must go through here: a Windows path pasted into a JSON
+// string literal turns C:\Users into an escape sequence and the body never
+// parses, which reads at the far end as the handler rejecting a good request.
+func postObj(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return post(t, h, path, string(b))
+}
+
 // waitJob follows the registry until the job reports its end.
 func waitJob(t *testing.T, reg *jobs.Registry, body []byte) jobs.Event {
 	t.Helper()

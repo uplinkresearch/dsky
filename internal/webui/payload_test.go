@@ -136,7 +136,7 @@ func TestAPayloadIsCopiedNotFlashed(t *testing.T) {
 	}
 	dest := t.TempDir()
 
-	w := post(t, h, "/api/artifacts/copy", `{"path":"`+src+`","to":"`+dest+`"}`)
+	w := postObj(t, h, "/api/artifacts/copy", map[string]string{"path": src, "to": dest})
 	if w.Code != 202 {
 		t.Fatalf("copy refused: %d %s", w.Code, w.Body)
 	}
@@ -149,22 +149,22 @@ func TestAPayloadIsCopiedNotFlashed(t *testing.T) {
 	}
 
 	// Onto itself: refused, rather than truncating the only copy.
-	if w := post(t, h, "/api/artifacts/copy", `{"path":"`+src+`","to":"`+s.Lib.ArtifactsDir()+`"}`); w.Code != 400 {
+	if w := postObj(t, h, "/api/artifacts/copy", map[string]string{"path": src, "to": s.Lib.ArtifactsDir()}); w.Code != 400 {
 		t.Errorf("copying onto itself returned %d %s", w.Code, w.Body)
 	}
 	// Something outside the library: refused.
 	outside := filepath.Join(t.TempDir(), "elsewhere.zip")
 	os.WriteFile(outside, []byte("x"), 0o644)
-	if w := post(t, h, "/api/artifacts/copy", `{"path":"`+outside+`","to":"`+dest+`"}`); w.Code != 400 {
+	if w := postObj(t, h, "/api/artifacts/copy", map[string]string{"path": outside, "to": dest}); w.Code != 400 {
 		t.Errorf("copying a file outside the library returned %d", w.Code)
 	}
 	// A folder that is not one: refused.
-	if w := post(t, h, "/api/artifacts/copy", `{"path":"`+src+`","to":"`+src+`"}`); w.Code != 400 {
+	if w := postObj(t, h, "/api/artifacts/copy", map[string]string{"path": src, "to": src}); w.Code != 400 {
 		t.Errorf("copying into a file returned %d", w.Code)
 	}
 
 	// And a payload can be thrown away like any other build product.
-	if w := post(t, h, "/api/artifacts/delete", `{"path":"`+src+`"}`); w.Code != 200 {
+	if w := postObj(t, h, "/api/artifacts/delete", map[string]string{"path": src}); w.Code != 200 {
 		t.Errorf("deleting a payload returned %d %s", w.Code, w.Body)
 	}
 	if _, err := os.Stat(src); !os.IsNotExist(err) {
