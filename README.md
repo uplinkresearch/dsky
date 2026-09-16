@@ -239,6 +239,38 @@ staged network drivers are for. Some packages only install for the first
 account that signs in; the list says which. Programs winget doesn't have, such
 as RustDesk, go in with `dsky apps add` and ride on the stick.
 
+### Programs on a machine that already runs Windows
+
+Half of what a recipe does needs no operating system installed: the drivers for
+the model, the programs the office uses, the consumer apps taken off. A recipe
+can be built as a **payload** — one file that carries all of it to a machine
+that already runs Windows:
+
+```
+dsky build front-desk --payload
+```
+
+or "Apps only…" in the portal, beside "Set up image". Nothing is downloaded
+that would only matter to installing an OS; no ISO is fetched at all.
+
+Copy the `.exe` onto the machine and double-click it. It asks for an
+administrator, unpacks itself into `C:\ProgramData\DSKY\payloads`, and shows
+the same window a first boot shows, as an ordinary window. It installs
+everything the recipe asks for, stops and asks before any restart Windows
+needs, carries on after it, and removes the desktop shortcuts the installers
+put there — but not the ones that were already on the desktop. It never erases
+anything and never installs an operating system.
+
+For a remote tool, with nobody at the machine:
+
+```
+<payload>.exe apply --quiet --unattended
+```
+
+The exit code is the number of problems; 0 is a clean run. The file is also a
+zip, so anything that opens zips gives you the folder, the agent and a
+README.txt — which is what to use where a program with a window cannot run.
+
 ### Joining a domain
 
 Windows sticks can join a domain during Setup without a network, from files
