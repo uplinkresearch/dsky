@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/uplinkresearch/dsky/internal/drivers/catalog"
 )
 
 // OSType selects the composition pipeline.
@@ -591,12 +593,12 @@ func (r *Recipe) Validate() error {
 			if !byModel && len(h.HWIDs) == 0 {
 				return fail("windows.hardware[%d] needs vendor+model or hwids", i)
 			}
-			if h.Vendor != "" {
-				switch strings.ToLower(h.Vendor) {
-				case "dell", "lenovo", "hp", "framework":
-				default:
-					return fail("windows.hardware[%d] vendor must be dell, lenovo, hp or framework (use hwids for others)", i)
+			if h.Vendor != "" && !catalog.IsModelFeed(h.Vendor) {
+				names := make([]string, len(catalog.ModelFeeds))
+				for i, v := range catalog.ModelFeeds {
+					names[i] = string(v)
 				}
+				return fail("windows.hardware[%d] vendor must be one of %s (use hwids for others)", i, strings.Join(names, ", "))
 			}
 		}
 	} else {

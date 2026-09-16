@@ -94,9 +94,13 @@ func SpecForModel(spec, osName string) (recipe.HardwareSpec, error) {
 	switch {
 	case !ok || model == "":
 		return recipe.HardwareSpec{}, fmt.Errorf("want \"vendor:model\", e.g. \"dell:OptiPlex 7010\" (got %q)", spec)
-	case vendor != string(catalog.Dell) && vendor != string(catalog.Lenovo) && vendor != string(catalog.HP) && vendor != string(catalog.Framework):
-		return recipe.HardwareSpec{}, fmt.Errorf("vendor must be dell, lenovo, hp or framework (got %q) — "+
-			"other makers have no per-model feed, so build on the machine itself and detect it", vendor)
+	case !catalog.IsModelFeed(vendor):
+		var names []string
+		for _, v := range catalog.ModelFeeds {
+			names = append(names, string(v))
+		}
+		return recipe.HardwareSpec{}, fmt.Errorf("vendor must be one of %s (got %q) — "+
+			"other makers have no per-model feed, so build on the machine itself and detect it", strings.Join(names, ", "), vendor)
 	}
 	return recipe.HardwareSpec{Vendor: vendor, Model: model, OS: osName}, nil
 }
@@ -143,6 +147,9 @@ func AddPack(ctx context.Context, ws *workspace.Workspace, lib *library.Library,
 			fmt.Fprintf(&b, "  hwid: %q\n", ref.HWID)
 		} else {
 			fmt.Fprintf(&b, "  vendor: %s\n  model: %q\n", ref.Vendor, ref.Model)
+			if p.Gate != "" {
+				fmt.Fprintf(&b, "  gate: %q\n", p.Gate)
+			}
 		}
 		fmt.Fprintf(&b, "  os: %s\n", ref.OS)
 		fmt.Fprintf(&b, "install: %s\n", install)
@@ -275,16 +282,14 @@ func resolve(ctx context.Context, ws *workspace.Workspace, lib *library.Library,
 		got := recipe.HardwareSpec{OS: osName}
 
 		if h.Vendor != "" {
-			switch id, err := resolveModel(ctx, ws, lib, cache, h, osName, have, ensurePulled, pull, progress); {
+			switch ids, err := resolveModel(ctx, ws, lib, cache, h, osName, have, ensurePulled, pull, progress); {
 			case err != nil && strict:
 				return nil, err
 			case err != nil:
 				out.Missing = append(out.Missing, fmt.Sprintf("%s %s: %v", h.Vendor, h.Model, err))
 			default:
 				got.Vendor, got.Model = h.Vendor, h.Model
-				if id != "" {
-					out.Packs = append(out.Packs, id)
-				}
+				out.Packs = append(out.Packs, ids...)
 			}
 		}
 		for _, hwid := range h.HWIDs {
@@ -317,24 +322,55 @@ type pullFunc func(s *manifest.Source) error
 
 // resolveModel covers one vendor+model entry, returning the id of the pack now
 // staged for it.
-func resolveModel(ctx context.Context, ws *workspace.Workspace, lib *library.Library, cache *catalog.Cache, h recipe.HardwareSpec, osName string, have findFunc, ensurePulled pullFunc, pull bool, progress Progress) (string, error) {
-	if s := have(h.Vendor, h.Model, ""); s != nil {
-		return s.ID, ensurePulled(s)
-	}
+func resolveModel(ctx context.Context, ws *workspace.Workspace, lib *library.Library, cache *catalog.Cache, h recipe.HardwareSpec, osName string, have findFunc, ensurePulled pullFunc, pull bool, progress Progress) ([]string, error) {
 	feed, err := catalog.FeedFor(h.Vendor, cache)
 	if err != nil {
-		return "", err
+		return nil, err
+	}
+	// Some vendors publish a model's drivers as many packages rather than one
+	// pack. Each becomes a manifest bound to the model, and compose stages
+	// every manifest a model matches, so all of them are added here.
+	if cf, ok := feed.(catalog.ComponentFeed); ok {
+		progress.stage("finding %s drivers for %s", h.Vendor, h.Model)
+		packs, err := cf.Components(ctx, catalog.Query{Model: h.Model, OS: osName})
+		if err != nil {
+			// Offline with the manifests already written: build from those.
+			if s := have(h.Vendor, h.Model, ""); s != nil {
+				return []string{s.ID}, ensurePulled(s)
+			}
+			return nil, err
+		}
+		if len(packs) == 0 {
+			return nil, fmt.Errorf("no %s drivers for %q (%s)", h.Vendor, h.Model, osName)
+		}
+		ref := manifest.HardwareRef{Vendor: h.Vendor, Model: h.Model, OS: osName}
+		ids := make([]string, 0, len(packs))
+		for _, p := range packs {
+			id, err := AddPack(ctx, ws, lib, feed, p, ref, pull, progress)
+			if err != nil {
+				return nil, err
+			}
+			ids = append(ids, id)
+		}
+		return ids, nil
+	}
+	if s := have(h.Vendor, h.Model, ""); s != nil {
+		return []string{s.ID}, ensurePulled(s)
 	}
 	progress.stage("finding %s drivers for %s", h.Vendor, h.Model)
 	packs, err := feed.Search(ctx, catalog.Query{Model: h.Model, OS: osName})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if len(packs) == 0 {
-		return "", fmt.Errorf("no %s driver pack for %q (%s) — check the model with `dsky drivers search %s %q`", h.Vendor, h.Model, osName, h.Vendor, h.Model)
+		return nil, fmt.Errorf("no %s driver pack for %q (%s) — check the model with `dsky drivers search %s %q`", h.Vendor, h.Model, osName, h.Vendor, h.Model)
 	}
 	ref := manifest.HardwareRef{Vendor: h.Vendor, Model: h.Model, OS: osName}
-	return AddPack(ctx, ws, lib, feed, catalog.Exact(packs, h.Model), ref, pull, progress)
+	id, err := AddPack(ctx, ws, lib, feed, catalog.Exact(packs, h.Model), ref, pull, progress)
+	if err != nil {
+		return nil, err
+	}
+	return []string{id}, nil
 }
 
 // resolveHWID covers one hardware ID through the Microsoft Update Catalog.

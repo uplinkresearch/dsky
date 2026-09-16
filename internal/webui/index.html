@@ -1610,8 +1610,8 @@ function textOpt(label, placeholder, hint) {
   }
   return { wrap, get: () => inp.value.trim() };
 }
-// modelPickerOpt is a searchable list of every computer model Dell, HP, Lenovo
-// and Framework publish drivers for, for staging drivers for machines you are not
+// modelPickerOpt is a searchable list of every computer model the vendors DSKY
+// reads publish drivers for, for staging drivers for machines you are not
 // sitting at. Picking from the vendor's own list replaces typing "dell:" and a
 // guess at how Dell spells the model — which, matched loosely, could silently
 // stage the drivers for a different model with a similar name.
@@ -1625,7 +1625,7 @@ function modelPickerOpt(os, carrier = "stick") {
   wrap.append(el("label", null, "Also stage drivers for other computer models"));
   const chips = el("div", "chips");
   const box = el("input"); box.type = "search"; box.autocomplete = "off";
-  box.placeholder = "Search Dell, HP, Lenovo and Framework models, e.g. OptiPlex 3070";
+  box.placeholder = "Search Dell, HP, Lenovo, ASUS, Surface, NUC, Alienware, Framework models";
   box.setAttribute("role", "combobox"); box.setAttribute("aria-expanded", "false");
   const results = el("div", "modelresults"); results.hidden = true;
   results.setAttribute("role", "listbox");
@@ -1668,7 +1668,7 @@ function modelPickerOpt(os, carrier = "stick") {
       a.hay.localeCompare(b.hay));
     shown = hits.slice(0, 40);
     if (!shown.length) {
-      const typed = /^(dell|hp|lenovo|framework):.+/i.test(box.value.trim());
+      const typed = /^[a-z]+:.+/i.test(box.value.trim());
       results.append(el("div", "empty", typed
         ? "Not in the lists — press Enter to use it as typed."
         : "No model matches. Try fewer words, such as the model number — vendors rename lines, so HP's EliteDesk 800 G9 is listed as Elite Mini 800 G9."));
@@ -1696,7 +1696,7 @@ function modelPickerOpt(os, carrier = "stick") {
       const m = shown[active >= 0 ? active : 0];
       const typed = box.value.trim();
       if (m) add(m.spec, m.vendorName + " " + m.model);
-      else if (/^(dell|hp|lenovo|framework):.+/i.test(typed)) add(typed, typed);
+      else if (/^[a-z]+:.+/i.test(typed)) add(typed, typed);
     } else if (e.key === "Escape" && !results.hidden) { e.preventDefault(); e.stopPropagation(); results.hidden = true; }
   };
 
@@ -1704,7 +1704,7 @@ function modelPickerOpt(os, carrier = "stick") {
     if (all) return;
     const key = os.id;
     if (!modelLists[key]) {
-      note.textContent = "Loading the model lists from Dell, HP, Lenovo and Framework… the first time takes a moment.";
+      note.textContent = "Loading the model lists from Dell, HP, Lenovo, ASUS, Microsoft, Intel NUC, Alienware and Framework… the first time takes a moment.";
       modelLists[key] = api("/api/drivers/models?os_id=" + encodeURIComponent(os.id));
     }
     try {

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/uplinkresearch/dsky/internal/drivers/catalog"
 	"github.com/uplinkresearch/dsky/internal/jobs"
 	"github.com/uplinkresearch/dsky/internal/library"
 	"github.com/uplinkresearch/dsky/internal/manifest"
@@ -227,7 +228,7 @@ func TestDriverModelsPerVendor(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil || w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if resp.OS != "win10" || len(asked) != 4 || asked["framework"] != "win10" {
+	if resp.OS != "win10" || len(asked) != len(catalog.ModelFeeds) || asked["framework"] != "win10" || asked["alienware"] != "win10" {
 		t.Errorf("os %q, asked %v", resp.OS, asked)
 	}
 	byVendor := map[string]int{}

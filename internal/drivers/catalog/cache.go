@@ -107,6 +107,11 @@ func findXML(dir string) string {
 }
 
 func looksXML(b []byte) bool {
-	s := strings.TrimSpace(string(b))
+	// Dell's consumer catalogs are UTF-16, which starts with a byte-order
+	// mark and then has a zero after every ASCII character.
+	if len(b) >= 4 && (b[0] == 0xFF && b[1] == 0xFE && b[2] == '<' || b[0] == 0xFE && b[1] == 0xFF && b[3] == '<') {
+		return true
+	}
+	s := strings.TrimSpace(strings.TrimPrefix(string(b), "\ufeff"))
 	return strings.HasPrefix(s, "<?xml") || strings.HasPrefix(s, "<")
 }

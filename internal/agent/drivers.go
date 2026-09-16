@@ -124,7 +124,15 @@ func (a *Agent) extractPack(ex Extract, driversDir string) {
 		if i > 0 {
 			a.J.Info(stepDrivers, "%s: no driver files appeared, retrying with %s", ex.File, strings.Join(full, " "))
 		}
-		r := run(45*time.Minute, src, full...)
+		cmd, cmdArgs := src, full
+		if strings.EqualFold(filepath.Ext(src), ".msi") {
+			// An MSI is not a program and cannot be started on its own.
+			// msiexec's administrative install unpacks it to a folder without
+			// installing anything -- which for a driver MSI, Surface's, is
+			// its drivers and not the updater tooling that comes with them.
+			cmd, cmdArgs = "msiexec", append([]string{"/a", src}, full...)
+		}
+		r := run(45*time.Minute, cmd, cmdArgs...)
 		a.J.Raw(r.Out)
 		n := countINF(dest)
 		a.J.Info(stepDrivers, "%s: %s exited %d, %d driver file(s) present", ex.File, strings.Join(full, " "), r.Code, n)

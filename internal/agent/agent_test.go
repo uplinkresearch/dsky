@@ -105,6 +105,56 @@ func TestExtractRetriesWhenNoDriverFilesAppear(t *testing.T) {
 	}
 }
 
+// A driver MSI -- Surface's -- is unpacked with msiexec's administrative
+// install and swept, rather than started as if it were a program, which
+// Windows refuses.
+func TestADriverMSIIsUnpackedWithMsiexec(t *testing.T) {
+	m := &Manifest{Version: ManifestVersion, Recipe: "surface", Steps: []string{"drivers"},
+		Drivers: Drivers{Sweep: true, Extracts: []Extract{{
+			File: "SurfaceLaptop6_Win11_22631_26.072.19202.0.msi", Dir: "surface",
+			Args: []string{"/qn", "TARGETDIR={dir}"},
+		}}}}
+	a, dir := newAgent(t, m)
+	msi := filepath.Join(dir, "SurfaceLaptop6_Win11_22631_26.072.19202.0.msi")
+	os.WriteFile(msi, []byte("msi"), 0o644)
+
+	f := &fakeRun{}
+	f.do = func(name string, args []string) (result, error) {
+		if name == "msiexec" {
+			dest := filepath.Join(dir, "Drivers", "surface", "SurfaceUpdate", "wifi")
+			os.MkdirAll(dest, 0o755)
+			os.WriteFile(filepath.Join(dest, "netwtw.inf"), []byte("inf"), 0o644)
+			return result{Code: 0}, nil
+		}
+		if name == "pnputil" {
+			return result{Code: 0, Out: "Driver package added successfully.\n"}, nil
+		}
+		return result{Code: 1, Out: "not a valid application"}, nil
+	}
+	f.install(t)
+	a.driversStep()
+
+	want := "msiexec /a " + msi + " /qn TARGETDIR=" + filepath.Join(dir, "Drivers", "surface")
+	var ran, swept bool
+	for _, c := range f.calls {
+		if c == want {
+			ran = true
+		}
+		if strings.HasPrefix(c, "pnputil") {
+			swept = true
+		}
+	}
+	if !ran {
+		t.Errorf("the MSI was not unpacked with msiexec; calls were:\n%s", strings.Join(f.calls, "\n"))
+	}
+	if !swept {
+		t.Error("the unpacked drivers were not swept")
+	}
+	if log := logText(t, dir); strings.Contains(log, "FAILED") {
+		t.Errorf("a clean unpack was logged as a failure:\n%s", log)
+	}
+}
+
 // A pack that unpacks nothing either way is reported as a failure, in plain
 // words, rather than as a success with an exit code attached.
 func TestExtractFailureIsReportedHonestly(t *testing.T) {

@@ -8,6 +8,8 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"sort"
@@ -23,12 +25,29 @@ const (
 	HP        Vendor = "hp"
 	MSCatalog Vendor = "mscatalog"
 	Framework Vendor = "framework"
+	Alienware Vendor = "alienware"
+	Surface   Vendor = "surface"
+	ASUS      Vendor = "asus"
+	NUC       Vendor = "nuc"
+	Samsung   Vendor = "samsung"
 )
+
+// VendorNames are the model feeds as a person would write them.
+var VendorNames = map[Vendor]string{
+	Dell: "Dell", HP: "HP", Lenovo: "Lenovo", Framework: "Framework", Alienware: "Alienware",
+	Surface: "Microsoft Surface", ASUS: "ASUS", NUC: "Intel NUC", Samsung: "Samsung",
+}
 
 // Pack is one downloadable driver package.
 type Pack struct {
-	Vendor    Vendor
-	Model     string   // display model name (or MS Catalog title)
+	Vendor Vendor
+	Model  string // display model name (or MS Catalog title)
+	// Component names one package of a model's drivers, for vendors that
+	// publish a model's drivers as separate packages rather than one pack.
+	Component string
+	// Gate is the model as the machine reports it, where that differs from
+	// Model, for installers that must run only on their own model.
+	Gate      string
 	SystemIDs []string // vendor machine/platform IDs
 	OS        string   // "win11" | "win10"
 	OSVersion string   // "24H2", "*" ...
@@ -62,6 +81,17 @@ func (p Pack) ID() string {
 	}
 	if p.OSVersion != "" && p.OSVersion != "*" {
 		parts = append(parts, strings.ToLower(p.OSVersion))
+	}
+	if p.Component != "" {
+		// One model has dozens of these, and their names run long: the
+		// component goes in, and a hash of the URL keeps two that truncate
+		// to the same prefix from sharing an id.
+		sum := sha256.Sum256([]byte(p.URL))
+		base := strings.Join(append(parts[:2:2], slug(p.Component)), "-")
+		if len(base) > 60 {
+			base = strings.Trim(base[:60], "-.")
+		}
+		return base + "-" + hex.EncodeToString(sum[:])[:8]
 	}
 	id := strings.Join(parts, "-")
 	if len(id) > 80 {
@@ -106,7 +136,24 @@ type Lister interface {
 }
 
 // ModelFeeds are the vendors whose catalogs are organised by computer model.
-var ModelFeeds = []Vendor{Dell, HP, Lenovo, Framework}
+var ModelFeeds = []Vendor{Dell, HP, Lenovo, Framework, Alienware, Surface, ASUS, NUC, Samsung}
+
+// IsModelFeed reports whether a vendor name is one of ModelFeeds.
+func IsModelFeed(vendor string) bool {
+	for _, v := range ModelFeeds {
+		if strings.EqualFold(string(v), strings.TrimSpace(vendor)) {
+			return true
+		}
+	}
+	return false
+}
+
+// ComponentFeed is a feed whose vendor publishes a model's drivers as many
+// separate packages rather than one pack. Search still finds models; this
+// lists every package to stage for exactly one.
+type ComponentFeed interface {
+	Components(ctx context.Context, q Query) ([]Pack, error)
+}
 
 // Exact picks the pack for exactly this model name when the search also
 // matched longer names — "OptiPlex 7010" must not become "OptiPlex 7010 Plus"
@@ -149,10 +196,20 @@ func FeedFor(vendor string, c *Cache) (Feed, error) {
 		return &hpFeed{cache: c}, nil
 	case Framework:
 		return &frameworkFeed{cache: c}, nil
+	case Alienware:
+		return &alienwareFeed{cache: c}, nil
+	case Surface:
+		return &surfaceFeed{cache: c}, nil
+	case ASUS:
+		return &asusFeed{cache: c}, nil
+	case NUC:
+		return &asusFeed{cache: c, nuc: true}, nil
+	case Samsung:
+		return &samsungFeed{cache: c}, nil
 	case MSCatalog, "catalog", "ms", "microsoft":
 		return &msCatalogFeed{}, nil
 	default:
-		return nil, fmt.Errorf("unknown driver feed %q (dell, lenovo, hp, framework, mscatalog)", vendor)
+		return nil, fmt.Errorf("unknown driver feed %q (dell, lenovo, hp, framework, alienware, surface, asus, nuc, samsung, mscatalog)", vendor)
 	}
 }
 

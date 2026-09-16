@@ -96,6 +96,11 @@ type HardwareRef struct {
 	Model  string `yaml:"model,omitempty"`
 	HWID   string `yaml:"hwid,omitempty"`
 	OS     string `yaml:"os,omitempty"`
+	// Gate is how the machine itself names the model, when that differs
+	// from Model: an installer is run only where Windows reports this. ASUS
+	// lists "Zenbook 14 OLED (UX3405MA)" and the laptop calls itself
+	// "Zenbook 14 UX3405MA_UX3405MA"; the code is what both share.
+	Gate string `yaml:"gate,omitempty"`
 }
 
 // Matches reports whether this pack serves the given machine.

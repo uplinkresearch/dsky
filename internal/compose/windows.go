@@ -402,6 +402,9 @@ func hardwarePacks(ws *workspace.Workspace, hw []recipe.HardwareSpec) ([]recipe.
 				// prompt on the wrong mainboard.
 				if install == recipe.InstallExe && src.Hardware != nil && src.Hardware.Model != "" {
 					pack.OnlyVendor, pack.OnlyModel = src.Hardware.Vendor, src.Hardware.Model
+					if src.Hardware.Gate != "" {
+						pack.OnlyModel = src.Hardware.Gate
+					}
 				}
 				out = append(out, pack)
 			}

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/uplinkresearch/dsky/internal/driverresolve"
 	"github.com/uplinkresearch/dsky/internal/drivers/catalog"
@@ -28,7 +29,7 @@ func driversSearch(ctx context.Context, env *Env, args []string) error {
 		return err
 	}
 	if fs.NArg() != 2 {
-		return fmt.Errorf("drivers search <dell|lenovo|hp|framework|mscatalog> <model or hardware-id> [--add] [--pick N]")
+		return fmt.Errorf("drivers search <%s|mscatalog> <model or hardware-id> [--add] [--pick N]", modelFeedNames())
 	}
 	lib, err := env.library()
 	if err != nil {
@@ -72,6 +73,24 @@ func driversSearch(ctx context.Context, env *Env, args []string) error {
 		ref.Model = packs[*pick-1].Model
 	}
 	prog := &stageProgress{}
+	// A vendor whose drivers are many packages has no one pack to add: the
+	// search result stands for the model, and adding it adds every package.
+	if _, ok := feed.(catalog.ComponentFeed); ok {
+		spec := []recipe.HardwareSpec{{Vendor: ref.Vendor, Model: ref.Model, OS: *osName}}
+		var res *driverresolve.Resolved
+		if *noPull {
+			res, err = driverresolve.Plan(ctx, ws, lib, spec, true, prog.report)
+		} else {
+			res, err = driverresolve.Resolve(ctx, ws, lib, spec, true, prog.report)
+		}
+		prog.finish()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("\nAdded %d driver packages for %s. A recipe picks them up via:\n", len(res.Packs), ref.Model)
+		fmt.Printf("  windows:\n    hardware:\n      - { vendor: %s, model: %q }\n", ref.Vendor, ref.Model)
+		return nil
+	}
 	id, err := driverresolve.AddPack(ctx, ws, lib, feed, packs[*pick-1], ref, !*noPull, prog.report)
 	prog.finish()
 	if err != nil {
@@ -163,7 +182,7 @@ func driversModels(ctx context.Context, env *Env, args []string) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("drivers models <dell|hp|lenovo|framework> [--os win11|win10]")
+		return fmt.Errorf("drivers models <%s> [--os win11|win10]", modelFeedNames())
 	}
 	lib, err := env.library()
 	if err != nil {
@@ -184,6 +203,15 @@ func driversModels(ctx context.Context, env *Env, args []string) error {
 	for _, m := range models {
 		fmt.Println(m)
 	}
-	fmt.Fprintf(os.Stderr, "%d %s models with %s driver packs\n", len(models), fs.Arg(0), *osName)
+	fmt.Fprintf(os.Stderr, "%d %s models listed for %s\n", len(models), fs.Arg(0), *osName)
 	return nil
+}
+
+// modelFeedNames is the vendors organised by computer model, for usage lines.
+func modelFeedNames() string {
+	names := make([]string, len(catalog.ModelFeeds))
+	for i, v := range catalog.ModelFeeds {
+		names[i] = string(v)
+	}
+	return strings.Join(names, "|")
 }
