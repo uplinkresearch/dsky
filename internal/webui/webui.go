@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -210,6 +211,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /api/install", s.auth(s.handleInstall))
 	mux.HandleFunc("POST /api/recipes/save", s.auth(s.handleSaveRecipe))
 	mux.HandleFunc("POST /api/artifacts/delete", s.auth(s.handleDeleteArtifact))
+	mux.HandleFunc("POST /api/artifacts/copy", s.auth(s.handleCopyArtifact))
 	mux.HandleFunc("GET /api/recipes/get", s.auth(s.handleRecipeGet))
 	mux.HandleFunc("POST /api/recipes/update", s.auth(s.handleRecipeUpdate))
 	mux.HandleFunc("POST /api/recipes/file", s.auth(s.handleRecipeFile))
@@ -380,6 +382,11 @@ type recipeInfo struct {
 	// Source is the OS image the recipe builds from.
 	Source string   `json:"source"`
 	Lint   []string `json:"lint,omitempty"`
+	// Payload says the agent can carry this recipe out on a machine that
+	// already runs Windows, so the page can offer that as well as media.
+	// Decided here, by the same rule the builder uses, rather than by the
+	// page guessing from the OS type.
+	Payload bool `json:"payload,omitempty"`
 }
 
 type sourceInfo struct {
@@ -406,6 +413,11 @@ type artifactInfo struct {
 	RecipeID string `json:"recipe_id"`
 	SizeMB   int64  `json:"size_mb"`
 	Created  string `json:"created"`
+	// Kind is "image" for bootable media, "payload" for a zip that installs
+	// programs onto a machine that already runs Windows. The page offers a
+	// different thing to do with each, and writing a payload to a stick is
+	// refused outright.
+	Kind string `json:"kind"`
 }
 
 // deviceInfoOf is the one place a device becomes a page row, so the devices
@@ -480,6 +492,9 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		if recipes, err := ws.Recipes(); err == nil {
 			for _, rc := range recipes {
 				info := recipeInfo{ID: rc.ID, Name: rc.Name, Type: string(rc.OS.Type), Source: rc.OS.Source}
+				if rc.Windows != nil {
+					info.Payload, _ = compose.AgentMedia(rc)
+				}
 				for _, f := range rc.Lint() {
 					info.Lint = append(info.Lint, f.String())
 				}
@@ -504,7 +519,11 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if metas, err := filepath.Glob(filepath.Join(s.Lib.ArtifactsDir(), "*.img.json")); err == nil {
+	metas, _ := filepath.Glob(filepath.Join(s.Lib.ArtifactsDir(), "*.img.json"))
+	if zips, err := filepath.Glob(filepath.Join(s.Lib.ArtifactsDir(), "*.zip.json")); err == nil {
+		metas = append(metas, zips...)
+	}
+	{
 		for _, m := range metas {
 			a, err := compose.LoadArtifact(m)
 			if err != nil {
@@ -515,7 +534,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 			}
 			resp.Artifacts = append(resp.Artifacts, artifactInfo{
 				Path: a.Path, RecipeID: a.RecipeID, SizeMB: a.Size >> 20,
-				Created: a.CreatedAt.Format("2006-01-02 15:04"),
+				Created: a.CreatedAt.Format("2006-01-02 15:04"), Kind: a.Kind,
 			})
 		}
 		sort.Slice(resp.Artifacts, func(i, j int) bool { return resp.Artifacts[i].Created > resp.Artifacts[j].Created })
@@ -528,14 +547,21 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Recipe string `json:"recipe"`
+		// Payload builds the recipe's programs and drivers for a machine
+		// that already runs Windows, instead of media that installs one.
+		Payload bool `json:"payload"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Recipe == "" {
 		httpErr(w, 400, "body must be {\"recipe\": \"<id>\"}")
 		return
 	}
-	job := s.Reg.New("build", req.Recipe)
+	title := req.Recipe
+	if req.Payload {
+		title = req.Recipe + " (payload)"
+	}
+	job := s.Reg.New("build", title)
 	go func() {
-		art, err := s.build(context.Background(), req.Recipe, progressFor(job))
+		art, err := s.build(context.Background(), req.Recipe, req.Payload, progressFor(job))
 		if err != nil {
 			job.Fail(err)
 			return
@@ -545,7 +571,7 @@ func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 202, map[string]string{"job_id": job.ID})
 }
 
-func (s *Server) build(ctx context.Context, recipeID string, progress func(string, int64, int64)) (*compose.Artifact, error) {
+func (s *Server) build(ctx context.Context, recipeID string, payload bool, progress func(string, int64, int64)) (*compose.Artifact, error) {
 	ws := s.workspace()
 	if ws == nil {
 		return nil, fmt.Errorf("no workspace is open")
@@ -559,6 +585,18 @@ func (s *Server) build(ctx context.Context, recipeID string, progress func(strin
 			return nil, fmt.Errorf("lint: %s", f.Message)
 		}
 	}
+	req := compose.Request{
+		Workspace: ws, Library: s.Lib, Recipe: rc, CLIVars: s.CLIVars,
+		Progress: progress,
+	}
+	if payload {
+		// No operating system is involved, so none is fetched: a payload
+		// that quietly downloaded five gigabytes of Windows to install
+		// Chrome would be absurd. The driver packs and installers it does
+		// need are fetched by compose as it stages them. Nor are the media
+		// tools needed, since no ISO is read and no WIM is split.
+		return compose.BuildPayload(ctx, req)
+	}
 	// A Windows recipe that will have to read its ISO needs the tools before
 	// the download, not after it.
 	if rc.Windows != nil && rc.OS.SourceMode != recipe.SourceTree {
@@ -569,10 +607,7 @@ func (s *Server) build(ctx context.Context, recipeID string, progress func(strin
 	if err := s.ensureSources(ctx, ws, rc, progress); err != nil {
 		return nil, err
 	}
-	return compose.Build(ctx, compose.Request{
-		Workspace: ws, Library: s.Lib, Recipe: rc, CLIVars: s.CLIVars,
-		Progress: progress,
-	})
+	return compose.Build(ctx, req)
 }
 
 // ensureSources downloads whatever a recipe needs that is not in the library
@@ -815,7 +850,7 @@ func (s *Server) handleFlash(w http.ResponseWriter, r *http.Request) {
 			// compression or the minimum stick size.
 			art, _, err = compose.ResolveImage(req.Artifact)
 		} else {
-			art, err = s.build(context.Background(), req.Recipe, progressFor(job))
+			art, err = s.build(context.Background(), req.Recipe, false, progressFor(job))
 		}
 		if err != nil {
 			job.Fail(err)
@@ -1153,6 +1188,110 @@ func (s *Server) defaultWorkspace() (dir string, created bool, err error) {
 // handleDeleteArtifact removes a built image and its description. Only files
 // in the library's artifacts directory: the path comes from the page, and the
 // page is not trusted to name anything else on the disk.
+// isArtifactFile reports whether a path is one of the things a build
+// produces: a disk image, or a payload zip.
+func isArtifactFile(p string) bool {
+	return strings.HasSuffix(p, ".img") || strings.HasSuffix(p, ".zip")
+}
+
+// handleCopyArtifact copies a built payload somewhere the operator chose: a
+// stick, a share, a folder on this machine. A payload is carried to a machine
+// rather than written to one, so copying it is the useful act -- and doing it
+// here means the page can offer it without asking anybody to find the library
+// on disk.
+func (s *Server) handleCopyArtifact(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string `json:"path"`
+		To   string `json:"to"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" || req.To == "" {
+		httpErr(w, 400, "body must be {\"path\": \"<artifact>\", \"to\": \"<folder>\"}")
+		return
+	}
+	dir, _ := filepath.Abs(s.Lib.ArtifactsDir())
+	src, err := filepath.Abs(req.Path)
+	if err != nil || filepath.Dir(src) != dir || !isArtifactFile(src) {
+		httpErr(w, 400, "%s is not something this library built", req.Path)
+		return
+	}
+	st, err := os.Stat(req.To)
+	if err != nil || !st.IsDir() {
+		httpErr(w, 400, "%s is not a folder on this machine", req.To)
+		return
+	}
+	dst := filepath.Join(req.To, filepath.Base(src))
+	if sameFile(src, dst) {
+		httpErr(w, 400, "that is where it already is")
+		return
+	}
+	job := s.Reg.New("copy", "copy "+filepath.Base(src))
+	go func() {
+		if err := copyArtifactFile(src, dst, progressFor(job)); err != nil {
+			job.Fail(err)
+			return
+		}
+		job.Finish("copied to " + dst)
+	}()
+	writeJSON(w, 202, map[string]string{"job_id": job.ID})
+}
+
+// sameFile reports whether two paths are the same file, so a copy onto itself
+// cannot truncate the only copy.
+func sameFile(a, b string) bool {
+	sa, err1 := os.Stat(a)
+	sb, err2 := os.Stat(b)
+	return err1 == nil && err2 == nil && os.SameFile(sa, sb)
+}
+
+// copyArtifactFile copies with progress and lands the whole file or none of
+// it: a half-copied payload on a stick is one somebody would carry to a
+// machine and run.
+func copyArtifactFile(src, dst string, progress func(string, int64, int64)) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	st, err := in.Stat()
+	if err != nil {
+		return err
+	}
+	tmp := dst + ".partial"
+	out, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	stage := "copying " + filepath.Base(src)
+	progress(stage, 0, st.Size())
+	buf := make([]byte, 4<<20)
+	var done int64
+	for {
+		n, rerr := in.Read(buf)
+		if n > 0 {
+			if _, werr := out.Write(buf[:n]); werr != nil {
+				out.Close()
+				os.Remove(tmp)
+				return werr
+			}
+			done += int64(n)
+			progress(stage, done, st.Size())
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			out.Close()
+			os.Remove(tmp)
+			return rerr
+		}
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, dst)
+}
+
 func (s *Server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path string `json:"path"`
@@ -1163,8 +1302,8 @@ func (s *Server) handleDeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	}
 	dir, _ := filepath.Abs(s.Lib.ArtifactsDir())
 	p, err := filepath.Abs(req.Path)
-	if err != nil || filepath.Dir(p) != dir || !strings.HasSuffix(p, ".img") {
-		httpErr(w, 400, "%s is not a built image in the library", req.Path)
+	if err != nil || filepath.Dir(p) != dir || !isArtifactFile(p) {
+		httpErr(w, 400, "%s is not something this library built", req.Path)
 		return
 	}
 	if s.Reg.BusyExcept("") {

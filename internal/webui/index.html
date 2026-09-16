@@ -1163,9 +1163,19 @@ function render() {
     const build = el("button", "", "Set up image");
     build.title = "Download what is missing and build the image, to write later";
     build.onclick = () => api("/api/build", { recipe: rc.id }).catch(e => showErr(e.message));
+    row.append(build);
+    // The same recipe, for a machine that already runs Windows: its programs
+    // and drivers, without an operating system. Offered only where the agent
+    // can carry the recipe out by itself, which the server decides.
+    if (rc.payload) {
+      const pay = el("button", "", "Apps only…");
+      pay.title = "Build these programs and drivers as a payload to run on a machine that already has Windows";
+      pay.onclick = () => api("/api/build", { recipe: rc.id, payload: true }).catch(e => showErr(e.message));
+      row.append(pay);
+    }
     const flash = el("button", "primary", "Write to stick…");
     flash.onclick = () => armFlash({ recipe: rc.id, label: rc.name || rc.id });
-    row.append(build, flash);
+    row.append(flash);
     rr.append(row);
     for (const l of rc.lint || [])
       rr.append(el("div", "lint" + (l.startsWith("error") ? " error" : ""), l));
@@ -1200,19 +1210,41 @@ function render() {
     const rc = state.recipes.find(r => r.id === a.recipe_id);
     const os = (state.catalog || []).find(o => o.id === a.recipe_id);
     const label = (rc && rc.name) || (os && os.name) || a.recipe_id;
+    const payload = a.kind === "payload";
     grow.append(el("div", "title", label),
-      el("div", "sub", a.size_mb + " MiB · built " + a.created));
+      el("div", "sub", (payload ? "apps only · " : "") + a.size_mb + " MiB · built " + a.created));
     grow.title = a.path;
     row.append(grow);
+    if (payload) row.append(el("span", "badge ok", "payload"));
     const del = el("button", "", "Delete");
     del.onclick = async () => {
-      if (!confirm(`Delete the built image for ${label}? It can be set up again later.`)) return;
+      const what = payload ? `the payload for ${label}` : `the built image for ${label}`;
+      if (!confirm(`Delete ${what}? It can be built again later.`)) return;
       try { await api("/api/artifacts/delete", { path: a.path }); loadState(); }
       catch (e) { showErr(e.message); }
     };
-    const flash = el("button", "primary", "Write to stick…");
-    flash.onclick = () => armFlash({ artifact: a.path, label });
-    row.append(del, flash);
+    row.append(del);
+    if (payload) {
+      // Nothing to write: it is a zip to carry to a machine. Copying it
+      // somewhere is the useful act, and the page can ask the host for a
+      // folder the way it does for a workspace.
+      const copy = el("button", "primary", "Copy to…");
+      copy.title = "Copy this payload to a folder — a stick, a share, anywhere the machine can reach";
+      copy.onclick = async () => {
+        const was = copy.textContent;
+        copy.textContent = "Choose…"; copy.disabled = true;
+        try {
+          const r = await api("/api/browse", {});
+          if (r.path) await api("/api/artifacts/copy", { path: a.path, to: r.path });
+        } catch (e) { showErr(e.message); }
+        finally { copy.textContent = was; copy.disabled = false; }
+      };
+      row.append(copy);
+    } else {
+      const flash = el("button", "primary", "Write to stick…");
+      flash.onclick = () => armFlash({ artifact: a.path, label });
+      row.append(flash);
+    }
     aa.append(row);
   }
 
