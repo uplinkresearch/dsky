@@ -292,11 +292,14 @@ func Main(args []string) error {
 	// thing it could have meant. Anywhere else it is somebody who does not
 	// know what this program is, and the usage line is the answer.
 	if len(args) == 0 || strings.HasPrefix(args[0], "--") {
-		zr, err := selfPayload()
+		carried, err := selfPayload()
 		if err != nil {
 			return err
 		}
-		if zr == nil {
+		if carried != nil {
+			defer carried.Close()
+		}
+		if carried == nil {
 			if len(args) > 0 {
 				return fmt.Errorf("unknown command %q (this agent carries no payload; try: dsky-agent apply %s)", args[0], strings.Join(args, " "))
 			}
@@ -314,12 +317,13 @@ func Main(args []string) error {
 		// directory was named -- which is how the copy on the machine is
 		// started, and how a resume after a restart carries on.
 		if dir == "" {
-			zr, err := selfPayload()
+			carried, err := selfPayload()
 			if err != nil {
 				return err
 			}
-			if zr != nil {
-				problems, err := startAttached(zr, opts)
+			if carried != nil {
+				defer carried.Close()
+				problems, err := startAttached(carried, opts)
 				if err != nil {
 					return err
 				}

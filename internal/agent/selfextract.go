@@ -27,9 +27,25 @@ import (
 // folder form, which is what a remote tool that cannot run a program with a
 // window wants.
 
+// payload is the archive inside this file, and the handle it is read through.
+// The handle has to be closed as soon as the files are out: Windows will not
+// let an open file be deleted, moved, or its drive ejected, and a payload run
+// from a stick would hold that stick for the length of the run.
+type payload struct {
+	*zip.Reader
+	f *os.File
+}
+
+func (p *payload) Close() error {
+	if p == nil || p.f == nil {
+		return nil
+	}
+	return p.f.Close()
+}
+
 // attachedPayload returns the zip appended to this executable, or nil when
 // there is none -- an ordinary agent staged beside a manifest on a stick.
-func attachedPayload(exe string) (*zip.Reader, error) {
+func attachedPayload(exe string) (*payload, error) {
 	f, err := os.Open(exe)
 	if err != nil {
 		return nil, err
@@ -51,7 +67,7 @@ func attachedPayload(exe string) (*zip.Reader, error) {
 		f.Close()
 		return nil, nil
 	}
-	return zr, nil
+	return &payload{Reader: zr, f: f}, nil
 }
 
 // manifestFrom reads the manifest out of an attached payload, which is how the
@@ -168,8 +184,8 @@ var elevateFn = runElevated
 // the machine, and hand over to the copy that is now on it. The copy is what
 // runs the payload, and what a resume task starts after a restart, because
 // this file may be on a stick that is gone by then.
-func startAttached(zr *zip.Reader, opts RunOptions) (problems int, err error) {
-	m, err := manifestFrom(zr)
+func startAttached(p *payload, opts RunOptions) (problems int, err error) {
+	m, err := manifestFrom(p.Reader)
 	if err != nil {
 		return 0, err
 	}
@@ -194,10 +210,16 @@ func startAttached(zr *zip.Reader, opts RunOptions) (problems int, err error) {
 		return 0, fmt.Errorf("could not make a place for this payload on the machine: %w", err)
 	}
 	ui := openUnpackScreen(opts)
-	err = extract(zr, home, func(done, total int64) {
+	err = extract(p.Reader, home, func(done, total int64) {
 		ui.progress(done, total)
 	})
 	ui.close()
+	// Let go of the file the moment its contents are out. What runs from here
+	// is the copy on the machine, and the run takes half an hour: holding the
+	// original open that long locks whatever it came on.
+	if cerr := p.Close(); cerr != nil && err == nil {
+		err = cerr
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -260,7 +282,7 @@ func humanBytes(n int64) string {
 
 // selfPayloadFn is how the run looks inside its own file, as a variable so
 // the tests can put a payload there without building an executable.
-var selfPayloadFn = func() (*zip.Reader, error) {
+var selfPayloadFn = func() (*payload, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -268,4 +290,4 @@ var selfPayloadFn = func() (*zip.Reader, error) {
 	return attachedPayload(exe)
 }
 
-func selfPayload() (*zip.Reader, error) { return selfPayloadFn() }
+func selfPayload() (*payload, error) { return selfPayloadFn() }

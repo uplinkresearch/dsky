@@ -43,6 +43,22 @@ func payloadFile(t *testing.T, prefix []byte, files map[string][]byte) string {
 	return path
 }
 
+// openPayload reads the payload out of a file and closes it when the test
+// ends. Left open, Windows refuses to delete the file and the test fails in
+// its own cleanup -- which is how the leak that locked a payload's stick for
+// the length of a run was found.
+func openPayload(t *testing.T, path string) *payload {
+	t.Helper()
+	p, err := attachedPayload(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p != nil {
+		t.Cleanup(func() { p.Close() })
+	}
+	return p
+}
+
 // standaloneJSON is a payload's manifest as it is carried inside the file.
 func standaloneJSON(t *testing.T) []byte {
 	t.Helper()
@@ -65,11 +81,11 @@ func TestAPayloadIsReadOutOfTheProgramItself(t *testing.T) {
 		AgentName:     []byte("agent bytes"),
 		"Drivers/x.i": []byte("inf"),
 	})
-	zr, err := attachedPayload(path)
-	if err != nil || zr == nil {
-		t.Fatalf("no payload was found in the file: %v", err)
+	zr := openPayload(t, path)
+	if zr == nil {
+		t.Fatal("no payload was found in the file")
 	}
-	m, err := manifestFrom(zr)
+	m, err := manifestFrom(zr.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +95,7 @@ func TestAPayloadIsReadOutOfTheProgramItself(t *testing.T) {
 
 	dir := t.TempDir()
 	var lastDone, total int64
-	if err := extract(zr, dir, func(done, tot int64) { lastDone, total = done, tot }); err != nil {
+	if err := extract(zr.Reader, dir, func(done, tot int64) { lastDone, total = done, tot }); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := os.ReadFile(filepath.Join(dir, "Drivers", "x.i")); err != nil || string(got) != "inf" {
@@ -97,13 +113,13 @@ func TestAnOrdinaryAgentCarriesNoPayload(t *testing.T) {
 	if err := os.WriteFile(plain, bytes.Repeat([]byte("MZ not an archive"), 100), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if zr, err := attachedPayload(plain); err != nil || zr != nil {
-		t.Errorf("a plain agent was read as carrying a payload: %v %v", zr, err)
+	if zr := openPayload(t, plain); zr != nil {
+		t.Error("a plain agent was read as carrying a payload")
 	}
 	// A zip with no manifest is somebody else's archive, not ours.
 	other := payloadFile(t, []byte("MZ"), map[string][]byte{"notes.txt": []byte("hello")})
-	if zr, err := attachedPayload(other); err != nil || zr != nil {
-		t.Errorf("an archive with no manifest was read as a payload: %v %v", zr, err)
+	if zr := openPayload(t, other); zr != nil {
+		t.Error("an archive with no manifest was read as a payload")
 	}
 }
 
@@ -117,12 +133,12 @@ func TestAPayloadCannotWriteOutsideItsFolder(t *testing.T) {
 			ManifestName: standaloneJSON(t),
 			name:         []byte("x"),
 		})
-		zr, err := attachedPayload(path)
-		if err != nil || zr == nil {
-			t.Fatalf("%s: %v", name, err)
+		zr := openPayload(t, path)
+		if zr == nil {
+			t.Fatalf("%s: no payload", name)
 		}
 		dir := t.TempDir()
-		err = extract(zr, dir, nil)
+		err := extract(zr.Reader, dir, nil)
 		if err == nil || !strings.Contains(err.Error(), "outside the folder") {
 			t.Errorf("%s was extracted rather than refused: %v", name, err)
 		}
@@ -136,12 +152,9 @@ func TestExtractingTwiceDoesNotRewriteWhatIsThere(t *testing.T) {
 		ManifestName: standaloneJSON(t),
 		AgentName:    []byte("agent bytes"),
 	})
-	zr, err := attachedPayload(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	zr := openPayload(t, path)
 	dir := t.TempDir()
-	if err := extract(zr, dir, nil); err != nil {
+	if err := extract(zr.Reader, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	agentPath := filepath.Join(dir, AgentName)
@@ -150,7 +163,7 @@ func TestExtractingTwiceDoesNotRewriteWhatIsThere(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := st.ModTime()
-	if err := extract(zr, dir, nil); err != nil {
+	if err := extract(zr.Reader, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	st, err = os.Stat(agentPath)
@@ -170,10 +183,7 @@ func TestAPayloadAsksForAnAdministratorBeforeItWritesAnything(t *testing.T) {
 		ManifestName: standaloneJSON(t),
 		AgentName:    []byte("agent bytes"),
 	})
-	zr, err := attachedPayload(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	zr := openPayload(t, path)
 	home := t.TempDir()
 	swap(t, &payloadRootFn, func() string { return home })
 	swap(t, &isElevatedFn, func() bool { return false })
@@ -213,10 +223,7 @@ func TestAPayloadUnpacksOntoTheMachineAndRunsFromThere(t *testing.T) {
 		"README.txt":      []byte("read me"),
 		"nested/deep.bin": []byte("deep"),
 	})
-	zr, err := attachedPayload(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	zr := openPayload(t, path)
 	root := t.TempDir()
 	swap(t, &payloadRootFn, func() string { return root })
 	swap(t, &isElevatedFn, func() bool { return true })
@@ -260,10 +267,7 @@ func TestAFirstBootManifestIsNotRunAsAPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := payloadFile(t, []byte("MZ"), map[string][]byte{ManifestName: b, AgentName: []byte("x")})
-	zr, err := attachedPayload(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	zr := openPayload(t, path)
 	swap(t, &isElevatedFn, func() bool { return true })
 	swap(t, &runPayloadCopyFn, func(string, []string) (int, error) {
 		t.Error("a first-boot payload was run on a machine in use")
@@ -284,11 +288,9 @@ func TestNoArgumentsRunsTheCarriedPayload(t *testing.T) {
 		ManifestName: standaloneJSON(t),
 		AgentName:    []byte("agent bytes"),
 	})
-	zr, err := attachedPayload(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	swap(t, &selfPayloadFn, func() (*zip.Reader, error) { return zr, nil })
+	// A fresh read per run, as a real process gets: the file is opened, its
+	// contents come out, and the handle is let go before the work starts.
+	swap(t, &selfPayloadFn, func() (*payload, error) { return openPayload(t, path), nil })
 	swap(t, &payloadRootFn, func() string { return t.TempDir() })
 	swap(t, &isElevatedFn, func() bool { return true })
 	ran := false
@@ -313,7 +315,7 @@ func TestNoArgumentsRunsTheCarriedPayload(t *testing.T) {
 	}
 
 	// And an agent that carries nothing still says what it is for.
-	swap(t, &selfPayloadFn, func() (*zip.Reader, error) { return nil, nil })
+	swap(t, &selfPayloadFn, func() (*payload, error) { return nil, nil })
 	if err := Main(nil); err == nil || !strings.Contains(err.Error(), "usage:") {
 		t.Errorf("a plain agent with no arguments said %v", err)
 	}

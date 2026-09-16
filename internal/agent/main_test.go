@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"archive/zip"
 	"errors"
 	"os"
 	"testing"
@@ -35,7 +34,7 @@ func TestMain(m *testing.M) {
 	exitFn = func(int) {}
 	verifySignatureFn = func(string) (string, string, error) { return "NotSigned", "", nil }
 	elevateFn = func([]string) (int, error) { return 0, errors.New("the tests do not raise UAC prompts") }
-	selfPayloadFn = func() (*zip.Reader, error) { return nil, nil }
+	selfPayloadFn = func() (*payload, error) { return nil, nil }
 	os.Exit(m.Run())
 }
 
