@@ -14,10 +14,15 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf16"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
+
+// shell32 is loaded for the one call the agent makes into the shell: telling
+// it a folder changed.
+var shell32 = windows.NewLazySystemDLL("shell32.dll")
 
 // ensureResume registers the task that starts the agent again at the next
 // sign-in. It is called at the start of every run, so an interruption at any
@@ -501,4 +506,27 @@ func payloadRoot() string {
 		base = `C:\ProgramData`
 	}
 	return filepath.Join(base, "DSKY", "payloads")
+}
+
+// refreshDesktop tells the shell that these folders changed, so the icons a
+// sweep removed stop being drawn.
+//
+// Watched in the VM: a payload removed VLC's desktop shortcut, the file was
+// gone, and the icon stayed on the desktop until something else made Explorer
+// look again. An icon that opens "item not found" is worse than the shortcut
+// would have been.
+func refreshDesktop(dirs []string) {
+	const (
+		shcneUpdateDir = 0x00001000
+		shcnfPathW     = 0x0005
+		shcnfFlush     = 0x1000
+	)
+	notify := shell32.NewProc("SHChangeNotify")
+	for _, dir := range dirs {
+		p, err := windows.UTF16PtrFromString(dir)
+		if err != nil {
+			continue
+		}
+		notify.Call(shcneUpdateDir, shcnfPathW|shcnfFlush, uintptr(unsafe.Pointer(p)), 0)
+	}
 }

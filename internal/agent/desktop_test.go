@@ -177,3 +177,24 @@ func TestARefusedInstallerIsExplained(t *testing.T) {
 		}
 	}
 }
+
+// A sweep tells the shell what it did. The file being gone is not enough: an
+// icon Explorer still draws opens "item not found", which is worse for the
+// person at the machine than the shortcut would have been.
+func TestASweepTellsTheShell(t *testing.T) {
+	dir := t.TempDir()
+	prev := desktopDirsFn
+	desktopDirsFn = func() []string { return []string{dir} }
+	t.Cleanup(func() { desktopDirsFn = prev })
+
+	if err := os.WriteFile(filepath.Join(dir, "Zoom.lnk"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := newAgent(t, &Manifest{Version: ManifestVersion})
+	a.tidyDesktop() // must not panic anywhere; on Windows it notifies the shell
+	if _, err := os.Stat(filepath.Join(dir, "Zoom.lnk")); !os.IsNotExist(err) {
+		t.Error("the shortcut is still there")
+	}
+	// Nothing removed: nothing to tell anybody about.
+	a.tidyDesktop()
+}

@@ -75,6 +75,7 @@ func (a *Agent) tidyDesktop() {
 	removed, stuck := removeShortcuts(dirs, a.ownShortcuts)
 	if removed > 0 {
 		a.J.Info(stepDesktop, "removed %d desktop shortcut(s)", removed)
+		refreshDesktop(dirs)
 	}
 	if len(stuck) > 0 {
 		a.J.Fail(stepDesktop, "could not remove %d desktop shortcut(s): %s",
@@ -107,8 +108,11 @@ func (a *Agent) keepDesktopClear(done <-chan struct{}) {
 		case <-deadline:
 			return
 		case <-t.C:
-			if removed, _ := removeShortcuts(desktopDirsFn(), a.ownShortcuts); removed > 0 {
-				a.J.Info(stepDesktop, "removed %d desktop shortcut(s) an installer added after it finished", removed)
+			if dirs := desktopDirsFn(); true {
+				if removed, _ := removeShortcuts(dirs, a.ownShortcuts); removed > 0 {
+					a.J.Info(stepDesktop, "removed %d desktop shortcut(s) an installer added after it finished", removed)
+					refreshDesktop(dirs)
+				}
 			}
 		}
 	}

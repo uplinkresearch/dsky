@@ -52,3 +52,6 @@ func isElevated() bool { return os.Geteuid() == 0 }
 
 // payloadRoot keeps payloads in the temporary directory off Windows.
 func payloadRoot() string { return filepath.Join(os.TempDir(), "dsky-payloads") }
+
+// refreshDesktop has no shell to tell anywhere but Windows.
+func refreshDesktop(dirs []string) {}
