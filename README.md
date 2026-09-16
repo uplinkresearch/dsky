@@ -250,8 +250,10 @@ that already runs Windows:
 dsky build front-desk --payload
 ```
 
-or "Apps only…" in the portal, beside "Set up image". Nothing is downloaded
-that would only matter to installing an OS; no ISO is fetched at all.
+or **Payload** on the portal's start screen, where the programs, the driver packs
+for each computer model and the bloatware setting are chosen directly — or a
+saved Windows recipe is built as one. Nothing is downloaded that would only
+matter to installing an OS; no ISO is fetched at all.
 
 Copy the `.exe` onto the machine and double-click it. It asks for an
 administrator, unpacks itself into `C:\ProgramData\DSKY\payloads`, and shows
