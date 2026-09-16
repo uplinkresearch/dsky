@@ -134,7 +134,24 @@ jobs:
           }
           $manifest | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 "$d\dsky-agent.json"
           Copy-Item C:\Windows\System32\cmd.exe "$d\pack.cmd"
-          & "$d\dsky-agent.exe" apply $d
+          # --quiet: no status window. With one, the agent ends by waiting for
+          # somebody to press Finish -- which is what it is for, on a machine
+          # a person is standing at -- and this runner has nobody, so the step
+          # sat until the job timed out. It did, silently, for a day: a job
+          # that runs out of time is cancelled rather than failed, so nothing
+          # ever said the agent had stopped finishing here.
+          #
+          # So it is given its own clock, well under the job's. An agent that
+          # does not finish is a failure with a sentence attached, not a run
+          # that quietly disappears. Its exit code is the number of problems,
+          # and this manifest is meant to produce one, so the code is not the
+          # thing being checked here -- the log below is.
+          $p = Start-Process -FilePath "$d\dsky-agent.exe" `
+            -ArgumentList 'apply', $d, '--quiet' -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(600000)) {
+            $p.Kill()
+            throw "the agent did not finish in ten minutes"
+          }
           $log = Get-Content "$d\firstboot.log" -Raw
           Write-Output $log
           foreach ($want in @('unpacked no driver files', 'no driver files to install', 'first-boot agent done')) {
