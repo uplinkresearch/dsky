@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/uplinkresearch/dsky/internal/agent"
 	"github.com/uplinkresearch/dsky/internal/agentbin"
 )
 
@@ -172,11 +174,11 @@ func TestAPayloadIsCopiedNotFlashed(t *testing.T) {
 	}
 }
 
-// The Install screen builds a payload straight from the options on it, with no
+// The Payload screen builds a payload straight from the options on it, with no
 // recipe and no workspace -- and still without fetching an operating system.
 // This is the path for a machine that already has Windows and only needs the
 // programs.
-func TestTheInstallScreenBuildsAPayloadWithoutAnOS(t *testing.T) {
+func TestThePayloadScreenBuildsAPayloadWithoutAnOS(t *testing.T) {
 	if !agentbin.Available(agentbin.AMD64) {
 		t.Skip("this build has no agent embedded (`./build-agent.sh`)")
 	}
@@ -211,5 +213,44 @@ func TestTheInstallScreenRefusesANonWindowsPayload(t *testing.T) {
 	w := post(t, s.handler(), "/api/install", `{"os_id":"ubuntu-26.04-desktop","mode":"payload"}`)
 	if w.Code != 400 || !strings.Contains(w.Body.String(), "already runs Windows") {
 		t.Errorf("got %d %s", w.Code, w.Body)
+	}
+}
+
+// Payloads built from the Payload screen have no recipe name, so the list says
+// what each one carries instead -- read from the manifest inside it, with
+// program names where DSKY knows them.
+func TestAPayloadSaysWhatItCarries(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "windows-11-payload-abc.exe")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Write([]byte("MZ stands in for the agent"))
+	zw := zip.NewWriter(f)
+	zw.SetOffset(int64(len("MZ stands in for the agent")))
+	w, err := zw.Create(agent.ManifestName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	json.NewEncoder(w).Encode(agent.Manifest{
+		Version: agent.ManifestVersion, Recipe: "windows-11", Mode: agent.ModeStandalone, Build: "abc",
+		Apps: &agent.Apps{
+			Winget:     []string{"VideoLAN.VLC", "Some.Unknown"},
+			Installers: []agent.Installer{{File: "ScreenConnect.ClientSetup.msi", MSI: true}},
+		},
+		Drivers: agent.Drivers{Cabs: []agent.Cab{{File: "a.cab"}, {File: "b.cab"}}},
+		Debloat: &agent.Debloat{Preset: "standard"},
+	})
+	zw.Close()
+	f.Close()
+
+	got := payloadContents(path)
+	want := "VLC media player, Some.Unknown, ScreenConnect.ClientSetup.msi, 2 driver packs, removes bloatware (standard)"
+	if got != want {
+		t.Errorf("contents read as\n  %q\nwant\n  %q", got, want)
+	}
+	if payloadContents(filepath.Join(dir, "missing.exe")) != "" {
+		t.Error("an unreadable payload claimed contents")
 	}
 }

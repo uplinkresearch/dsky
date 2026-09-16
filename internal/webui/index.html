@@ -123,9 +123,15 @@
     font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .row .title.link { cursor: pointer; }
   .row .title.link:hover { text-decoration: underline; }
-  dialog select, dialog .opt input { width: 100%; background: var(--bg); color: var(--text);
+  dialog select, dialog .opt input,
+  #payloadOpts select, #payloadOpts .opt input { width: 100%; background: var(--bg); color: var(--text);
     border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font: inherit; font-size: 13px; }
   .opt { margin: 10px 0; }
+  /* The Payload screen's form sits in a section rather than a dialog, so it
+     takes the dialog's text sizes and the sections' side padding itself. */
+  #payloadOpts { padding: 2px 14px 0; font-size: 13px; }
+  #payloadOpts .sub { color: var(--dim); font-size: 12px; }
+  #payloadSec .picknote { padding: 10px 14px 0; }
   .opt > label { display: block; color: var(--dim); font-size: 12px; margin-bottom: 4px; }
   .updbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
@@ -171,7 +177,7 @@
      somebody turned up to do; the panels behind it are the ones that job
      needs. */
   #home { grid-column: 1 / -1; background: none; border: none; }
-  .doors { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  .doors { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
     gap: 14px; }
   .door { display: flex; flex-direction: column; align-items: flex-start; gap: 7px;
     text-align: left; padding: 20px; border-radius: 10px;
@@ -196,13 +202,14 @@
   main > .col > section { display: none; }
   body[data-door="install"]  section[data-door~="install"],
   body[data-door="clone"]    section[data-door~="clone"],
+  body[data-door="payload"]  section[data-door~="payload"],
   body[data-door="disks"]    section[data-door~="disks"],
   body[data-door="advanced"] section[data-door~="advanced"] { display: block; }
   body:not([data-door="home"]) #home { display: none; }
   /* With one door open the second column is usually empty, so the grid
      collapses to a single readable column rather than leaving a gap. */
   body[data-door="install"] main, body[data-door="advanced"] main,
-  body[data-door="disks"] main {
+  body[data-door="disks"] main, body[data-door="payload"] main {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); }
   body[data-door="home"] main, body[data-door="clone"] main {
     grid-template-columns: minmax(0, 1fr); max-width: 900px; }
@@ -328,14 +335,21 @@
   <section id="jobsSec" hidden><h2>Activity<span class="count" id="jobsCount"></span><span class="spacer"></span><button id="jobsClear" onclick="clearFinishedJobs()" hidden>Clear finished</button></h2><div class="rows" id="jobs"></div></section>
 </div>
 <main>
-  <!-- The start screen. Three things this tool does, in the words someone
-       would use for the job they turned up with. -->
+  <!-- The start screen. The things this tool does, in the words someone
+       would use for the job they turned up with — one door each, so the job
+       decides the screen and no screen offers another screen's job. -->
   <section id="home">
     <div class="doors">
       <button class="door" onclick="setDoor('install')">
         <span class="door-k">Install an operating system</span>
         <span class="door-d">Pick an OS, choose what gets installed with it, and write a bootable
           drive. Downloads and verifies the official media for you.</span>
+        <span class="door-go">Start ›</span>
+      </button>
+      <button class="door" onclick="setDoor('payload')">
+        <span class="door-k">Payload</span>
+        <span class="door-d">Put programs and drivers on a machine that already runs Windows.
+          Builds one file to run there — nothing is erased, no operating system is installed.</span>
         <span class="door-go">Start ›</span>
       </button>
       <button class="door" onclick="setDoor('clone')">
@@ -392,12 +406,19 @@
     </section>
     <section data-door="install advanced" id="downloadsSec"><h2>Downloaded <span class="spacer"></span><span class="sub" id="downloadsTotal"></span></h2><div class="rows" id="downloads"></div></section>
     <section data-door="install advanced" id="recipesSec"><h2>Recipes <span class="spacer"></span><span class="sub" id="recipesWhere"></span></h2><div class="rows" id="recipes"></div></section>
+    <section data-door="payload" id="payloadSec"><h2>Build a payload</h2>
+      <div class="picknote">For a machine that already runs Windows. Choose what goes on it; DSKY builds one file you double-click there.</div>
+      <div id="payloadOpts"><div class="empty">Loading…</div></div>
+      <div class="pick"><span class="spacer"></span><button class="primary" id="payloadGo">Build payload</button></div>
+    </section>
+    <section data-door="payload" id="payloadRecipesSec"><h2>From a recipe <span class="spacer"></span><span class="sub">the same programs and drivers, without the OS</span></h2><div class="rows" id="payloadRecipes"></div></section>
     <section data-door="install advanced" id="imagesSec"><h2>Built images <span class="spacer"></span><span class="sub">ready to write, no rebuilding</span></h2><div class="rows" id="artifacts"></div></section>
   </div>
   <div class="col" style="display:flex;flex-direction:column;gap:16px">
     <section data-door="install advanced" id="devicesSec"><h2>Devices <span class="spacer"></span><button onclick="loadState()">Rescan</button></h2><div class="rows" id="devices"></div></section>
     <section data-door="disks advanced" id="disksSec"><h2>Disks <span class="spacer"></span><button onclick="loadDisks()">Refresh</button></h2><div class="rows" id="disks"><div class="empty">Reading disks…</div></div></section>
-    <section data-door="install" id="myappsSec"><h2>Your installers <span class="spacer"></span><button onclick="addInstaller()" title="Add a .msi or .exe from this machine">Add installer…</button></h2>
+    <section data-door="payload advanced" id="payloadsSec"><h2>Built payloads <span class="spacer"></span><span class="sub">copy one to the machine and run it</span></h2><div class="rows" id="payloads"></div></section>
+    <section data-door="install payload" id="myappsSec"><h2>Your installers <span class="spacer"></span><button onclick="addInstaller()" title="Add a .msi or .exe from this machine">Add installer…</button></h2>
       <div class="rows" id="myapps"></div>
     </section>
     <section data-door="advanced" id="sourcesSec"><h2>Sources</h2><div class="rows" id="sources"></div></section>
@@ -487,7 +508,6 @@
       <div class="laterbtns">
         <button id="instDownload" title="Save the OS download in the library, nothing else">Download only</button>
         <button id="instSetup" title="Download and build the installer with these options, to write to a stick later">Set up image</button>
-        <button id="instPayload" title="Build just these programs and drivers, to run on a machine that already has Windows — no operating system is downloaded">Apps only…</button>
         <button id="instSave" title="Keep these options as a named recipe, to set up or install again later">Save as recipe…</button>
       </div>
       <div class="sub" id="instLaterNote">No stick needed for these.</div>
@@ -536,7 +556,7 @@ async function loadMyApps() {
   box.replaceChildren();
   if (!apps.length) {
     box.append(el("div", "empty",
-      "None yet. Add a .msi or .exe and it rides on every stick you build — no network needed at first boot."));
+      "None yet. Add a .msi or .exe and it rides on every stick and payload you build — no network needed to install it."));
     return;
   }
   for (const a of apps) {
@@ -806,6 +826,91 @@ function el(tag, cls, text) {
   return e;
 }
 
+// artifactRow is one built thing: an image to write to a stick, or a payload
+// to copy to wherever the machine can reach it.
+function artifactRow(a) {
+  const row = el("div", "row");
+  const grow = el("div", "grow");
+  const rc = state.recipes.find(r => r.id === a.recipe_id);
+  const os = (state.catalog || []).find(o => o.id === a.recipe_id);
+  const payload = a.kind === "payload";
+  // A payload built from the Payload screen has no recipe of its own -- its
+  // id is the OS entry it borrowed defaults from, which is not what it is --
+  // so what it carries is its name. One built from a recipe keeps the
+  // recipe's name, with what it carries underneath.
+  const fromForm = payload && !rc;
+  const label = (rc && rc.name) || (fromForm ? (a.contents || "Programs and drivers") : (os && os.name)) || a.recipe_id;
+  const sub = (payload && rc && a.contents ? a.contents + " · " : "") + a.size_mb + " MiB · built " + a.created;
+  grow.append(el("div", "title", label), el("div", "sub", sub));
+  grow.title = a.path;
+  row.append(grow);
+  const del = el("button", "", "Delete");
+  del.onclick = async () => {
+    const what = payload ? `the payload ${label}` : `the built image for ${label}`;
+    if (!confirm(`Delete ${what}? It can be built again later.`)) return;
+    try { await api("/api/artifacts/delete", { path: a.path }); loadState(); }
+    catch (e) { showErr(e.message); }
+  };
+  row.append(del);
+  if (payload) {
+    // Nothing to write: it is a program to carry to a machine. Copying it
+    // somewhere is the useful act, and the page can ask the host for a
+    // folder the way it does for a workspace.
+    const copy = el("button", "primary", "Copy to…");
+    copy.title = "Copy this payload to a folder — a stick, a share, anywhere the machine can reach";
+    copy.onclick = async () => {
+      const was = copy.textContent;
+      copy.textContent = "Choose…"; copy.disabled = true;
+      try {
+        const r = await api("/api/browse", {});
+        if (r.path) await api("/api/artifacts/copy", { path: a.path, to: r.path });
+      } catch (e) { showErr(e.message); }
+      finally { copy.textContent = was; copy.disabled = false; }
+    };
+    row.append(copy);
+  } else {
+    const flash = el("button", "primary", "Write to stick…");
+    flash.onclick = () => armFlash({ artifact: a.path, label });
+    row.append(flash);
+  }
+  return row;
+}
+
+// ── Payload ───────────────────────────────────────────────────────────────
+// Programs and drivers for a machine that already runs Windows. Only what a
+// payload can do is on this form: no edition, no account setup, no domain
+// join, no stick -- those are about installing Windows, and they live on the
+// Install screen. Drivers are chosen by model rather than detected, because
+// the computer this page runs on is the technician's, not the customer's.
+//
+// Built once, the first time the catalog is there, and not again: the state
+// reloads whenever anything happens, and rebuilding the form each time would
+// throw away what somebody was halfway through choosing.
+let payloadForm = null;
+function renderPayloadForm() {
+  if (payloadForm) return;
+  const cat = state.catalog || [];
+  const win = cat.find(o => o.id === "windows-11") || cat.find(o => o.family === "windows");
+  if (!win) return;
+  const ap = appsOpt("payload");
+  const df = modelPickerOpt(win, "payload");
+  df.wrap.querySelector("label").textContent = "Drivers for these computer models";
+  const db = selectOpt("Remove bloatware", [["off", "Keep everything"], ["standard", "Standard"], ["aggressive", "Aggressive"]]);
+  $("payloadOpts").replaceChildren(ap.wrap, df.wrap, db.wrap);
+  payloadForm = { win, ap, df, db };
+  $("payloadGo").onclick = () => {
+    const body = { os_id: win.id, mode: "payload", drivers: false,
+      apps: ap.get(), drivers_for: df.get(), debloat: db.get() };
+    if (!body.apps.length && !body.drivers_for.length && body.debloat === "off") {
+      showErr("Choose at least one program, a computer model, or bloatware removal — otherwise there is nothing for the payload to do.");
+      return;
+    }
+    api("/api/install", body)
+      .then(() => showOk("Building the payload. It shows up under Built payloads."))
+      .catch(e => showErr(e.message));
+  };
+}
+
 // ── Doors ─────────────────────────────────────────────────────────────────
 // Which door is open is UI state and nothing else: no panel is unmounted, no
 // request is cancelled, and a job started behind one door keeps running and
@@ -813,6 +918,7 @@ function el(tag, cls, text) {
 const DOORS = {
   home:     { name: "" },
   install:  { name: "Install an operating system" },
+  payload:  { name: "Payload" },
   clone:    { name: "Copy a drive" },
   disks:    { name: "Disk utility" },
   advanced: { name: "Workspaces and sources" },
@@ -1165,15 +1271,6 @@ function render() {
     build.title = "Download what is missing and build the image, to write later";
     build.onclick = () => api("/api/build", { recipe: rc.id }).catch(e => showErr(e.message));
     row.append(build);
-    // The same recipe, for a machine that already runs Windows: its programs
-    // and drivers, without an operating system. Offered only where the agent
-    // can carry the recipe out by itself, which the server decides.
-    if (rc.payload) {
-      const pay = el("button", "", "Apps only…");
-      pay.title = "Build these programs and drivers as a payload to run on a machine that already has Windows";
-      pay.onclick = () => api("/api/build", { recipe: rc.id, payload: true }).catch(e => showErr(e.message));
-      row.append(pay);
-    }
     const flash = el("button", "primary", "Write to stick…");
     flash.onclick = () => armFlash({ recipe: rc.id, label: rc.name || rc.id });
     row.append(flash);
@@ -1202,52 +1299,43 @@ function render() {
     dd.append(row);
   }
 
+  // Images and payloads are different things done with different verbs --
+  // one is written to a stick, the other carried to a machine -- so each is
+  // listed on the screen for its own job.
+  const images = state.artifacts.filter(a => a.kind !== "payload");
+  const payloads = state.artifacts.filter(a => a.kind === "payload");
   const aa = $("artifacts"); aa.replaceChildren();
-  if (!state.artifacts.length)
+  if (!images.length)
     aa.append(el("div", "empty", "Images you set up show up here, to write to any number of sticks without building them again."));
-  for (const a of state.artifacts) {
+  for (const a of images) aa.append(artifactRow(a));
+  const pp = $("payloads"); pp.replaceChildren();
+  if (!payloads.length)
+    pp.append(el("div", "empty", "Payloads you build show up here. Copy one to a stick or a share, then double-click it on the machine."));
+  for (const a of payloads) pp.append(artifactRow(a));
+
+  // Recipes saved for installing Windows carry the programs and drivers a
+  // payload needs; the server says which ones the agent can carry out alone.
+  const pr = $("payloadRecipes"); pr.replaceChildren();
+  const payloadable = state.recipes.filter(rc => rc.payload);
+  if (!payloadable.length)
+    pr.append(el("div", "empty", "A Windows recipe saved on the Install screen can be built as a payload here too."));
+  for (const rc of payloadable) {
     const row = el("div", "row");
     const grow = el("div", "grow");
-    const rc = state.recipes.find(r => r.id === a.recipe_id);
-    const os = (state.catalog || []).find(o => o.id === a.recipe_id);
-    const label = (rc && rc.name) || (os && os.name) || a.recipe_id;
-    const payload = a.kind === "payload";
-    grow.append(el("div", "title", label),
-      el("div", "sub", (payload ? "apps only · " : "") + a.size_mb + " MiB · built " + a.created));
-    grow.title = a.path;
+    const title = el("div", "title link", rc.name || rc.id);
+    title.title = "Open to see what's in it";
+    title.onclick = () => openRecipe(rc.id);
+    grow.append(title, el("div", "sub", rc.id));
     row.append(grow);
-    if (payload) row.append(el("span", "badge ok", "payload"));
-    const del = el("button", "", "Delete");
-    del.onclick = async () => {
-      const what = payload ? `the payload for ${label}` : `the built image for ${label}`;
-      if (!confirm(`Delete ${what}? It can be built again later.`)) return;
-      try { await api("/api/artifacts/delete", { path: a.path }); loadState(); }
-      catch (e) { showErr(e.message); }
-    };
-    row.append(del);
-    if (payload) {
-      // Nothing to write: it is a program to carry to a machine. Copying it
-      // somewhere is the useful act, and the page can ask the host for a
-      // folder the way it does for a workspace.
-      const copy = el("button", "primary", "Copy to…");
-      copy.title = "Copy this payload to a folder — a stick, a share, anywhere the machine can reach";
-      copy.onclick = async () => {
-        const was = copy.textContent;
-        copy.textContent = "Choose…"; copy.disabled = true;
-        try {
-          const r = await api("/api/browse", {});
-          if (r.path) await api("/api/artifacts/copy", { path: a.path, to: r.path });
-        } catch (e) { showErr(e.message); }
-        finally { copy.textContent = was; copy.disabled = false; }
-      };
-      row.append(copy);
-    } else {
-      const flash = el("button", "primary", "Write to stick…");
-      flash.onclick = () => armFlash({ artifact: a.path, label });
-      row.append(flash);
-    }
-    aa.append(row);
+    const build = el("button", "primary", "Build payload");
+    build.title = "Build this recipe's programs and drivers, without the operating system";
+    build.onclick = () => api("/api/build", { recipe: rc.id, payload: true })
+      .then(() => showOk("Building the payload for " + (rc.name || rc.id) + ". It shows up under Built payloads."))
+      .catch(e => showErr(e.message));
+    row.append(build);
+    pr.append(row);
   }
+  renderPayloadForm();
 
   const ss = $("sources"); ss.replaceChildren();
   if (!state.sources.length) ss.append(el("div", "empty", "No manifests in this workspace."));
@@ -1395,7 +1483,7 @@ function textOpt(label, placeholder, hint) {
 // cached. Several models can be picked; one stick carries packs for all of
 // them, and each machine installs only what matches it.
 const modelLists = {};
-function modelPickerOpt(os) {
+function modelPickerOpt(os, carrier = "stick") {
   const wrap = el("div", "opt modelpick");
   wrap.append(el("label", null, "Also stage drivers for other computer models"));
   const chips = el("div", "chips");
@@ -1405,7 +1493,7 @@ function modelPickerOpt(os) {
   const results = el("div", "modelresults"); results.hidden = true;
   results.setAttribute("role", "listbox");
   const note = el("div", "sub"); note.style.color = "var(--dim)"; note.style.marginTop = "4px";
-  note.textContent = "For imaging machines you are not sitting at. One stick can carry packs for several models.";
+  note.textContent = `For machines you are not sitting at. One ${carrier} can carry packs for several models.`;
   wrap.append(chips, box, results, note);
 
   const picked = new Map(); // spec -> label
@@ -1497,7 +1585,7 @@ function modelPickerOpt(os) {
             all.push({ spec: v.vendor + ":" + model, model: shownName, vendorName: v.name, hay, words, flat: words.join(" ") });
           }
       }
-      note.textContent = `${all.length} models with ${r.os === "win10" ? "Windows 10" : "Windows 11"} driver packs. One stick can carry packs for several.` +
+      note.textContent = `${all.length} models with ${r.os === "win10" ? "Windows 10" : "Windows 11"} driver packs. One ${carrier} can carry packs for several.` +
         (missing.length ? ` ${missing.join(" and ")} could not be loaded (${r.vendors.find(v => v.error).error}); type vendor:model to add one anyway.` : "");
       draw();
     } catch (e) {
@@ -1555,6 +1643,9 @@ function driverOpt() {
 const WINGET_ID = /^[A-Za-z0-9][A-Za-z0-9+_-]*(\.[A-Za-z0-9+_-]+)+$/;
 function appsOpt(target = "windows") {
   const ubuntu = target === "ubuntu";
+  // A payload runs on a machine that is already in use, whenever somebody
+  // starts it -- not at a first boot, and not off a stick.
+  const payload = target === "payload";
   const wrap = el("div", "opt modelpick progpick");
   wrap.append(el("label", null, "Install programs"));
   const sets = el("div", "sets");
@@ -1596,8 +1687,11 @@ function appsOpt(target = "windows") {
         (installOS && installOS.category === "server"
           ? "The installer asks only for the account."
           : "Ubuntu shows its review screen and waits for Install before erasing anything.")
-      : "Programs from the list install at first boot with winget, so the machine needs to be online then." +
-        (anyMine ? " Your own installers are carried on the stick and need no network." : ""));
+      : payload
+        ? "Programs from the list install with winget when the payload runs, so the machine needs to be online then." +
+          (anyMine ? " Your own installers are carried inside the payload and need no network." : "")
+        : "Programs from the list install at first boot with winget, so the machine needs to be online then." +
+          (anyMine ? " Your own installers are carried on the stick and need no network." : ""));
   };
 
   const drawChips = () => {
@@ -1978,11 +2072,6 @@ function openInstall(os, edit) {
   // downloaded, so "set up" would just be the download under another name.
   $("instSetup").hidden = !windows && !os.programs;
   $("instSetup").onclick = () => run("setup");
-  // Programs and drivers for a machine that already runs Windows. Windows
-  // only, and never while editing a recipe, where the buttons are about the
-  // recipe rather than about doing something now.
-  $("instPayload").hidden = !windows || !!editing;
-  $("instPayload").onclick = () => run("payload");
   $("instSave").onclick = async () => {
     const opts = getOpts();
     const suggestion = os.name + (windows && opts.edition ? " " + opts.edition : "");
@@ -2002,7 +2091,6 @@ function openInstall(os, edit) {
   if (editing) {
     dl.hidden = true;
     $("instSetup").hidden = true;
-    $("instPayload").hidden = true;
     $("instSave").textContent = "Save changes";
     $("instLaterNote").textContent = "Saves over " + (editing.name || editing.id) + ". Images already built from it stay as they were until set up again.";
     $("instSave").onclick = async () => {
@@ -2591,7 +2679,7 @@ const GUIDES = {
     {
       door: "home", target: () => document.querySelector("#home .doors"),
       title: "Start here",
-      text: "DSKY does three jobs: install an operating system, copy a drive, or look at a disk. Pick the one you came to do.",
+      text: "DSKY does four jobs: install an operating system, put programs on a machine that already runs Windows, copy a drive, or look at a disk. Pick the one you came to do.",
     },
     {
       door: "home", target: onScreen("jobsSec"), example: "activity",
@@ -2606,7 +2694,7 @@ const GUIDES = {
     {
       door: "home", target: onScreen("guideBtn"),
       title: "A guide on every screen",
-      text: "Install, Copy a drive and Disk utility each have a short guide of their own, shown the first time you open them. This ? opens the guide for whichever screen you're on.",
+      text: "Each screen has a short guide of its own, shown the first time you open it. This ? opens the guide for whichever screen you're on.",
     },
   ],
   install: [
@@ -2634,6 +2722,23 @@ const GUIDES = {
       door: "install", target: onScreen("myappsSec"),
       title: "Your installers",
       text: "Add your own .msi or .exe files, such as an RMM agent, to install along with Windows. They go on the stick, so the machine doesn't need a network connection for them.",
+    },
+  ],
+  payload: [
+    {
+      door: "payload", target: onScreen("payloadSec"),
+      title: "Build a payload",
+      text: "For a machine that already runs Windows: pick programs, drivers for its model, and whether to remove bloatware. Nothing is erased and no operating system is installed.",
+    },
+    {
+      door: "payload", target: onScreen("payloadsSec"),
+      title: "Built payloads",
+      text: "Each payload is one file. Copy it to a stick or a share, double-click it on the machine and approve the prompt. It shows what it's doing, and leaves the owner's own desktop shortcuts alone.",
+    },
+    {
+      door: "payload", target: onScreen("payloadRecipesSec"),
+      title: "From a recipe",
+      text: "A Windows recipe from the Install screen can be built as a payload too, with the same programs and drivers and no operating system.",
     },
   ],
   clone: [

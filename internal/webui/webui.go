@@ -4,6 +4,7 @@
 package webui
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/subtle"
 	_ "embed"
@@ -23,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/uplinkresearch/dsky/internal/agent"
 	"github.com/uplinkresearch/dsky/internal/appcatalog"
 	"github.com/uplinkresearch/dsky/internal/appconfig"
 	"github.com/uplinkresearch/dsky/internal/buildinfo"
@@ -418,6 +420,62 @@ type artifactInfo struct {
 	// different thing to do with each, and writing a payload to a stick is
 	// refused outright.
 	Kind string `json:"kind"`
+	// Contents says what a payload puts on a machine, read from the manifest
+	// inside it: two payloads built from the Payload screen have no recipe
+	// name to tell them apart, and "10 MiB, built at 19:58" is not a way to
+	// tell which one has the programs a customer asked for.
+	Contents string `json:"contents,omitempty"`
+}
+
+// payloadContents summarises a payload from the manifest it carries, in the
+// words the Payload screen uses: program names where DSKY knows them, then the
+// operator's own installers, then drivers and bloatware. Empty when the file
+// cannot be read -- the row still shows, it just says less.
+func payloadContents(path string) string {
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		return ""
+	}
+	defer zr.Close()
+	f, err := zr.Open(agent.ManifestName)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	var m agent.Manifest
+	if err := json.NewDecoder(f).Decode(&m); err != nil {
+		return ""
+	}
+	names := map[string]string{}
+	for _, a := range appcatalog.Catalog() {
+		if a.Winget != "" {
+			names[strings.ToLower(a.Winget)] = a.Name
+		}
+	}
+	var parts []string
+	if m.Apps != nil {
+		for _, id := range m.Apps.Winget {
+			if n, ok := names[strings.ToLower(id)]; ok {
+				parts = append(parts, n)
+			} else {
+				parts = append(parts, id)
+			}
+		}
+		for _, in := range m.Apps.Installers {
+			parts = append(parts, in.File)
+		}
+	}
+	if packs := len(m.Drivers.Cabs) + len(m.Drivers.Extracts) + len(m.Drivers.Exes); packs > 0 {
+		if packs == 1 {
+			parts = append(parts, "1 driver pack")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d driver packs", packs))
+		}
+	}
+	if m.Debloat != nil {
+		parts = append(parts, "removes bloatware ("+m.Debloat.Preset+")")
+	}
+	return strings.Join(parts, ", ")
 }
 
 // deviceInfoOf is the one place a device becomes a page row, so the devices
@@ -537,10 +595,14 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 			if _, err := os.Stat(a.Path); err != nil {
 				continue
 			}
-			resp.Artifacts = append(resp.Artifacts, artifactInfo{
+			info := artifactInfo{
 				Path: a.Path, RecipeID: a.RecipeID, SizeMB: a.Size >> 20,
 				Created: a.CreatedAt.Format("2006-01-02 15:04"), Kind: a.Kind,
-			})
+			}
+			if a.Kind == "payload" {
+				info.Contents = payloadContents(a.Path)
+			}
+			resp.Artifacts = append(resp.Artifacts, info)
 		}
 		sort.Slice(resp.Artifacts, func(i, j int) bool { return resp.Artifacts[i].Created > resp.Artifacts[j].Created })
 	}
@@ -1042,7 +1104,7 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 	case "setup":
 		job = s.Reg.New("setup", "set up "+e.Name)
 	case "payload":
-		job = s.Reg.New("build", "apps only for "+e.Name)
+		job = s.Reg.New("build", "payload: programs and drivers")
 	default:
 		job = s.Reg.New("download", "download "+e.Name)
 	}
@@ -1071,7 +1133,7 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 				job.Fail(err)
 				return
 			}
-			job.Finish("the payload is in Built images — copy it to the machine and run it there: " + filepath.Base(art.Path))
+			job.Finish("the payload is in Built payloads — copy it to the machine and run it there: " + filepath.Base(art.Path))
 		case "setup":
 			art, err := oscatalog.BuildQuick(context.Background(), s.Lib, e, opts, progress)
 			if err != nil {
