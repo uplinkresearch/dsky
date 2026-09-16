@@ -445,3 +445,14 @@ func TestAPayloadBackupIsSavedUnderItsName(t *testing.T) {
 		}
 	}
 }
+
+// Writing a payload's file raw to a stick is refused: it is a program, not a
+// disk image, and the stick would come out holding nothing Windows can read.
+func TestAPayloadIsNeverWrittenRawToAStick(t *testing.T) {
+	s := testServer(t)
+	path := fakePayload(t, s.Lib.ArtifactsDir(), agent.Manifest{Version: agent.ManifestVersion, Recipe: "windows-11", Mode: agent.ModeStandalone, Build: "raw"})
+	w := postObj(t, s.handler(), "/api/flash", map[string]string{"artifact": path, "device_id": "/dev/sdz", "confirm": "1"})
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "is a payload, not a disk image") {
+		t.Errorf("raw-writing a payload returned %d %s", w.Code, w.Body)
+	}
+}

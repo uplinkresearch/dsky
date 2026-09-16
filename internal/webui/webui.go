@@ -955,6 +955,16 @@ func (s *Server) handleFlash(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, "exactly one of recipe or artifact is required")
 		return
 	}
+	// A payload is a program, not a disk image. Written raw it would wipe the
+	// stick and leave nothing Windows can read. The CLI has always refused it;
+	// the page could still reach it by choosing a payload's file as "your own
+	// ISO". Refused before any device is looked at.
+	if req.Artifact != "" {
+		if a, err := compose.LoadArtifact(compose.MetaPath(req.Artifact)); err == nil && a.Kind == "payload" {
+			httpErr(w, 400, "%s is a payload, not a disk image — use Write to USB… on the Payload screen, which puts it on the drive as a file", filepath.Base(req.Artifact))
+			return
+		}
+	}
 
 	// Re-enumerate NOW; never trust a stale listing for a destructive op.
 	dev, err := s.findDevice(r.Context(), req.DeviceID)
