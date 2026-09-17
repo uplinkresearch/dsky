@@ -21,9 +21,18 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 $out = [ordered]@{}
 $problems = @()
+$notes = @()
+$timings = [ordered]@{}
 
+# A section that cannot be read at all becomes a problem, which the manifest
+# reports against that part of the machine. Anything smaller -- one user hive
+# out of five -- is a note: it belongs in the manifest, but losing the whole
+# section over it would be worse than the gap itself.
 function Try-Read($what, $block) {
-  try { & $block } catch { $script:problems += ("{0}: {1}" -f $what, $_.Exception.Message); $null }
+  $started = Get-Date
+  try { & $block }
+  catch { $script:problems += ("{0}: {1}" -f $what, $_.Exception.Message); $null }
+  finally { $script:timings[$what] = [math]::Round(((Get-Date) - $started).TotalSeconds, 1) }
 }
 
 # ---- Windows itself ---------------------------------------------------------
@@ -72,11 +81,13 @@ $out.identity = Try-Read "identity" {
   $netbios = ""
   if ($cs.PartOfDomain) {
     $fqdn = [string]$cs.Domain
-    $nt = @(Get-WmiObject Win32_NTDomain | Where-Object { $_.DnsForestName -or $_.DomainName })
-    foreach ($d in $nt) {
-      if ($d.DomainName -and $fqdn -and ($fqdn -like ("{0}*" -f $d.DomainName))) { $netbios = [string]$d.DomainName }
-    }
-    if (-not $netbios -and $fqdn) { $netbios = ($fqdn -split "\.")[0].ToUpper() }
+    # The NetBIOS name is the first label of the DNS name, upper case. Asking
+    # Windows properly, through Win32_NTDomain, took 15.6 of the first real
+    # scan's 24 seconds -- it goes out to a domain controller for information
+    # nobody here needs that badly. A domain whose NetBIOS name is not its
+    # first label (a rename, or something very old) is possible, and the
+    # review is where a person sees the name and can correct it.
+    if ($fqdn) { $netbios = ($fqdn -split "\.")[0].ToUpper() }
   }
   # The OU the computer object is in, from the Group Policy state key: no RSAT
   # and no domain query needed, and it is what djoin /machineou wants.
@@ -92,8 +103,14 @@ $out.identity = Try-Read "identity" {
   # Group memberships, if the tools happen to be here. Not an error when they
   # are not: a workstation rarely has RSAT, and the review can set the OU and
   # groups by hand.
+  # Looking for the module's folder rather than asking PowerShell about it:
+  # Get-Module -ListAvailable walks every module path and took fifteen of the
+  # first real scan's twenty-four seconds on a workstation that does not have
+  # RSAT at all -- which is most of them.
   $groups = @()
   try {
+    $rsat = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\Modules\ActiveDirectory"
+    if (-not (Test-Path -LiteralPath $rsat)) { throw "RSAT is not installed here" }
     Import-Module ActiveDirectory -ErrorAction Stop
     $c = Get-ADComputer $env:COMPUTERNAME -Properties MemberOf -ErrorAction Stop
     foreach ($g in @($c.MemberOf)) { $groups += (($g -split ",")[0] -replace "^CN=", "") }
@@ -110,14 +127,51 @@ $out.identity = Try-Read "identity" {
 }
 
 # ---- installed applications ------------------------------------------------
+# The hive an application registered in is a poor guide to what it is: Google
+# Chrome registers in both, and Microsoft Edge -- a 64-bit program -- registers
+# only in the 32-bit one and installs under Program Files (x86). The PE header
+# of its own executable is the truth, so it is read when there is a folder to
+# read it from. Two bytes at the end of a short seek; no library, no tooling.
+function PE-Arch($dir) {
+  if (-not $dir) { return "" }
+  $dir = $dir.Trim('"').TrimEnd('\')
+  if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return "" }
+  $exe = $null
+  try {
+    $exe = @(Get-ChildItem -LiteralPath $dir -Filter *.exe -File -ErrorAction SilentlyContinue |
+             Sort-Object Length -Descending)[0]
+  } catch { }
+  if (-not $exe) { return "" }
+  try {
+    $fs = [System.IO.File]::OpenRead($exe.FullName)
+    try {
+      $head = New-Object byte[] 64
+      if ($fs.Read($head, 0, 64) -lt 64) { return "" }
+      $peAt = [BitConverter]::ToInt32($head, 60)
+      if ($peAt -le 0 -or $peAt -gt ($fs.Length - 6)) { return "" }
+      $fs.Position = $peAt
+      $sig = New-Object byte[] 6
+      if ($fs.Read($sig, 0, 6) -lt 6) { return "" }
+      if ($sig[0] -ne 0x50 -or $sig[1] -ne 0x45) { return "" }   # "PE"
+      $machine = [BitConverter]::ToUInt16($sig, 4)
+      switch ($machine) {
+        0x8664 { return "x64" }
+        0xAA64 { return "arm64" }
+        0x014c { return "x86" }
+      }
+    } finally { $fs.Close() }
+  } catch { }
+  return ""
+}
+
 # The uninstall keys, in all three places Windows keeps them, plus every user
 # hive that is loaded (and, with -AllUsers, the ones that are not).
 function Read-Uninstall($root, $arch, $who) {
   $apps = @()
   foreach ($path in @("$root\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
                       "$root\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall")) {
-    $thisArch = $arch
-    if ($path -like "*WOW6432Node*") { $thisArch = "x86" }
+    $hiveArch = $arch
+    if ($path -like "*WOW6432Node*") { $hiveArch = "x86" }
     if (-not (Test-Path "Registry::$path")) { continue }
     foreach ($k in @(Get-ChildItem "Registry::$path" -ErrorAction SilentlyContinue)) {
       $p = $null
@@ -126,6 +180,9 @@ function Read-Uninstall($root, $arch, $who) {
       if (-not $name) { continue }
       $sys = 0
       if ($p.PSObject.Properties.Name -contains "SystemComponent") { $sys = [int]$p.SystemComponent }
+      $thisArch = $hiveArch
+      $peArch = PE-Arch ([string]$p.InstallLocation)
+      if ($peArch) { $thisArch = $peArch }
       $apps += [ordered]@{
         display_name     = $name
         display_version  = [string]$p.DisplayVersion
@@ -152,6 +209,13 @@ $out.apps = Try-Read "apps" {
     $apps += Read-Uninstall "HKEY_USERS\$name" "x64" $name
   }
   # Hives that are not loaded, only when asked: this is the slow half.
+  #
+  # A hive that will not load is normal, not exceptional: Windows keeps
+  # NTUSER.DAT open for a profile it has loaded, and a machine somebody is
+  # signed into always has at least one. Each is tried on its own, and a
+  # failure is a note naming whose applications are missing -- losing the
+  # whole list because one hive was busy is what this code is shaped to
+  # avoid. (It did exactly that on the first real machine it ran on.)
   if ($AllUsers) {
     $i = 0
     foreach ($prof in @(Get-WmiObject Win32_UserProfile | Where-Object { -not $_.Special -and -not $_.Loaded })) {
@@ -159,18 +223,35 @@ $out.apps = Try-Read "apps" {
       if (-not (Test-Path $dat)) { continue }
       $i = $i + 1
       $key = "dsky-scan-$i"
+      $who = [string]$prof.LocalPath
       $loaded = $false
-      try { & reg.exe load "HKU\$key" $dat 2>$null | Out-Null; $loaded = ($LASTEXITCODE -eq 0) } catch { }
+      $why = ""
+      try {
+        $ec = (Start-Process -FilePath reg.exe -ArgumentList @("load", "HKU\$key", "`"$dat`"") `
+                 -Wait -PassThru -WindowStyle Hidden).ExitCode
+        $loaded = ($ec -eq 0)
+        if (-not $loaded) { $why = "reg load exited $ec (the profile is in use, or its hive is not readable)" }
+      } catch { $why = $_.Exception.Message }
       if ($loaded) {
-        try { $apps += Read-Uninstall "HKEY_USERS\$key" "x64" ([string]$prof.SID) } finally {
-          & reg.exe unload "HKU\$key" 2>$null | Out-Null
-        }
+        try { $apps += Read-Uninstall "HKEY_USERS\$key" "x64" $who }
+        catch { $script:notes += ("the applications of {0} could not be read: {1}" -f $who, $_.Exception.Message) }
+        finally { Start-Process -FilePath reg.exe -ArgumentList @("unload", "HKU\$key") -Wait -WindowStyle Hidden | Out-Null }
+      } else {
+        $script:notes += ("the applications installed for {0} only could not be read: {1}" -f $who, $why)
       }
     }
   }
-  # Store and packaged applications. SignatureKind tells what shipped with
-  # Windows (System) from what somebody installed (Store, Enterprise).
+  # Store and packaged applications. What shipped with the image is what
+  # Windows provisions for every new profile, which is the only reliable way
+  # to tell Solitaire and the Weather app from software somebody chose:
+  # SignatureKind says "Store" for both.
   if (-not $SkipStore) {
+    $provisioned = @{}
+    try {
+      foreach ($pp in @(Get-AppxProvisionedPackage -Online -ErrorAction Stop)) {
+        $provisioned[[string]$pp.DisplayName] = $true
+      }
+    } catch { }
     foreach ($pkg in @(Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue)) {
       $kind = "appx"
       if ($pkg.PackageFullName -like "*msix*") { $kind = "msix" }
@@ -185,7 +266,7 @@ $out.apps = Try-Read "apps" {
         source_kind      = $kind
         system_component = $false
         framework        = [bool]$pkg.IsFramework
-        inbox            = ([string]$pkg.SignatureKind -eq "System")
+        inbox            = (([string]$pkg.SignatureKind -eq "System") -or $provisioned.ContainsKey([string]$pkg.Name))
         user             = ""
       }
     }
@@ -391,19 +472,43 @@ $out.hints = Try-Read "hints" {
 }
 
 # ---- drivers nobody signed -------------------------------------------------
+# pnputil rather than Get-WindowsDriver: the DISM cmdlet took minutes on the
+# first machine this ran on and called eleven of Windows' own inbox drivers
+# unsigned, which is a wall of warnings nobody can act on. pnputil answers in
+# a second and prints the signer, and what matters for a rebuild is a
+# third-party driver with no signer at all -- that is the one Windows 11 may
+# refuse to load and nobody can re-download.
 $out.unsigned_drivers = Try-Read "unsigned_drivers" {
   $list = @()
-  foreach ($d in @(Get-WindowsDriver -Online -All -ErrorAction SilentlyContinue)) {
-    if ([string]$d.DriverSignature -ne "Signed") {
-      $list += ("{0} ({1}, {2})" -f $d.Driver, $d.ProviderName, $d.ClassName)
+  $published = ""
+  $original = ""
+  $provider = ""
+  $signer = ""
+  $flush = {
+    if ($published -and -not $signer -and $provider -and $provider -notlike "Microsoft*") {
+      $name = $original
+      if (-not $name) { $name = $published }
+      $script:driverList += ("{0} ({1})" -f $name, $provider)
     }
   }
-  return $list
+  $script:driverList = @()
+  foreach ($line in @(& pnputil.exe /enum-drivers 2>$null)) {
+    if ($line -match "^\s*Published Name:\s*(.+?)\s*$") {
+      & $flush
+      $published = $matches[1]; $original = ""; $provider = ""; $signer = ""
+    } elseif ($line -match "^\s*Original Name:\s*(.+?)\s*$") { $original = $matches[1] }
+    elseif ($line -match "^\s*Provider Name:\s*(.+?)\s*$") { $provider = $matches[1] }
+    elseif ($line -match "^\s*Signer Name:\s*(.+?)\s*$") { $signer = $matches[1] }
+  }
+  & $flush
+  return $script:driverList
 }
 
 $out.hostname = $env:COMPUTERNAME
 $out.scanner_user = "$env:USERDOMAIN\$env:USERNAME"
 $out.problems = $problems
+$out.notes = $notes
+$out.timings = $timings
 
 # 5.1's ConvertTo-Json stops at two levels deep by default, which silently
 # turns nested objects into type names.

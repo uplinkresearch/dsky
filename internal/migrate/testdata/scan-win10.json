@@ -1,80 +1,347 @@
 {
-  "os": { "product_name": "Windows 10 Pro", "build": "19045.4651", "edition": "Professional", "arch": "x64", "release": "22H2" },
+  "os": {
+    "product_name": "Windows 10 Pro",
+    "build": "19045.4651",
+    "edition": "Professional",
+    "arch": "x64",
+    "release": "22H2"
+  },
   "hardware": {
-    "manufacturer": "Dell Inc.", "model": "OptiPlex 7070", "serial": "7XQ4L23",
-    "cpu": "Intel(R) Core(TM) i5-9500 CPU @ 3.00GHz", "ram_bytes": 8589934592,
-    "disks": [{ "index": 0, "model": "SK hynix SC311 SATA 256GB", "size_bytes": 256060514304, "partitions": 4, "bus_type": "SATA" }]
+    "manufacturer": "Dell Inc.",
+    "model": "OptiPlex 7070",
+    "serial": "7XQ4L23",
+    "cpu": "Intel(R) Core(TM) i5-9500 CPU @ 3.00GHz",
+    "ram_bytes": 8589934592,
+    "disks": [
+      {
+        "index": 0,
+        "model": "SK hynix SC311 SATA 256GB",
+        "size_bytes": 256060514304,
+        "partitions": 4,
+        "bus_type": "SATA"
+      }
+    ]
   },
   "identity": {
-    "domain_fqdn": "mead.local", "domain_netbios": "MEAD",
+    "domain_fqdn": "mead.local",
+    "domain_netbios": "MEAD",
     "ou_dn": "OU=Front Desk,OU=Workstations,DC=mead,DC=local",
-    "groups": ["Practice Workstations"],
+    "groups": [
+      "Practice Workstations"
+    ],
     "local_groups": [
-      { "name": "Administrators", "members": ["MEAD\\Domain Admins", "BUILTIN\\Administrator", "MEAD\\practice-it"] },
-      { "name": "Users", "members": ["NT AUTHORITY\\INTERACTIVE", "NT AUTHORITY\\Authenticated Users"] },
-      { "name": "Remote Desktop Users", "members": ["MEAD\\reception"] }
+      {
+        "name": "Administrators",
+        "members": [
+          "LAB\\Domain Admins",
+          "MEAD-FRONT-02\\Administrator",
+          "MEAD\\practice-it",
+          "BUILTIN\\Administrator"
+        ]
+      },
+      {
+        "name": "Users",
+        "members": [
+          "NT AUTHORITY\\INTERACTIVE",
+          "MEAD\\Domain Users",
+          "MEAD-FRONT-02\\user"
+        ]
+      },
+      {
+        "name": "Guests",
+        "members": [
+          "MEAD-FRONT-02\\Guest"
+        ]
+      },
+      {
+        "name": "System Managed Accounts Group",
+        "members": [
+          "MEAD-FRONT-02\\DefaultAccount"
+        ]
+      },
+      {
+        "name": "Remote Desktop Users",
+        "members": [
+          "MEAD\\reception"
+        ]
+      }
     ]
   },
   "apps": [
-    { "display_name": "Google Chrome", "display_version": "129.0.6668.59", "publisher": "Google LLC",
-      "install_location": "C:\\Program Files\\Google\\Chrome\\Application\\", "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Google Chrome",
-      "arch": "x64", "source_kind": "win32", "system_component": false },
-    { "display_name": "Google Chrome", "display_version": "129.0.6668.59", "publisher": "Google LLC",
-      "install_location": "C:\\Program Files\\Google\\Chrome\\Application\\", "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Google Chrome",
-      "arch": "x86", "source_kind": "win32", "system_component": false },
-    { "display_name": "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.40.33810", "display_version": "14.40.33810",
-      "publisher": "Microsoft Corporation", "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{7f0e1e26}",
-      "arch": "x64", "source_kind": "win32", "system_component": false },
-    { "display_name": "Microsoft Visual C++ 2015-2022 Additional Runtime - 14.40.33810", "display_version": "14.40.33810",
-      "publisher": "Microsoft Corporation", "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{a1b2}",
-      "arch": "x64", "source_kind": "win32", "system_component": true },
-    { "display_name": "", "display_version": "1.0", "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{nameless}",
-      "arch": "x64", "source_kind": "win32", "system_component": false },
-    { "display_name": "Dentrix G7.6", "display_version": "7.6.0", "publisher": "Henry Schein One",
-      "install_location": "C:\\Program Files (x86)\\Dentrix", "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Dentrix",
-      "arch": "x86", "source_kind": "win32", "system_component": false },
-    { "display_name": "Adobe Acrobat Pro DC", "display_version": "24.002.20857", "publisher": "Adobe",
-      "install_location": "C:\\Program Files\\Adobe\\Acrobat DC", "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{AC76BA86}",
-      "arch": "x64", "source_kind": "win32", "system_component": false },
-    { "display_name": "Slack", "display_version": "4.39.90", "publisher": "Slack Technologies",
-      "install_location": "C:\\Users\\reception\\AppData\\Local\\slack", "registry_key": "HKEY_USERS\\S-1-5-21-111-222-333-1001\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\slack",
-      "arch": "x64", "source_kind": "win32", "system_component": false, "user": "S-1-5-21-111-222-333-1001" },
-    { "display_name": "Microsoft.VCLibs.140.00", "display_version": "14.0.33519.0", "publisher": "CN=Microsoft Corporation",
-      "arch": "x64", "source_kind": "appx", "framework": true },
-    { "display_name": "Microsoft.WindowsCalculator", "display_version": "11.2409.0.0", "publisher": "CN=Microsoft Corporation",
-      "arch": "x64", "source_kind": "appx", "inbox": true },
-    { "display_name": "SpotifyAB.SpotifyMusic", "display_version": "1.240.0.0", "publisher": "CN=Spotify AB",
-      "arch": "x64", "source_kind": "store" }
+    {
+      "display_name": "Google Chrome",
+      "display_version": "129.0.6668.59",
+      "publisher": "Google LLC",
+      "install_location": "C:\\Program Files\\Google\\Chrome\\Application\\",
+      "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Google Chrome",
+      "arch": "x64",
+      "source_kind": "win32",
+      "system_component": false
+    },
+    {
+      "display_name": "Google Chrome",
+      "display_version": "129.0.6668.59",
+      "publisher": "Google LLC",
+      "install_location": "C:\\Program Files\\Google\\Chrome\\Application\\",
+      "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Google Chrome",
+      "arch": "x86",
+      "source_kind": "win32",
+      "system_component": false
+    },
+    {
+      "display_name": "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.40.33810",
+      "display_version": "14.40.33810",
+      "publisher": "Microsoft Corporation",
+      "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{7f0e1e26}",
+      "arch": "x64",
+      "source_kind": "win32",
+      "system_component": false
+    },
+    {
+      "display_name": "Microsoft Visual C++ 2015-2022 Additional Runtime - 14.40.33810",
+      "display_version": "14.40.33810",
+      "publisher": "Microsoft Corporation",
+      "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{a1b2}",
+      "arch": "x64",
+      "source_kind": "win32",
+      "system_component": true
+    },
+    {
+      "display_name": "",
+      "display_version": "1.0",
+      "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{nameless}",
+      "arch": "x64",
+      "source_kind": "win32",
+      "system_component": false
+    },
+    {
+      "display_name": "Dentrix G7.6",
+      "display_version": "7.6.0",
+      "publisher": "Henry Schein One",
+      "install_location": "C:\\Program Files (x86)\\Dentrix",
+      "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Dentrix",
+      "arch": "x86",
+      "source_kind": "win32",
+      "system_component": false
+    },
+    {
+      "display_name": "Adobe Acrobat Pro DC",
+      "display_version": "24.002.20857",
+      "publisher": "Adobe",
+      "install_location": "C:\\Program Files\\Adobe\\Acrobat DC",
+      "registry_key": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{AC76BA86}",
+      "arch": "x64",
+      "source_kind": "win32",
+      "system_component": false
+    },
+    {
+      "display_name": "Slack",
+      "display_version": "4.39.90",
+      "publisher": "Slack Technologies",
+      "install_location": "C:\\Users\\reception\\AppData\\Local\\slack",
+      "registry_key": "HKEY_USERS\\S-1-5-21-111-222-333-1001\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\slack",
+      "arch": "x64",
+      "source_kind": "win32",
+      "system_component": false,
+      "user": "S-1-5-21-111-222-333-1001"
+    },
+    {
+      "display_name": "Microsoft.VCLibs.140.00",
+      "display_version": "14.0.33519.0",
+      "publisher": "CN=Microsoft Corporation",
+      "arch": "x64",
+      "source_kind": "appx",
+      "framework": true
+    },
+    {
+      "display_name": "Microsoft.WindowsCalculator",
+      "display_version": "11.2409.0.0",
+      "publisher": "CN=Microsoft Corporation",
+      "arch": "x64",
+      "source_kind": "appx",
+      "inbox": true
+    },
+    {
+      "display_name": "SpotifyAB.SpotifyMusic",
+      "display_version": "1.240.0.0",
+      "publisher": "CN=Spotify AB",
+      "arch": "x64",
+      "source_kind": "store"
+    }
   ],
-  "printers": [],
+  "printers": [
+    {
+      "name": "Front Desk HP",
+      "driver_name": "HP Universal Printing PCL 6",
+      "port": "IP_10.20.1.51",
+      "ip": "10.20.1.51",
+      "shared_path": ""
+    },
+    {
+      "name": "Statements",
+      "driver_name": "HP Universal Printing PCL 6",
+      "port": "",
+      "ip": "",
+      "shared_path": "\\\\mead-fs01\\Statements"
+    },
+    {
+      "name": "Microsoft Print to PDF",
+      "driver_name": "Microsoft Print To PDF",
+      "port": "PORTPROMPT:",
+      "ip": "",
+      "shared_path": ""
+    },
+    {
+      "name": "Microsoft XPS Document Writer",
+      "driver_name": "Microsoft XPS Document Writer v4",
+      "port": "PORTPROMPT:",
+      "ip": "",
+      "shared_path": ""
+    },
+    {
+      "name": "Fax",
+      "driver_name": "Microsoft Shared Fax Driver",
+      "port": "SHRFAX:",
+      "ip": "",
+      "shared_path": ""
+    },
+    {
+      "name": "OneNote",
+      "driver_name": "Microsoft Software Printer Driver",
+      "port": "Microsoft.Office.OneNote_16001_x64__8wekyb3d8bbwe_microsoft.onenoteim_S-1-5-21-1",
+      "ip": "",
+      "shared_path": ""
+    }
+  ],
   "mapped_drives": [
-    { "letter": "S:", "unc": "\\\\mead-fs01\\shared", "persistent": true, "user": "MEAD\\reception" },
-    { "letter": "bad", "unc": "\\\\mead-fs01\\nope", "persistent": true, "user": "MEAD\\reception" },
-    { "letter": "Z:", "unc": "C:\\local\\folder", "persistent": true, "user": "MEAD\\reception" }
+    {
+      "letter": "S:",
+      "unc": "\\\\mead-fs01\\shared",
+      "persistent": true,
+      "user": "MEAD\\reception"
+    },
+    {
+      "letter": "bad",
+      "unc": "\\\\mead-fs01\\nope",
+      "persistent": true,
+      "user": "MEAD\\reception"
+    },
+    {
+      "letter": "Z:",
+      "unc": "C:\\local\\folder",
+      "persistent": true,
+      "user": "MEAD\\reception"
+    }
   ],
   "network": {
-    "wifi_ssids": ["Mead-Staff"],
-    "static_ips": [{ "adapter": "Intel(R) Ethernet Connection I219-LM", "address": "10.20.1.31", "prefix": 24, "gateway": "10.20.1.1", "dns": ["10.20.1.10"] }]
+    "wifi_ssids": [
+      "Mead-Staff"
+    ],
+    "static_ips": [
+      {
+        "adapter": "Intel(R) Ethernet Connection I219-LM",
+        "address": "10.20.1.31",
+        "prefix": 24,
+        "gateway": "10.20.1.1",
+        "dns": [
+          "10.20.1.10"
+        ]
+      }
+    ]
   },
   "settings": [
-    { "key": "power.plan", "value": "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced)", "from": "powercfg /getactivescheme" },
-    { "key": "power.sleep_ac_minutes", "value": 30.0, "from": "powercfg /q" },
-    { "key": "system.timezone", "value": "Central Standard Time", "from": "Get-TimeZone" },
-    { "key": "system.locale", "value": "en-US", "from": "Get-WinSystemLocale" },
-    { "key": "explorer.show_extensions", "value": 1, "from": "HKCU\\...\\Advanced\\HideFileExt" },
-    { "key": "taskbar.search_mode", "value": 2, "from": "HKCU\\...\\Search\\SearchboxTaskbarMode" },
-    { "key": "defaults.browser", "value": "ChromeHTML", "from": "HKCU\\...\\UserChoice" },
-    { "key": "desktop.wallpaper", "value": "C:\\wallpaper.jpg", "from": "HKCU\\Control Panel\\Desktop\\Wallpaper" }
+    {
+      "key": "power.plan",
+      "value": "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced)",
+      "from": "powercfg /getactivescheme"
+    },
+    {
+      "key": "power.sleep_ac_minutes",
+      "value": 30.0,
+      "from": "powercfg /q"
+    },
+    {
+      "key": "system.timezone",
+      "value": "Central Standard Time",
+      "from": "Get-TimeZone"
+    },
+    {
+      "key": "system.locale",
+      "value": "en-US",
+      "from": "Get-WinSystemLocale"
+    },
+    {
+      "key": "explorer.show_extensions",
+      "value": 1,
+      "from": "HKCU\\...\\Advanced\\HideFileExt"
+    },
+    {
+      "key": "taskbar.search_mode",
+      "value": 2,
+      "from": "HKCU\\...\\Search\\SearchboxTaskbarMode"
+    },
+    {
+      "key": "defaults.browser",
+      "value": "ChromeHTML",
+      "from": "HKCU\\...\\UserChoice"
+    },
+    {
+      "key": "desktop.wallpaper",
+      "value": "C:\\wallpaper.jpg",
+      "from": "HKCU\\Control Panel\\Desktop\\Wallpaper"
+    }
   ],
   "profiles": [
-    { "account": "MEAD\\reception", "profile": "C:\\Users\\reception", "last_logon": "2026-09-16T21:40:00Z", "size_bytes": 3221225472, "local": false },
-    { "account": "MEAD\\hygienist", "profile": "C:\\Users\\hygienist", "last_logon": "2026-09-01T08:10:00Z", "size_bytes": 1073741824, "local": false },
-    { "account": "MEAD\\seasonal", "profile": "C:\\Users\\seasonal", "last_logon": "2025-08-20T18:44:00Z", "size_bytes": 524288000, "local": false },
-    { "account": ".\\Administrator", "profile": "C:\\Users\\Administrator", "last_logon": "2026-09-17T07:00:00Z", "size_bytes": 104857600, "local": true }
+    {
+      "account": "MEAD\\reception",
+      "profile": "C:\\Users\\reception",
+      "last_logon": "2026-09-16T21:40:00Z",
+      "size_bytes": 3221225472,
+      "local": false
+    },
+    {
+      "account": "MEAD\\hygienist",
+      "profile": "C:\\Users\\hygienist",
+      "last_logon": "2026-09-01T08:10:00Z",
+      "size_bytes": 1073741824,
+      "local": false
+    },
+    {
+      "account": "MEAD\\seasonal",
+      "profile": "C:\\Users\\seasonal",
+      "last_logon": "2025-08-20T18:44:00Z",
+      "size_bytes": 524288000,
+      "local": false
+    },
+    {
+      "account": ".\\Administrator",
+      "profile": "C:\\Users\\Administrator",
+      "last_logon": "2026-09-17T07:00:00Z",
+      "size_bytes": 104857600,
+      "local": true
+    }
   ],
-  "hints": { "onedrive_kfm": false, "redirected_folders": [], "usmt_path": "" },
-  "unsigned_drivers": ["oem42.inf (Dell Inc., System)"],
+  "hints": {
+    "onedrive_kfm": false,
+    "redirected_folders": [],
+    "usmt_path": ""
+  },
+  "unsigned_drivers": [
+    "oem42.inf (Dell Inc., System)"
+  ],
   "hostname": "MEAD-FRONT-02",
   "scanner_user": "MEAD\\dbaker",
-  "problems": ["printers: The RPC server is unavailable."]
+  "notes": [
+    "the applications installed for C:\\Users\\hygienist only could not be read: reg load exited 1 (the profile is in use, or its hive is not readable)"
+  ],
+  "timings": {
+    "os": 0.1,
+    "hardware": 1.4,
+    "identity": 2.2,
+    "apps": 41.7,
+    "printers": 0.6,
+    "settings": 3.1,
+    "profiles": 1.1,
+    "unsigned_drivers": 1.2
+  }
 }

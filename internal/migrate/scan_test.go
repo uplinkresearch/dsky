@@ -57,12 +57,10 @@ func TestScanProducesAValidPlan(t *testing.T) {
 	if m.Target.Hostname != "MEAD-FRONT-02" || m.Target.OSEdition != "Professional" || m.Target.LocalAdmin != "uplink" {
 		t.Errorf("target: %+v", m.Target)
 	}
-	// A section the machine refused is a note and an error, never a silent gap.
-	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "printers") {
+	// This machine answered everything it was asked, so nothing is an error;
+	// the one hive it would not hand over is a note (see the test below).
+	if len(errs) != 0 {
 		t.Errorf("errors: %v", errs)
-	}
-	if len(m.Notes) != 1 || !strings.Contains(m.Notes[0], "printers could not be read") {
-		t.Errorf("notes: %v", m.Notes)
 	}
 	// Nothing is resolved by a scan: that is the resolver's work, and an
 	// empty status is what it looks for.
@@ -161,6 +159,26 @@ func TestScanCleansUpIdentityAndDrives(t *testing.T) {
 	if len(m.Identity.LocalGroups) != 2 {
 		t.Errorf("local groups: %+v", m.Identity.LocalGroups)
 	}
+	// Windows' own defaults in a local group say nothing about this machine:
+	// its Guest and DefaultAccount, the local Administrator, and the two
+	// memberships a domain join makes by itself. What is left is what
+	// somebody added.
+	byName := map[string][]string{}
+	for _, g := range m.Identity.LocalGroups {
+		byName[g.Name] = g.Members
+	}
+	if got := byName["Administrators"]; len(got) != 1 || got[0] != `MEAD\practice-it` {
+		t.Errorf("Administrators: %v", got)
+	}
+	if got := byName["Remote Desktop Users"]; len(got) != 1 || got[0] != `MEAD\reception` {
+		t.Errorf("Remote Desktop Users: %v", got)
+	}
+	for _, empty := range []string{"Users", "Guests", "System Managed Accounts Group"} {
+		if got, ok := byName[empty]; ok {
+			t.Errorf("%s holds only Windows' defaults and should have been dropped: %v", empty, got)
+		}
+	}
+
 	// A drive letter that is not a letter, and a "mapped drive" pointing at a
 	// local folder, are readings to drop rather than put in a plan.
 	if len(m.Peripherals.MappedDrives) != 1 || m.Peripherals.MappedDrives[0].Letter != "S:" {
@@ -171,7 +189,7 @@ func TestScanCleansUpIdentityAndDrives(t *testing.T) {
 // A machine in a workgroup is not in a domain, whatever it calls itself.
 func TestScanTreatsAWorkgroupAsNoDomain(t *testing.T) {
 	id := IdentityFrom(RawIdentity{DomainFQDN: "WORKGROUP", DomainNetBIOS: "WORKGROUP",
-		LocalGroups: []LocalGroup{{Name: "Administrators", Members: []string{`.\kiosk`}}}})
+		LocalGroups: []LocalGroup{{Name: "Administrators", Members: []string{`.\kiosk`}}}}, "KIOSK-01")
 	if id.Domained() || id.DomainNetBIOS != "" {
 		t.Errorf("workgroup: %+v", id)
 	}
@@ -218,6 +236,92 @@ func TestScanCapturesOnlyAllowlistedSettings(t *testing.T) {
 	}
 	if got[KeyDefaultBrowser].CapturedFrom == "" {
 		t.Error("a setting DSKY cannot apply still has to say where it was read")
+	}
+}
+
+// Print queues Windows creates for itself are not peripherals to recreate.
+// On the first real machine, they outnumbered the real printers three to one.
+func TestScanDropsWindowsOwnPrinters(t *testing.T) {
+	m, _ := scanned(t)
+	if len(m.Peripherals.Printers) != 2 {
+		t.Fatalf("printers: %+v", m.Peripherals.Printers)
+	}
+	names := m.Peripherals.Printers[0].Name + "," + m.Peripherals.Printers[1].Name
+	if !strings.Contains(names, "Front Desk HP") || !strings.Contains(names, "Statements") {
+		t.Errorf("printers: %s", names)
+	}
+	// A network queue needs its share path and no driver; an IP queue needs
+	// the driver and the address.
+	for _, p := range m.Peripherals.Printers {
+		if p.SharedPath != "" && (p.Port != "" || p.IP != "") {
+			t.Errorf("a shared queue kept its local port: %+v", p)
+		}
+	}
+}
+
+// A hive that would not load is a note in the plan, and the scan is not
+// partial for it: the rest of the machine was read.
+func TestScanNotesWhatItCouldNotReadWithoutFailing(t *testing.T) {
+	m, errs := scanned(t)
+	var hive bool
+	for _, n := range m.Notes {
+		if strings.Contains(n, "hygienist") && strings.Contains(n, "could not be read") {
+			hive = true
+		}
+	}
+	if !hive {
+		t.Errorf("the unreadable hive is not in the notes: %v", m.Notes)
+	}
+	// The note does not make the scan partial: nothing of the machine was
+	// lost by it, and a scan that exits 3 over one busy hive would have the
+	// operator chasing a problem that is not there.
+	if len(errs) != 0 {
+		t.Errorf("errors: %v", errs)
+	}
+}
+
+// A section the machine refuses is an error and a note both, and everything
+// else still comes back.
+func TestScanReportsASectionItCouldNotRead(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "scan-win10.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	json.Unmarshal(b, &doc)
+	doc["problems"] = []string{"printers: The RPC server is unavailable."}
+	edited, _ := json.Marshal(doc)
+	c, err := ParseScanJSON(edited)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, errs := Scan(c, ScanOptions{})
+	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "printers") {
+		t.Fatalf("errors: %v", errs)
+	}
+	var said bool
+	for _, n := range m.Notes {
+		if strings.Contains(n, "printers could not be read") {
+			said = true
+		}
+	}
+	if !said {
+		t.Errorf("notes: %v", m.Notes)
+	}
+	if len(m.Peripherals.Printers) != 0 {
+		t.Errorf("printers came back from a failed reading: %+v", m.Peripherals.Printers)
+	}
+	if len(m.Apps) == 0 || len(m.Settings) == 0 {
+		t.Error("one failed section took the rest of the machine with it")
+	}
+}
+
+// The replacement machine starts out as the old one: same time zone, same
+// locale. A new PC in the installer's time zone is noticed within the hour.
+func TestScanTargetInheritsTimeAndLanguage(t *testing.T) {
+	m, _ := scanned(t)
+	if m.Target.Timezone != "Central Standard Time" || m.Target.Locale != "en-US" {
+		t.Errorf("target: %+v", m.Target)
 	}
 }
 
@@ -345,5 +449,57 @@ func TestScanOutputSavesAndReloads(t *testing.T) {
 	got, _ := json.Marshal(again)
 	if string(want) != string(got) {
 		t.Error("a scanned manifest changed on the way to disk and back")
+	}
+}
+
+// Windows' own servicing entries are not applications, and one product
+// installed 32-bit and 64-bit is one product -- both learned from the first
+// real machine, which reported its 7-Zip as having no 64-bit version while
+// the 64-bit one was two rows above it.
+func TestScanKnowsWhatIsNotAnApplication(t *testing.T) {
+	raw := []RawApp{
+		{DisplayName: "Update for Windows 10 for x64-based Systems (KB5001716)", SourceKind: SourceWin32, Arch: "x64"},
+		{DisplayName: "Security Update for Microsoft Excel 2016 (KB4484119) 64-Bit Edition", SourceKind: SourceWin32, Arch: "x64"},
+		{DisplayName: "Microsoft Update Health Tools", SourceKind: SourceWin32, Arch: "x64"},
+		{DisplayName: "7-Zip 24.08 (x64 edition)", SourceKind: SourceWin32, Arch: "x64"},
+		{DisplayName: "7-Zip 24.08", SourceKind: SourceWin32, Arch: "x86"},
+		{DisplayName: "Lab Dental Suite", SourceKind: SourceWin32, Arch: "x86"},
+	}
+	apps := AppsFrom(raw)
+	names := []string{}
+	for _, a := range apps {
+		names = append(names, a.DisplayName)
+	}
+	if len(apps) != 3 {
+		t.Fatalf("kept %d: %v", len(apps), names)
+	}
+	m := &Manifest{Apps: apps}
+	var thirtyTwo []string
+	for _, c := range CompatRules(m, nil, RawHints{}) {
+		if strings.Contains(c.Reason, "32-bit") {
+			thirtyTwo = append(thirtyTwo, c.Subject)
+		}
+	}
+	// The dental suite is the only 32-bit application with no 64-bit twin.
+	if len(thirtyTwo) != 1 || thirtyTwo[0] != "labdentalsuite" {
+		t.Errorf("32-bit warnings: %v", thirtyTwo)
+	}
+}
+
+func TestBaseNameStripsVersionsAndArchitectures(t *testing.T) {
+	for name, want := range map[string]string{
+		"7-Zip 24.08 (x64 edition)": "7-Zip",
+		"7-Zip 24.08":               "7-Zip",
+		"Notepad++ (64-bit x64)":    "Notepad++",
+		"Google Chrome":             "Google Chrome",
+		"Microsoft Edge":            "Microsoft Edge",
+		"1Password 8.10.40":         "1Password",
+		"Lab Dental Suite":          "Lab Dental Suite",
+		"Adobe Acrobat Pro DC":      "Adobe Acrobat Pro DC",
+		"Dentrix G7.6":              "Dentrix G7.6",
+	} {
+		if got := baseName(name); got != want {
+			t.Errorf("%q -> %q, want %q", name, got, want)
+		}
 	}
 }

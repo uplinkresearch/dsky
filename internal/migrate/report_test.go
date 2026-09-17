@@ -117,3 +117,25 @@ func TestReportEscapesNames(t *testing.T) {
 		t.Errorf("the escaped name is missing")
 	}
 }
+
+// A freshly scanned machine has a USMT plan with no store yet: the report has
+// to say so rather than print "copied with USMT from  for LAB\reception",
+// which is what a real scan produced.
+func TestReportSaysWhereUSMTHasNoStoreYet(t *testing.T) {
+	m := load(t, "kiosk")
+	m.Data = Data{Strategy: DataUSMT, Users: []string{`LAB\reception`}}
+	var b strings.Builder
+	if err := Report(&b, m, "win11", "dsky vtest"); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, `copied with USMT for LAB\reception`) {
+		t.Error("the report does not say whose files USMT would carry")
+	}
+	if !strings.Contains(out, "settled in the review") {
+		t.Error("the report does not say the store is chosen later")
+	}
+	if strings.Contains(out, "USMT from") {
+		t.Error("the report still claims a store that is not in the plan")
+	}
+}

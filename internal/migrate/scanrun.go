@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 )
 
 // ScanToFiles is the whole of what a person does on the machine being
@@ -47,12 +50,17 @@ func ScanToFiles(ctx context.Context, dir string, opts ScanOptions, usmtPath, ve
 	if opts.GeneratedBy == "" {
 		opts.GeneratedBy = version
 	}
+	// The clock starts before the reading, not after: the first version timed
+	// only the assembling of the manifest and reported a scan of a real PC as
+	// having taken 0.0002 seconds.
+	started := time.Now()
+	say("Reading this computer. Nothing is installed or changed.")
 	c, err := NewCollector(ctx, opts, usmtPath)
 	if err != nil {
 		return nil, err
 	}
-	say("Reading this computer. Nothing is installed or changed.")
 	m, unread := Scan(c, opts)
+	m.Source.ScanDurationS = roundSeconds(time.Since(started))
 	res := &ScanResult{Manifest: m, Unread: unread}
 
 	res.ManifestPath = freePath(dir, "manifest", ".json")
@@ -75,6 +83,13 @@ func ScanToFiles(ctx context.Context, dir string, opts ScanOptions, usmtPath, ve
 		return nil, err
 	}
 
+	// A log beside the manifest, with how long each reading took. A scan that
+	// took twenty minutes on somebody's PC is a question that cannot be
+	// answered afterwards without this.
+	if n, ok := c.(Noter); ok {
+		writeScanLog(filepath.Join(dir, "scan.log"), m, n.Timings(), unread)
+	}
+
 	c2 := m.Count("win11")
 	say("")
 	say("%s — %s, %s", m.Source.Hostname, machineName(m.Source.Hardware), m.Source.OS.ProductName)
@@ -95,6 +110,32 @@ func ScanToFiles(ctx context.Context, dir string, opts ScanOptions, usmtPath, ve
 	say("Next: read the report, then on your own machine run")
 	say("      dsky migrate resolve %s", filepath.Base(res.ManifestPath))
 	return res, nil
+}
+
+func roundSeconds(d time.Duration) float64 {
+	return math.Round(d.Seconds()*10) / 10
+}
+
+// writeScanLog records what took how long, and what could not be read.
+func writeScanLog(path string, m *Manifest, timings map[string]float64, unread []error) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s scanned %s in %.1fs by %s\n", m.GeneratedAt.Format(time.RFC3339), m.Source.Hostname,
+		m.Source.ScanDurationS, m.GeneratedBy)
+	keys := make([]string, 0, len(timings))
+	for k := range timings {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return timings[keys[i]] > timings[keys[j]] })
+	for _, k := range keys {
+		fmt.Fprintf(&b, "  %-18s %6.1fs\n", k, timings[k])
+	}
+	for _, err := range unread {
+		fmt.Fprintf(&b, "  could not read %v\n", err)
+	}
+	for _, note := range m.Notes {
+		fmt.Fprintf(&b, "  note: %s\n", note)
+	}
+	os.WriteFile(path, []byte(b.String()), 0o600)
 }
 
 func dataInWords(d Data) string {

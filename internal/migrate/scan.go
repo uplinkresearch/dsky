@@ -117,6 +117,14 @@ type RawHints struct {
 	USMTPath          string   // where scanstate was found, if it was
 }
 
+// Noter is a collector that has smaller failures to report -- one unreadable
+// user hive out of five -- which belong in the manifest without making the
+// whole scan partial.
+type Noter interface {
+	Notes() []string
+	Timings() map[string]float64
+}
+
 // Collector reads one machine. Every method may fail on its own; a scan
 // reports what failed and keeps the rest.
 type Collector interface {
@@ -182,7 +190,7 @@ func Scan(c Collector, opts ScanOptions) (*Manifest, []error) {
 	if id, err := c.Identity(); err != nil {
 		note("the domain membership", err)
 	} else {
-		m.Identity = IdentityFrom(id)
+		m.Identity = IdentityFrom(id, m.Source.Hostname)
 	}
 	if p, err := c.Printers(); err != nil {
 		note("the printers", err)
@@ -225,6 +233,26 @@ func Scan(c Collector, opts ScanOptions) (*Manifest, []error) {
 		Hostname:   firstNonEmpty(opts.Hostname, m.Source.Hostname),
 		LocalAdmin: opts.LocalAdmin,
 	}
+
+	// What the machine itself said it could not read, and how long each
+	// reading took: the first belongs in the plan, the second in the log.
+	if n, ok := c.(Noter); ok {
+		m.Notes = append(m.Notes, n.Notes()...)
+	}
+	// The target starts as the machine was, settings included: a replacement
+	// PC in the wrong time zone is noticed within the hour.
+	for _, s := range m.Settings {
+		var v string
+		if err := json.Unmarshal(s.Value, &v); err != nil {
+			continue
+		}
+		switch s.Key {
+		case KeyTimezone:
+			m.Target.Timezone = v
+		case KeyLocale:
+			m.Target.Locale = v
+		}
+	}
 	m.Compat = append(m.Compat, CompatRules(m, drivers, hints)...)
 	m.Source.ScanDurationS = opts.Now().Sub(started).Seconds()
 	return m, errs
@@ -247,6 +275,11 @@ func firstNonEmpty(xs ...string) string {
 // needs to read.
 var appxInbox = regexp.MustCompile(`(?i)^(Microsoft\.(Windows|VCLibs|NET\.|UI\.Xaml|Services\.Store|Advertising|AsyncTextService|BioEnrollment|CredDialogHost|ECApp|LockApp|Media|MicrosoftEdge|OneConnect|Paint|People|SecHealthUI|StorePurchaseApp|Todos|Wallet|Xbox|YourPhone|ZuneMusic|ZuneVideo|GetHelp|Getstarted|MSPaint|Office\.OneNote|SkypeApp|StickyNotes|WebMediaExtensions|WebpImageExtension|HEIFImageExtension|VP9VideoExtensions|ScreenSketch|MixedReality|3DBuilder|Print3D|Messaging|OneDriveSync|People)|windows\.|MicrosoftWindows\.|NcsiUwpApp|InputApp|Windows\.)`)
 
+// windowsUpdate matches the entries Windows' own servicing leaves in the
+// uninstall keys. They are not applications anybody installed and a rebuilt
+// machine gets its own updates; listing them pads a report a customer reads.
+var windowsUpdate = regexp.MustCompile(`(?i)^(security update|update|hotfix|service pack) for |\(KB\d{6,}\)$|^Microsoft Update Health Tools$`)
+
 // AppsFrom turns registry and package readings into the manifest's list: what
 // a person would recognise from Settings -> Apps, and nothing else.
 func AppsFrom(raw []RawApp) []App {
@@ -265,6 +298,8 @@ func AppsFrom(raw []RawApp) []App {
 		case r.Framework, r.Inbox:
 			continue
 		case appxInbox.MatchString(name) && r.SourceKind != SourceWin32:
+			continue
+		case windowsUpdate.MatchString(name):
 			continue
 		}
 		// One product is often registered in both hives -- Chrome writes a
@@ -335,13 +370,26 @@ func uniqueID(id string, taken map[string]bool) string {
 
 // ── identity ─────────────────────────────────────────────────────────────────
 
-// wellKnown are the group members every Windows machine has. Recording them
-// says nothing about this machine, and restoring them is a no-op, so they are
-// dropped -- what matters is the two domain groups somebody added by hand.
+// wellKnown are the group members every Windows machine has, whether it has
+// ever been touched or not: the service identities, the disabled built-in
+// accounts, and the two memberships a domain join creates by itself. None of
+// them says anything about this machine and none needs recreating -- what
+// matters is the domain group somebody added by hand.
+//
+// The first real machine this ran on produced four local groups, every one of
+// them Windows' own defaults, which is noise in a report a customer reads.
 var wellKnown = regexp.MustCompile(`(?i)^(NT AUTHORITY\\|NT SERVICE\\|BUILTIN\\|S-1-5-(32|18|19|20)|Everyone$|CREATOR OWNER$)`)
 
-// IdentityFrom cleans up the domain reading.
-func IdentityFrom(r RawIdentity) Identity {
+// machineDefault matches a member that is this machine's own built-in account
+// (Guest, DefaultAccount, WDAGUtilityAccount, and the local Administrator) or
+// a domain's automatic membership.
+var machineDefault = regexp.MustCompile(`(?i)\\(Guest|DefaultAccount|WDAGUtilityAccount|Administrator)$|\\Domain (Users|Admins|Computers)$`)
+
+// IdentityFrom cleans up the domain reading. hostname is this machine's own
+// name, so that its local accounts can be told from the domain's: a local
+// account does not migrate -- the new machine gets its own -- and listing one
+// as a group member to recreate would be a promise DSKY cannot keep.
+func IdentityFrom(r RawIdentity, hostname string) Identity {
 	id := Identity{
 		DomainFQDN:     strings.TrimSpace(r.DomainFQDN),
 		DomainNetBIOS:  strings.ToUpper(strings.TrimSpace(r.DomainNetBIOS)),
@@ -353,12 +401,18 @@ func IdentityFrom(r RawIdentity) Identity {
 	if strings.EqualFold(id.DomainFQDN, "WORKGROUP") || !strings.Contains(id.DomainFQDN, ".") {
 		id.DomainFQDN, id.DomainNetBIOS, id.ComputerOUDN, id.ComputerGroups = "", "", "", nil
 	}
+	local := strings.ToLower(strings.TrimSpace(hostname)) + `\`
 	for _, g := range r.LocalGroups {
 		var keep []string
 		for _, mem := range g.Members {
-			if !wellKnown.MatchString(strings.TrimSpace(mem)) {
-				keep = append(keep, strings.TrimSpace(mem))
+			mem = strings.TrimSpace(mem)
+			if wellKnown.MatchString(mem) || machineDefault.MatchString(mem) {
+				continue
 			}
+			if local != `\` && strings.HasPrefix(strings.ToLower(mem), local) {
+				continue
+			}
+			keep = append(keep, mem)
 		}
 		if len(keep) == 0 {
 			continue
@@ -368,6 +422,23 @@ func IdentityFrom(r RawIdentity) Identity {
 	}
 	sort.Slice(id.LocalGroups, func(i, j int) bool { return id.LocalGroups[i].Name < id.LocalGroups[j].Name })
 	return id
+}
+
+// inboxPrinter reports whether a print queue is one Windows creates for
+// itself. Every Windows has Print to PDF, the XPS writer, Fax and (with
+// Office) OneNote; listing them as peripherals to recreate is noise, and on
+// the first real machine they outnumbered the two real printers three to one.
+func inboxPrinter(p Printer) bool {
+	name := strings.ToLower(p.Name)
+	switch {
+	case strings.Contains(name, "print to pdf"), strings.Contains(name, "xps document writer"),
+		name == "fax", strings.HasPrefix(name, "onenote"), strings.Contains(name, "send to onenote"):
+		return true
+	}
+	// A queue whose port is a OneNote package or the fax port is the same
+	// thing under a name somebody changed.
+	port := strings.ToLower(p.Port)
+	return strings.Contains(port, "onenoteim") || port == "shrfax:"
 }
 
 // ── settings ─────────────────────────────────────────────────────────────────
@@ -549,12 +620,31 @@ func CompatRules(m *Manifest, unsignedDrivers []string, h RawHints) []Compat {
 // report; it never stops anything.
 var machineBoundLicensor = regexp.MustCompile(`(?i)^(Adobe|Autodesk|Intuit|Sage|Bentley|Trimble|Chief Architect|SolidWorks|Dassault|Ansys|Esri|Environmental Systems Research)`)
 
-// baseName is a product name without its version, so that "7-Zip 24.08 (x64)"
-// and "7-Zip 24.08" are recognised as the same product in two hives.
+// baseName is a product name without its version or its architecture, so
+// that "7-Zip 24.08 (x64 edition)" and "7-Zip 24.08" are recognised as one
+// product installed twice. Cutting at the first digit is not enough: 7-Zip
+// starts with one, and cutting there left every 7-Zip its own product, which
+// is how the first real machine came to be warned that its 32-bit 7-Zip had
+// no 64-bit version while the 64-bit one sat beside it in the list.
 func baseName(name string) string {
-	name = strings.TrimSpace(name)
-	if i := strings.IndexAny(name, "0123456789("); i > 0 {
-		name = name[:i]
+	words := strings.Fields(strings.TrimSpace(name))
+	var keep []string
+	for i, w := range words {
+		low := strings.ToLower(strings.Trim(w, "()[],"))
+		// A word that is a version, an architecture or a bracketed aside ends
+		// the product's name -- unless it is the first word, which is part of
+		// the name however it looks ("7-Zip", "1Password").
+		if i > 0 && (versionWord.MatchString(low) || archWord[low]) {
+			break
+		}
+		keep = append(keep, w)
 	}
-	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(name), "-"))
+	return strings.TrimRight(strings.TrimSpace(strings.Join(keep, " ")), "-,")
+}
+
+var versionWord = regexp.MustCompile(`^v?\d+([._]\d+)*$`)
+
+var archWord = map[string]bool{
+	"x64": true, "x86": true, "amd64": true, "arm64": true, "32-bit": true, "64-bit": true,
+	"bit": true, "edition": true,
 }

@@ -70,10 +70,12 @@ type scanJSON struct {
 		RedirectedFolders []string `json:"redirected_folders"`
 		USMTPath          string   `json:"usmt_path"`
 	} `json:"hints"`
-	UnsignedDrivers []string `json:"unsigned_drivers"`
-	Hostname        string   `json:"hostname"`
-	ScannerUser     string   `json:"scanner_user"`
-	Problems        []string `json:"problems"`
+	UnsignedDrivers []string           `json:"unsigned_drivers"`
+	Hostname        string             `json:"hostname"`
+	ScannerUser     string             `json:"scanner_user"`
+	Problems        []string           `json:"problems"`
+	Notes           []string           `json:"notes"`
+	Timings         map[string]float64 `json:"timings"`
 }
 
 type rawSettingJSON struct {
@@ -185,6 +187,15 @@ func (c *jsonCollector) Identity() (RawIdentity, error) {
 		OUDN: i.OUDN, Groups: i.Groups, LocalGroups: i.LocalGroups}, nil
 }
 
+// Notes are the smaller failures: one user's hive that would not load while
+// the rest did. They belong in the manifest, but they are not a section
+// failing, so they do not make the scan partial.
+func (c *jsonCollector) Notes() []string { return c.doc.Notes }
+
+// Timings is how long each reading took, for working out why a scan was slow
+// on a particular machine.
+func (c *jsonCollector) Timings() map[string]float64 { return c.doc.Timings }
+
 func (c *jsonCollector) Printers() ([]Printer, error) {
 	if err := c.errFor("printers"); err != nil {
 		return nil, err
@@ -195,7 +206,7 @@ func (c *jsonCollector) Printers() ([]Printer, error) {
 	out := make([]Printer, 0, len(c.doc.Printers))
 	for _, p := range c.doc.Printers {
 		p.Name = strings.TrimSpace(p.Name)
-		if p.Name == "" {
+		if p.Name == "" || inboxPrinter(p) {
 			continue
 		}
 		if p.SharedPath != "" {

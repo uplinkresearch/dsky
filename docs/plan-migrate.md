@@ -73,14 +73,7 @@ was edited after approval, naming which of the two problems it is.
 
 M0 is built. The rest keep the spec's order, with the reuse above folded in.
 
-- **M1 — scanner.** `dsky-agent scan` (and `dsky migrate scan` on the
-  operator's machine for a share-mounted target). Uninstall registry keys for
-  both hives plus per-user, `Get-AppxPackage`-equivalent through the same WMI
-  path the agent already uses, never `Win32_Product`. Identity from
-  `Win32_ComputerSystem` + the Group Policy state key (no RSAT). Printers,
-  mapped drives, SSID names only, static IPs as warnings. Settings from the
-  allowlist. KFM and folder-redirection detection. Compat rules. Writes
-  `manifest.json` + `report.html`. Exit codes per the spec.
+- **M1 — scanner. Built** (see "What M1 built" below).
 - **M2 — resolver.** Site table, then the global table, then a winget index
   match (cached `source.msix` → `index.db`; thresholds 0.85 auto / 0.60
   propose). `--strict` exits non-zero with anything unplaced.
@@ -111,6 +104,56 @@ not read this file.
 Windows first, and the schema is OS-neutral on purpose (`apps[].source_kind`,
 `settings[].apply` keyed by target OS) so a Linux scanner can be added without
 reshaping the file.
+
+## What M1 built
+
+`dsky-agent scan` on the machine being replaced, `dsky migrate scan` for a
+technician sitting at one, both through `internal/migrate`'s one collector so
+the path used on a customer's desk is not the less-tested one. The readings
+are one PowerShell 5.1 script printing one JSON document; the Go side parses
+it, decides nothing about it that a person should decide, and writes
+`manifest.json`, `report.html` and `scan.log`.
+
+It was run against the lab (see [[reference-dsky-migrate-lab]]): a Windows 10
+22H2 client joined to lab.dsky.local, carrying 7-Zip in both architectures, a
+32-bit line-of-business application with no installer anywhere, a printer on
+an IP port, a static address, settings somebody changed, and a domain profile
+beside a local one. **Six defects came out of that run that no unit test
+would have found**, and they are the reason M1 took a second pass:
+
+1. **One locked hive lost every application.** `reg load` of an unloaded
+   profile failed ("the profile is in use"), `$ErrorActionPreference = Stop`
+   turned that into a terminating error, and the manifest came back with zero
+   applications and a one-line note. Each hive is now its own attempt, and
+   what it could not read is a note naming whose software is missing.
+2. **The scan took over twenty minutes.** `Get-WindowsDriver -Online -All`
+   (DISM) was the whole of it. `pnputil /enum-drivers` answers in 0.1s and
+   carries the signer name, which is what the rule actually needs.
+3. **Eleven of the twelve warnings were Windows' own inbox drivers**, which
+   DISM reports as unsigned. Only a third-party driver with no signer is worth
+   a person's attention, and that is what the rule says now.
+4. **`Win32_NTDomain` cost 15.6 of the remaining 24 seconds** — it goes to a
+   domain controller for the NetBIOS name. That name is the first label of the
+   DNS name, upper case, and the review is where somebody can correct the
+   rename case. The scan now finishes in **7.5 seconds**.
+5. **Microsoft Edge was reported as 32-bit** because it registers only in the
+   32-bit hive and installs under Program Files (x86). The hive is not
+   evidence: the PE header of the application's own largest executable is,
+   and it is two bytes after a short seek.
+6. **Noise a customer would have read as findings**: Windows' own print queues
+   (Print to PDF, XPS, Fax, OneNote) outnumbered the two real printers three
+   to one; every local group was Windows' defaults (Guest, DefaultAccount, the
+   local Administrator, and the two memberships a domain join makes by
+   itself); Windows servicing entries sat in the application list; and the
+   two 7-Zips were reported as one 32-bit application with no 64-bit version
+   while its 64-bit twin was two rows above it (cutting a name at its first
+   digit leaves "7-Zip 24.08" whole, because the 7 is the first character).
+
+What the lab client's plan looks like now: 6 applications, 10 settings
+captured (9 appliable), 2 printers, the OU `OU=Front Desk,OU=Workstations,
+DC=lab,DC=dsky,DC=local` for djoin, `LAB\reception` as the one hand-added
+group member, USMT proposed for the domain profile and not for the local
+account, and one blocker — USMT itself is not on the stick.
 
 ## What M0 built
 

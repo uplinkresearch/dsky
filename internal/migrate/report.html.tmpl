@@ -97,7 +97,7 @@ footer { color: var(--dim); font-size: 11px; margin-top: 34px; border-top: 1px s
     <dt>Domain</dt><dd>none — this machine is not in a domain</dd>
   {{end}}
   <dt>User files</dt><dd>
-    {{if eq .M.Data.Strategy "usmt"}}copied with USMT from <span class="mono">{{.M.Data.StorePath}}</span> for {{join ", " .M.Data.Users}}{{if .M.Data.Encrypted}} (encrypted store){{end}}
+    {{if eq .M.Data.Strategy "usmt"}}copied with USMT for {{join ", " .M.Data.Users}}{{if .M.Data.StorePath}}, through <span class="mono">{{.M.Data.StorePath}}</span>{{if .M.Data.Encrypted}} (encrypted){{end}}{{else}} — where they are staged is settled in the review{{end}}
     {{else if eq .M.Data.Strategy "onedrive_kfm"}}already in OneDrive — they come back at first sign-in, nothing is copied
     {{else if eq .M.Data.Strategy "folder_redirection"}}on the file server through folder redirection — nothing is copied
     {{else}}not migrated — this machine has no local data to carry over{{end}}</dd>
