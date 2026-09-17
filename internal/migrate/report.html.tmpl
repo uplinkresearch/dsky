@@ -135,7 +135,8 @@ footer { color: var(--dim); font-size: 11px; margin-top: 34px; border-top: 1px s
     <td class="mono">{{plus1 $i}}</td>
     <td>{{$a.DisplayName}}</td>
     <td><span class="pill">{{$a.Resolution.Method}}</span></td>
-    <td class="mono">{{$a.Resolution.Ref}}{{if $a.Resolution.Args}} <span class="sub">{{join " " $a.Resolution.Args}}</span>{{end}}</td>
+    <td class="mono">{{$a.Resolution.Ref}}{{if $a.Resolution.Args}} <span class="sub">{{join " " $a.Resolution.Args}}</span>{{end}}
+      {{- if $a.Resolution.Note}}<div class="sub">{{$a.Resolution.Note}}</div>{{end}}</td>
     <td class="sub">{{$a.Resolution.ResolvedBy}}</td>
   </tr>{{end}}</tbody>
 </table></div>
@@ -152,8 +153,10 @@ footer { color: var(--dim); font-size: 11px; margin-top: 34px; border-top: 1px s
 {{if .Dropped}}
 <h2>Deliberately left behind</h2>
 <div class="wrap"><table>
-  <thead><tr><th>Application</th><th>Publisher</th><th>Decided by</th></tr></thead>
-  <tbody>{{range .Dropped}}<tr><td>{{.DisplayName}}</td><td>{{.Publisher}}</td><td class="sub">{{.Resolution.ResolvedBy}}</td></tr>{{end}}</tbody>
+  <thead><tr><th>Application</th><th>Publisher</th><th>Why</th><th>Decided by</th></tr></thead>
+  <tbody>{{range .Dropped}}<tr><td>{{.DisplayName}}</td><td>{{.Publisher}}</td>
+    <td>{{if .Resolution.Note}}{{.Resolution.Note}}{{else}}—{{end}}</td>
+    <td class="sub">{{.Resolution.ResolvedBy}}</td></tr>{{end}}</tbody>
 </table></div>
 {{end}}
 

@@ -39,7 +39,7 @@ import (
 // a new optional field is a minor bump that older builds still read, and
 // anything that changes the meaning of an existing field is a major bump with
 // a migration in schema.go. See docs/migrate-schema-changelog.md.
-const SchemaVersion = "1.0"
+const SchemaVersion = "1.1"
 
 // ManifestName is what the scanner writes beside itself.
 const ManifestName = "manifest.json"
@@ -214,13 +214,19 @@ type App struct {
 
 // Resolution is how this application is to be installed on the new machine.
 type Resolution struct {
-	Status     string   `json:"status"`
-	Method     string   `json:"method,omitempty"`
-	Ref        string   `json:"ref,omitempty"` // winget id, UNC path, URL, script name
-	Confidence float64  `json:"confidence,omitempty"`
-	ResolvedBy string   `json:"resolved_by,omitempty"`
-	Args       []string `json:"args,omitempty"`
-	Order      int      `json:"order,omitempty"`
+	Status     string  `json:"status"`
+	Method     string  `json:"method,omitempty"`
+	Ref        string  `json:"ref,omitempty"` // winget id, UNC path, URL, script name
+	Confidence float64 `json:"confidence,omitempty"`
+	ResolvedBy string  `json:"resolved_by,omitempty"`
+	// Note is why, when the answer needs one: "Edge comes with Windows",
+	// "needs the SQL Express instance first". It comes from whichever mapping
+	// table answered, and it is what the report shows beside an application
+	// nobody is installing -- "left behind, decided by mapping_table" is a
+	// fact without a reason, which is the sort of line that gets queried.
+	Note  string   `json:"note,omitempty"`
+	Args  []string `json:"args,omitempty"`
+	Order int      `json:"order,omitempty"`
 }
 
 // Installable reports whether the runner will try to install this.
@@ -374,13 +380,27 @@ func Parse(b []byte) (*Manifest, error) {
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
+	// A manifest from an older 1.x is this build's shape as soon as it is
+	// read: every field this build knows is filled in from here on, and the
+	// version it declares has to say so. Stamping it at the other end --
+	// when it is written -- would change the file after it was approved, and
+	// approval is a hash of the file.
+	if supportedVersion(m.SchemaVersion) {
+		m.SchemaVersion = SchemaVersion
+	}
 	return &m, nil
 }
 
 // Save writes the manifest, checked first, indented so that a person reading
 // or diffing the file can follow it, and replaced in one step so that an
 // interrupted write cannot leave half a plan behind.
+//
+// The version is stamped when a manifest is read, not here, so that writing
+// one never changes what was approved.
 func (m *Manifest) Save(path string) error {
+	if m.SchemaVersion == "" {
+		m.SchemaVersion = SchemaVersion
+	}
 	if err := m.Validate(); err != nil {
 		return err
 	}
@@ -634,12 +654,24 @@ func (m *Manifest) Count(osName string) Counts {
 // InstallOrder is the applications to install, in the order to install them:
 // prerequisites first, then by name so that two runs of the same manifest
 // install in the same order and a log can be compared with an earlier one.
+//
+// One package installs once. A machine that registered 7-Zip in both hives
+// has two applications in the manifest -- both true, both worth showing in
+// the report -- resolving to one winget id, and installing it twice would
+// waste a minute of somebody's first boot to be told it is already there.
 func (m *Manifest) InstallOrder() []App {
 	var out []App
+	seen := map[string]bool{}
 	for _, a := range m.Apps {
-		if a.Resolution.Installable() {
-			out = append(out, a)
+		if !a.Resolution.Installable() {
+			continue
 		}
+		key := a.Resolution.Method + "|" + strings.ToLower(a.Resolution.Ref) + "|" + strings.Join(a.Resolution.Args, " ")
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, a)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		oi, oj := out[i].Resolution.Order, out[j].Resolution.Order

@@ -16,6 +16,15 @@ Versions are `major.minor`:
 A manifest whose major is newer than the build is refused with a sentence
 saying so, rather than read with the unknown half dropped.
 
+## 1.1 — 2026-09-18
+
+Added `apps[].resolution.note`: why an application resolves the way it does,
+when the answer needs a reason. It is carried from whichever mapping table
+answered — "Edge comes with Windows", "needs the SQL Express instance first" —
+and the report shows it beside anything nobody is installing. A 1.0 manifest
+reads unchanged; a 1.1 manifest read by a 1.0 build would lose only the
+explanation.
+
 ## 1.0 — 2026-09-17
 
 First version. Sections: `approval`, `source`, `target`, `identity`, `apps`,

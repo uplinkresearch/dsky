@@ -22,7 +22,7 @@ import (
 // says so rather than pretending.
 func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("migrate: need scan, validate, report or schema (see docs/plan-migrate.md)")
+		return fmt.Errorf("migrate: need scan, resolve, validate, report or schema (see docs/plan-migrate.md)")
 	}
 	switch args[0] {
 	case "scan":
@@ -37,10 +37,12 @@ func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 		}
 		_, err := os.Stdout.Write(migrate.JSONSchema())
 		return err
-	case "resolve", "review", "build", "verify":
-		return fmt.Errorf("migrate %s is not built yet — scan, validate, report and schema are; see docs/plan-migrate.md", args[0])
+	case "resolve":
+		return migrateResolve(args[1:])
+	case "review", "build", "verify":
+		return fmt.Errorf("migrate %s is not built yet — scan, resolve, validate, report and schema are; see docs/plan-migrate.md", args[0])
 	default:
-		return fmt.Errorf("migrate: no such thing as %q (scan, validate, report, schema)", args[0])
+		return fmt.Errorf("migrate: no such thing as %q (scan, resolve, validate, report, schema)", args[0])
 	}
 }
 
@@ -76,6 +78,82 @@ func migrateScan(ctx context.Context, args []string) error {
 		return exitError{code: 3, err: fmt.Errorf("%d part(s) of this machine could not be read; the manifest says which", len(res.Unread))}
 	}
 	return nil
+}
+
+// migrateResolve works out where each application comes from on the new
+// machine, and writes what it found back into the manifest. It runs on the
+// operator's own computer, not the one being replaced: this is the step that
+// needs the site's table and, one day, an index of every package there is.
+//
+// It never decides anything twice. An application somebody settled in an
+// earlier review keeps that decision, so running this again after adding an
+// entry to the site's table only fills what is still blank.
+func migrateResolve(args []string) error {
+	fs := flag.NewFlagSet("migrate resolve", flag.ContinueOnError)
+	site := fs.String("site", "", "the site's mapping table (default: mappings.json beside the manifest)")
+	strict := fs.Bool("strict", false, "exit non-zero if anything is left with nowhere to install from")
+	dry := fs.Bool("dry-run", false, "say what would be resolved without writing the manifest")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("migrate resolve <manifest.json> [--site mappings.json] [--strict] [--dry-run]")
+	}
+	path := fs.Arg(0)
+	m, err := migrate.Load(path)
+	if err != nil {
+		return err
+	}
+	sitePath := *site
+	if sitePath == "" {
+		sitePath = filepath.Join(filepath.Dir(path), migrate.MappingName)
+	}
+	table, err := migrate.LoadTable(sitePath)
+	if err != nil {
+		return err
+	}
+	if len(table.Entries) > 0 {
+		fmt.Printf("%d decision(s) from %s\n", len(table.Entries), sitePath)
+	}
+
+	res := migrate.Resolve(m, migrate.SiteTable(table), migrate.GlobalTable(),
+		migrate.NameMatch{Known: migrate.KnownApps()})
+	fmt.Println(res.Summary())
+	for _, a := range m.Apps {
+		switch {
+		case a.Resolution.Status == migrate.StatusResolved && a.Resolution.ResolvedBy == migrate.ByAuto && a.Resolution.Confidence < 1:
+			fmt.Printf("  %-44s %s (%.0f%% sure)\n", short(a.DisplayName), a.Resolution.Ref, a.Resolution.Confidence*100)
+		case a.Resolution.Status == migrate.StatusUnmapped && a.Resolution.Ref != "":
+			fmt.Printf("  %-44s maybe %s (%.0f%%) — the review asks\n", short(a.DisplayName), a.Resolution.Ref, a.Resolution.Confidence*100)
+		case a.Resolution.Status == migrate.StatusUnset, a.Resolution.Status == migrate.StatusUnmapped:
+			fmt.Printf("  %-44s nowhere to install from\n", short(a.DisplayName))
+		}
+	}
+	if *dry {
+		return nil
+	}
+	// Approval covers the plan, and the plan just changed; a manifest that
+	// was approved before this ran has to be looked at again.
+	if m.Approval.Approved {
+		m.Unapprove()
+		fmt.Println("this manifest was approved before; that approval is cleared because the plan changed")
+	}
+	if err := m.Save(path); err != nil {
+		return err
+	}
+	fmt.Println("wrote", path)
+	if *strict && res.Left > 0 {
+		return exitError{code: 3, err: fmt.Errorf("%d application(s) still have nowhere to install from", res.Left)}
+	}
+	return nil
+}
+
+// short keeps a long product name inside the column it is printed in.
+func short(s string) string {
+	if len(s) <= 44 {
+		return s
+	}
+	return s[:41] + "..."
 }
 
 // migrateValidate is the answer to "is this file a migration plan DSKY will

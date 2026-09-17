@@ -23,11 +23,15 @@ func load(t *testing.T, name string) *Manifest {
 	return m
 }
 
+// The fixture files are deliberately left at schema 1.0 on disk: they are the
+// check that a manifest written by an older DSKY still reads. Reading one
+// stamps it as this build's shape, which is what the rest of the code then
+// works with.
 func TestFixturesAreValid(t *testing.T) {
 	for _, name := range fixtures {
 		m := load(t, name)
-		if m.SchemaVersion != SchemaVersion {
-			t.Errorf("%s: schema_version %q, want %q", name, m.SchemaVersion, SchemaVersion)
+		if !supportedVersion(m.SchemaVersion) {
+			t.Errorf("%s: schema_version %q is not readable", name, m.SchemaVersion)
 		}
 		if m.Source.Hostname == "" || m.Target.Hostname == "" {
 			t.Errorf("%s: a fixture with no hostname teaches nothing", name)
@@ -48,6 +52,9 @@ func TestSaveAndLoadKeepEverything(t *testing.T) {
 		again, err := Load(path)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
+		}
+		if again.SchemaVersion != SchemaVersion {
+			t.Errorf("%s: saved as %q", name, again.SchemaVersion)
 		}
 		want, _ := json.Marshal(m)
 		got, _ := json.Marshal(again)
@@ -202,5 +209,29 @@ func TestCountsMatchTheFixtures(t *testing.T) {
 	kiosk := load(t, "kiosk").Count("win11")
 	if kiosk.Apps != 2 || kiosk.Resolved != 2 || kiosk.Printers != 0 || kiosk.Drives != 0 {
 		t.Errorf("kiosk: %+v", kiosk)
+	}
+}
+
+// A manifest read from an older 1.x is this build's shape from then on, and
+// approving it must survive being written and read back — the stamp happens
+// at reading for exactly that reason.
+func TestAnOlderManifestUpgradesAndStaysApproved(t *testing.T) {
+	m := load(t, "office") // the file on disk says 1.0
+	if m.SchemaVersion != SchemaVersion {
+		t.Fatalf("reading did not stamp the version: %q", m.SchemaVersion)
+	}
+	if err := m.Approve("dusty"); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "manifest.json")
+	if err := m.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := again.CheckApproved(); err != nil {
+		t.Errorf("an upgraded manifest lost its approval: %v", err)
 	}
 }

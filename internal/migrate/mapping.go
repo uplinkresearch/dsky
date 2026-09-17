@@ -171,6 +171,9 @@ func (t *Table) Lookup(a App) (Resolution, *ConfigCapture, bool) {
 		if r.Status == StatusUnset {
 			r.Status = StatusResolved
 		}
+		if r.Note == "" {
+			r.Note = e.Note
+		}
 		r.ResolvedBy = ByMapping
 		r.Confidence = 1
 		if r.Order == 0 && r.Status == StatusResolved {

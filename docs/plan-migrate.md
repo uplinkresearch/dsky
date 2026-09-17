@@ -74,9 +74,7 @@ was edited after approval, naming which of the two problems it is.
 M0 is built. The rest keep the spec's order, with the reuse above folded in.
 
 - **M1 — scanner. Built** (see "What M1 built" below).
-- **M2 — resolver.** Site table, then the global table, then a winget index
-  match (cached `source.msix` → `index.db`; thresholds 0.85 auto / 0.60
-  propose). `--strict` exits non-zero with anything unplaced.
+- **M2 — resolver. Built** (see "What M2 built" below).
 - **M3 — review.** Terminal UI first (the portal's a second pass): blockers,
   then unplaced applications one at a time, with "also save to the site table"
   defaulting to yes. Approval writes the hash. `--auto-approve` only when
@@ -104,6 +102,61 @@ not read this file.
 Windows first, and the schema is OS-neutral on purpose (`apps[].source_kind`,
 `settings[].apply` keyed by target OS) so a Linux scanner can be added without
 reshaping the file.
+
+## What M2 built
+
+`dsky migrate resolve` fills in where each application comes from, from three
+places in order of how much each knows about this customer: the site's own
+table, the table DSKY ships, and the names themselves.
+
+**The bundled table is the app picker's list.** `internal/appcatalog` already
+holds ninety-odd packages whose winget ids are re-checked against winget-pkgs
+every week; building the global table from it means the two cannot drift and a
+package added for the picker helps a migration the same day. What this feature
+adds of its own is only what a picker does not need: the runtimes nobody
+chooses (Visual C++, .NET desktop, WebView2 — their ids checked live before
+committing, and added to the weekly catalog-health run), the PC makers' own
+utilities and Windows' own apps as things to leave behind, and the software
+DSKY knows winget does not have, which comes out as "a person installs this"
+with the note saying where from.
+
+**The name matcher is last and says how sure it is.** "Notepad++ (64-bit x64)"
+in a registry is the "Notepad++" DSKY knows; the score is how much of the
+shorter name the two share, with the longer side's version, architecture and
+edition words thrown away first. At or above 0.85 it is the answer; between
+0.60 and 0.85 it is written as a suggestion with the status left unmapped, so
+the review still asks but the answer is already typed in; below that nothing
+is said at all.
+
+**Running it again is safe, and is the point.** An application a person
+settled is never reopened. One the tool itself failed to place is tried again
+— because the reason to re-run is usually that somebody has just added the
+entry that places it. "Nobody has looked" and "looked and found nothing" are
+different states in the file for exactly this reason.
+
+Two things the real lab machine changed:
+
+- **One package installs once.** A machine with 7-Zip registered in both hives
+  has two applications in the manifest, both true and both in the report, and
+  they resolved to one winget id. The install order deduplicates by what would
+  actually be run.
+- **"Left behind, decided by mapping_table" is a fact with no reason**, which
+  is the sort of line a customer queries. `resolution.note` (schema 1.1)
+  carries the answering table's note — "Edge comes with Windows", "needs the
+  SQL Express instance first" — into the manifest and the report.
+
+The lab client, with one site-table entry for its practice software, resolves
+completely: 3 installs (7-Zip once, Notepad++, the practice software from the
+site's share), 2 left behind with reasons, nothing unplaced.
+
+**The winget index is deliberately not built yet.** The spec's third source is
+the full package index, which Microsoft publishes only as a SQLite file inside
+`source.msix`; reading it needs either cgo (this repo builds CGO_ENABLED=0) or
+a pure-Go SQLite, which is a large dependency for a lean tree. The resolver
+takes a list of `Resolver`s, so adding it later is one more implementation and
+one line at the call site. Until then the curated list plus name matching
+covers ordinary office software, and everything else is the review's work —
+which is where a person would end up with a fuzzy index match anyway.
 
 ## What M1 built
 

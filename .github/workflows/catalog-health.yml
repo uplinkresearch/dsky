@@ -56,6 +56,10 @@ jobs:
           set -o pipefail
           go test ./internal/appcatalog/ -count=1 -timeout 20m -v \
             -run 'TestWingetIDsLive' 2>&1 | tee winget.txt
+          # The runtimes a migration installs before everything else are not
+          # in the picker's list, so they need checking too.
+          go test ./internal/migrate/ -count=1 -timeout 10m -v \
+            -run 'TestBuiltinTableIDsLive' 2>&1 | tee -a winget.txt
 
       # Only the failing lines, so the issue says what rotted rather than
       # burying it in 27 successes.

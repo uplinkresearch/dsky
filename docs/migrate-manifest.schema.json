@@ -560,6 +560,9 @@
           ],
           "type": "string"
         },
+        "note": {
+          "type": "string"
+        },
         "order": {
           "description": "install sequencing, lower first; 10 for prerequisites, 50 default",
           "maximum": 99,
@@ -813,5 +816,5 @@
       "$ref": "#/$defs/Table"
     }
   ],
-  "title": "DSKY migration manifest 1.0"
+  "title": "DSKY migration manifest 1.1"
 }
