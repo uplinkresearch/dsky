@@ -312,6 +312,13 @@ checked against packages.ubuntu.com for each supported release.
 
 - Arch, NixOS and Omarchy: each has its own install tool
   (`archinstall --config`, a Nix configuration), and a picker would fight it.
+  Confirmed for Omarchy on 2026-09-17 by booting it (`omarchy` case): the ISO
+  is archiso with `timeout=0` and a hidden menu, so it goes straight into
+  Omarchy's own installer, which asks for a keyboard layout and works forward
+  from there. There is no answers file and nothing on the kernel command line
+  to point at one. What DSKY is responsible for does work — the pinned ISO
+  downloads, its hash matches, it is written unchanged, and it boots to that
+  installer on UEFI — and that is the whole of what DSKY can promise here.
 - Proxmox VE and TrueNAS SCALE: appliances, where desktop programs don't apply.
 - Raspberry Pi OS: it has a first-boot customisation file, but it writes a
   finished system rather than running an installer, so it is a different
