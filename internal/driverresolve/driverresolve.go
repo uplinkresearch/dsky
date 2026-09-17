@@ -64,15 +64,26 @@ type Resolved struct {
 }
 
 // SpecsFor turns a detected machine into the hardware entries worth
-// resolving: the per-model pack when the maker has a feed (Dell/Lenovo/HP),
-// plus GPU and NIC vendor+device IDs for the Microsoft Update Catalog.
+// resolving: its model's drivers when the maker has a model feed, plus GPU and
+// NIC vendor+device IDs for the Microsoft Update Catalog.
 func SpecsFor(h *hwdetect.Hardware, osName string) []recipe.HardwareSpec {
 	if osName == "" {
 		osName = "win11"
 	}
 	var out []recipe.HardwareSpec
 	if v := h.KnownVendor(); v != "" && strings.TrimSpace(h.Model) != "" {
-		out = append(out, recipe.HardwareSpec{Vendor: v, Model: strings.TrimSpace(h.Model), OS: osName})
+		model := strings.TrimSpace(h.Model)
+		// Microsoft sold the Surface Laptop 3 and 4 with Intel and with AMD
+		// chips under one model name, and publishes drivers for each; only
+		// the processor tells them apart.
+		if v == "surface" {
+			if cpu := strings.ToLower(h.CPU); strings.Contains(cpu, "amd") {
+				model += " (AMD)"
+			} else if strings.Contains(cpu, "intel") {
+				model += " (Intel)"
+			}
+		}
+		out = append(out, recipe.HardwareSpec{Vendor: v, Model: model, OS: osName})
 	}
 	if ids := h.DriverHWIDs(); len(ids) > 0 {
 		out = append(out, recipe.HardwareSpec{HWIDs: ids, OS: osName})
@@ -82,8 +93,8 @@ func SpecsFor(h *hwdetect.Hardware, osName string) []recipe.HardwareSpec {
 
 // SpecForModel parses a "vendor:model" target — a machine you are not sitting
 // at, whose media you are building at the bench. The vendor is required and
-// checked because only Dell, Lenovo and HP publish a per-model driver pack;
-// anything else resolves per device, which needs the machine itself.
+// checked because only the model feeds publish drivers by model; anything else
+// resolves per device, which needs the machine itself.
 func SpecForModel(spec, osName string) (recipe.HardwareSpec, error) {
 	if osName == "" {
 		osName = "win11"
@@ -330,12 +341,28 @@ func resolveModel(ctx context.Context, ws *workspace.Workspace, lib *library.Lib
 	if err != nil {
 		return nil, err
 	}
+	// The catalog's name for the model: a detected machine reports its own
+	// ("NUC13ANKi7"), which some catalogs do not use ("NUC 13 Pro Kit"). The
+	// manifests stay bound to the name the recipe gave.
+	query := h.Model
+	if _, ok := feed.(catalog.Identifier); ok {
+		if query, err = catalog.Identify(ctx, feed, h.Model, osName); err != nil {
+			// Offline with the manifests already written: build from those.
+			if s := have(h.Vendor, h.Model, ""); s != nil {
+				return []string{s.ID}, ensurePulled(s)
+			}
+			return nil, err
+		}
+		if query != h.Model {
+			progress.stage("%s is %s in %s's catalog", h.Model, query, catalog.VendorNames[catalog.Vendor(h.Vendor)])
+		}
+	}
 	// Some vendors publish a model's drivers as many packages rather than one
 	// pack. Each becomes a manifest bound to the model, and compose stages
 	// every manifest a model matches, so all of them are added here.
 	if cf, ok := feed.(catalog.ComponentFeed); ok {
 		progress.stage("finding %s drivers for %s", h.Vendor, h.Model)
-		packs, err := cf.Components(ctx, catalog.Query{Model: h.Model, OS: osName})
+		packs, err := cf.Components(ctx, catalog.Query{Model: query, OS: osName})
 		if err != nil {
 			// Offline with the manifests already written: build from those.
 			if s := have(h.Vendor, h.Model, ""); s != nil {
@@ -361,7 +388,7 @@ func resolveModel(ctx context.Context, ws *workspace.Workspace, lib *library.Lib
 		return []string{s.ID}, ensurePulled(s)
 	}
 	progress.stage("finding %s drivers for %s", h.Vendor, h.Model)
-	packs, err := feed.Search(ctx, catalog.Query{Model: h.Model, OS: osName})
+	packs, err := feed.Search(ctx, catalog.Query{Model: query, OS: osName})
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +396,7 @@ func resolveModel(ctx context.Context, ws *workspace.Workspace, lib *library.Lib
 		return nil, fmt.Errorf("no %s driver pack for %q (%s) — check the model with `dsky drivers search %s %q`", h.Vendor, h.Model, osName, h.Vendor, h.Model)
 	}
 	ref := manifest.HardwareRef{Vendor: h.Vendor, Model: h.Model, OS: osName}
-	id, err := AddPack(ctx, ws, lib, feed, catalog.Exact(packs, h.Model), ref, pull, progress)
+	id, err := AddPack(ctx, ws, lib, feed, catalog.Exact(packs, query), ref, pull, progress)
 	if err != nil {
 		return nil, err
 	}

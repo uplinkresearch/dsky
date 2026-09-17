@@ -87,3 +87,29 @@ func TestASUSFileSizesAreRead(t *testing.T) {
 		}
 	}
 }
+
+// ASUSModelCases pair what an ASUS computer reports to Windows with the model
+// code an installer is gated to. The first-boot script is run over them too.
+var ASUSModelCases = []struct {
+	Reported, Code string
+	Match          bool
+}{
+	{"ASUS Zenbook 14 UX3405MA_UX3405MA", "UX3405MA", true},
+	{"Zenbook UX3405MA_UX3405MA", "UX3405MA", true},
+	{"UX3405MA", "UX3405MA", true},
+	{"ASUS TUF Gaming A15 FA507NV_FA507NV", "FA507NV", true},
+	{"ROG Strix G614JV_G614JV", "g614jv", true},
+	{"ASUS Zenbook 14 UX3405MA_UX3405MA", "UX3405M", false},
+	{"ASUS Zenbook 14 UX3405MA_UX3405MA", "UX3405MAB", false},
+	{"ASUS Vivobook 15 X1504VA_X1504VA", "UX3405MA", false},
+	{"ASUS TUF Gaming A15 FA507NV_FA507NV", "A15", true},
+	{"", "UX3405MA", false},
+}
+
+func TestASUSModelMatches(t *testing.T) {
+	for _, c := range ASUSModelCases {
+		if got := ASUSModelMatches(c.Reported, c.Code); got != c.Match {
+			t.Errorf("%q on %q: %v, want %v", c.Code, c.Reported, got, c.Match)
+		}
+	}
+}

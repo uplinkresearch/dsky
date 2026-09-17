@@ -195,8 +195,10 @@ dsky detect --resolve       # fetch those drivers now, cached for later
 dsky install windows-11 --drivers
 ```
 
-Dell, Lenovo, HP and Framework machines get their per-model driver pack;
-everything else resolves per device through the Microsoft Update Catalog. (For
+Machines from the makers listed below get their model's drivers -- DSKY
+recognises the model from what the machine reports, such as an Intel NUC's
+`NUC13ANKi7` for the NUC 13 Pro Kit; everything else resolves per device
+through the Microsoft Update Catalog. (For
 a machine you are sitting at, that is; the vendors below are picked by model.) Devices the catalogs
 do not carry are reported and skipped rather than failing the build — Windows
 Update covers most of them. GPU packages are large (easily a gigabyte each),

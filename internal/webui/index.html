@@ -1832,7 +1832,7 @@ function driverOpt() {
     for (const g of h.gpus || []) bits.push(g.name);
     const n = (h.lookup_ids || []).length;
     let tail = n === 1 ? "1 device to look up" : `${n} devices to look up`;
-    if (h.feed) tail += `, plus the ${h.feed} model pack`;
+    if (h.feed) tail += `, plus ${h.feed_name || h.feed}'s drivers for this model`;
     note.textContent = bits.join(" · ") + (bits.length ? " — " : "") + tail;
   }).catch(e => { note.textContent = "Detection unavailable: " + e.message; });
   return { wrap, get: inner.get };

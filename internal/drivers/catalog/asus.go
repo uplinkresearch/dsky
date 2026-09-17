@@ -207,6 +207,25 @@ func asusBytes(s string) int64 {
 	return int64(n)
 }
 
+// ASUSModelMatches reports whether an ASUS computer reporting itself as
+// reported is the model code an installer was published for. ASUS computers
+// put the code at the end of a marketing name, often twice --
+// "ASUS Zenbook 14 UX3405MA_UX3405MA" -- so the code must be one whole piece
+// of it: the UX3405MA is not the UX3405M, nor the UX3405MAB. The first-boot
+// gate uses the same rule.
+func ASUSModelMatches(reported, code string) bool {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if code == "" {
+		return false
+	}
+	for _, piece := range asusToken.FindAllString(strings.ToUpper(reported), -1) {
+		if strings.Trim(piece, "-") == code {
+			return true
+		}
+	}
+	return false
+}
+
 // asusComponents picks the drivers to stage out of a product's list.
 //
 // For a NUC that is its INF driver packs, and only if it has none, its other

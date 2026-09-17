@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/uplinkresearch/dsky/internal/driverresolve"
+	"github.com/uplinkresearch/dsky/internal/drivers/catalog"
 	"github.com/uplinkresearch/dsky/internal/hwdetect"
 	"github.com/uplinkresearch/dsky/internal/oscatalog"
 )
@@ -28,7 +29,7 @@ func cmdDetect(ctx context.Context, env *Env, args []string) error {
 	fmt.Println("This machine:")
 	fmt.Printf("  make/model:  %s %s\n", h.Vendor, h.Model)
 	if v := h.KnownVendor(); v != "" {
-		fmt.Printf("  driver feed: %s (a per-model driver pack is available)\n", v)
+		fmt.Printf("  driver feed: %s (drivers for this model)\n", catalog.VendorNames[catalog.Vendor(v)])
 	} else {
 		fmt.Println("  driver feed: none — drivers resolve per-device via the Microsoft Update Catalog")
 	}
@@ -71,7 +72,7 @@ func cmdDetect(ctx context.Context, env *Env, args []string) error {
 	}
 	hw := driverresolve.SpecsFor(h, e.DriverOS())
 	if len(hw) == 0 {
-		return fmt.Errorf("nothing to resolve: no Dell/Lenovo/HP model feed and no PCI GPU or network device detected")
+		return fmt.Errorf("nothing to resolve: no maker with drivers by model and no PCI GPU or network device detected")
 	}
 	fmt.Printf("\nResolving %s drivers...\n", e.Name)
 	prog := &stageProgress{}

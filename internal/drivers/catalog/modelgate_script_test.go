@@ -25,15 +25,25 @@ func TestModelInstallerScriptAgreesWithGo(t *testing.T) {
 	if err := os.WriteFile(script, []byte(recipe.ModelInstallerScriptFile()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	run := func(manufacturer, reported, listed string) string {
+	runAs := func(vendor, manufacturer, reported, listed string) string {
 		t.Helper()
 		out, err := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-File", script,
-			"-Installer", "bundle.exe", "-Arguments", "-u", "-Vendor", "framework", "-Model", listed,
+			"-Installer", "bundle.exe", "-Arguments", "-u", "-Vendor", vendor, "-Model", listed,
 			"-ThisManufacturer", manufacturer, "-ThisModel", reported, "-CheckOnly").CombinedOutput()
 		if err != nil {
 			t.Fatalf("script failed: %v\n%s", err, out)
 		}
 		return string(out)
+	}
+	run := func(manufacturer, reported, listed string) string {
+		t.Helper()
+		return runAs("framework", manufacturer, reported, listed)
+	}
+	for _, c := range catalog.ASUSModelCases {
+		out := runAs("asus", "ASUSTeK COMPUTER INC.", c.Reported, c.Code)
+		if ran := strings.Contains(out, "would run"); ran != c.Match {
+			t.Errorf("ASUS %q on %q: script says %q, Go says match=%v", c.Code, c.Reported, strings.TrimSpace(out), c.Match)
+		}
 	}
 	for _, c := range catalog.FrameworkModelCases {
 		out := run("Framework", c.Reported, c.Listed)

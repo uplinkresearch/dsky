@@ -18,6 +18,7 @@ import (
 	"github.com/uplinkresearch/dsky/internal/compose"
 	"github.com/uplinkresearch/dsky/internal/device"
 	"github.com/uplinkresearch/dsky/internal/driverresolve"
+	"github.com/uplinkresearch/dsky/internal/drivers/catalog"
 	"github.com/uplinkresearch/dsky/internal/flashrun"
 	"github.com/uplinkresearch/dsky/internal/hwdetect"
 	"github.com/uplinkresearch/dsky/internal/library"
@@ -624,7 +625,7 @@ func (m *model) hwSummary() string {
 	n := len(m.hw.DriverHWIDs())
 	s := fmt.Sprintf("%s — %d device(s) to look up", name, n)
 	if v := m.hw.KnownVendor(); v != "" {
-		s += ", plus the " + v + " model pack"
+		s += ", plus " + catalog.VendorNames[catalog.Vendor(v)] + "'s drivers for this model"
 	}
 	return s
 }

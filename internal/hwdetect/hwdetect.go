@@ -31,11 +31,17 @@ type Device struct {
 // Detect profiles the current machine.
 func Detect(ctx context.Context) (*Hardware, error) { return detect(ctx) }
 
-// KnownVendor maps a system-manufacturer string to a driver-catalog vendor
-// (dell/lenovo/hp), or "" when there is no per-model feed for it.
+// KnownVendor maps the machine's manufacturer and model to the driver catalog
+// that has per-model drivers for it, or "" when none does. The order matters:
+// an Alienware from before Dell gave it its own manufacturer string reports
+// "Dell Inc.", and NUCs built by ASUS report ASUSTeK, so both are recognised by
+// model before their manufacturer is.
 func (h *Hardware) KnownVendor() string {
 	v := strings.ToLower(h.Vendor)
+	m := strings.ToLower(strings.TrimSpace(h.Model))
 	switch {
+	case strings.Contains(v, "alienware") || strings.Contains(m, "alienware"):
+		return "alienware"
 	case strings.Contains(v, "dell"):
 		return "dell"
 	case strings.Contains(v, "lenovo"):
@@ -44,6 +50,14 @@ func (h *Hardware) KnownVendor() string {
 		return "hp"
 	case strings.Contains(v, "framework"):
 		return "framework"
+	case strings.Contains(v, "microsoft") && strings.Contains(m, "surface"):
+		return "surface"
+	case strings.HasPrefix(m, "nuc") && (strings.Contains(v, "intel") || strings.Contains(v, "asus")):
+		return "nuc"
+	case strings.Contains(v, "asustek") || v == "asus":
+		return "asus"
+	case strings.Contains(v, "samsung"):
+		return "samsung"
 	}
 	return ""
 }

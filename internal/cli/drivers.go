@@ -264,8 +264,8 @@ func driversScan(ctx context.Context) error {
 	}
 	fmt.Printf("\n%d device(s) need drivers. Look each hardware ID up in the Microsoft Update Catalog:\n", problems)
 	fmt.Println("  dsky drivers search mscatalog \"<hardware-id>\" --add")
-	fmt.Println("or, for Dell/Lenovo/HP machines, take the whole vendor pack:")
-	fmt.Println("  dsky drivers search dell \"<model>\" --add")
+	fmt.Println("or, for a maker with drivers by model, take all of this model's:")
+	fmt.Println("  dsky detect --resolve")
 	return nil
 }
 

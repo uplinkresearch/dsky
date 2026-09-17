@@ -12,6 +12,7 @@ import (
 	"github.com/uplinkresearch/dsky/internal/appcatalog"
 	"github.com/uplinkresearch/dsky/internal/compose"
 	"github.com/uplinkresearch/dsky/internal/driverresolve"
+	"github.com/uplinkresearch/dsky/internal/drivers/catalog"
 	"github.com/uplinkresearch/dsky/internal/hwdetect"
 	"github.com/uplinkresearch/dsky/internal/library"
 	"github.com/uplinkresearch/dsky/internal/oscatalog"
@@ -285,13 +286,13 @@ func detectedHardware(ctx context.Context, e oscatalog.Entry) ([]recipe.Hardware
 	fmt.Printf("Detected %s %s (%s)\n", h.Vendor, h.Model, h.CPU)
 	ids := h.DriverHWIDs()
 	if v := h.KnownVendor(); v != "" {
-		fmt.Printf("  %s model driver pack, plus %d GPU/network hardware ID(s)\n", v, len(ids))
+		fmt.Printf("  %s drivers for this model, plus %d GPU/network hardware ID(s)\n", catalog.VendorNames[catalog.Vendor(v)], len(ids))
 	} else {
 		fmt.Printf("  no per-model feed for this maker; %d GPU/network hardware ID(s) to look up\n", len(ids))
 	}
 	hw := driverresolve.SpecsFor(h, e.DriverOS())
 	if len(hw) == 0 {
-		return nil, fmt.Errorf("nothing to resolve: this machine has no Dell/Lenovo/HP model feed and no PCI GPU or network device was detected")
+		return nil, fmt.Errorf("nothing to resolve: this machine's maker has no drivers by model and no PCI GPU or network device was detected")
 	}
 	return hw, nil
 }

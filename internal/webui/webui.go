@@ -2253,13 +2253,15 @@ func (s *Server) handleDetect(w http.ResponseWriter, r *http.Request) {
 		Model       string   `json:"model"`
 		CPU         string   `json:"cpu"`
 		Feed        string   `json:"feed,omitempty"`
+		FeedName    string   `json:"feed_name,omitempty"`
 		GPUs        []dev    `json:"gpus"`
 		NICs        []dev    `json:"nics"`
 		LookupIDs   []string `json:"lookup_ids"`
 		DeviceCount int      `json:"device_count"`
 	}{
 		Vendor: h.Vendor, Model: h.Model, CPU: h.CPU, Feed: h.KnownVendor(),
-		GPUs: []dev{}, NICs: []dev{},
+		FeedName: catalog.VendorNames[catalog.Vendor(h.KnownVendor())],
+		GPUs:     []dev{}, NICs: []dev{},
 		LookupIDs: h.DriverHWIDs(), DeviceCount: len(h.Devices),
 	}
 	for _, g := range h.GPUs {
