@@ -1,9 +1,10 @@
-name: ubuntu-autoinstall
-# DSKY's hands-off Ubuntu install (linux.autoinstall: a CIDATA partition
-# appended to the ISO, GRUB rewritten in place) was only ever checked against
-# a synthetic ISO. This builds media from the real Ubuntu ISOs, installs from
-# it in a KVM virtual machine onto a blank virtual disk, and checks what
-# landed, before anything is built on top of it (docs/plan-linux-apps.md).
+name: linux-install
+# DSKY's hands-off Linux installs were only ever checked against a synthetic
+# ISO. This builds media from the real ISOs, installs from it in a KVM virtual
+# machine onto a blank virtual disk, and asks the installed system what it got
+# (docs/plan-linux-apps.md). Two mechanisms are covered: Ubuntu's autoinstall,
+# from a CIDATA partition with GRUB rewritten in place, and Anaconda's
+# kickstart, handed to the kernel as a second initramfs.
 #
 # Each case downloads a 3-6 GB ISO and runs a full install, so this runs by
 # hand and when the Linux compose code changes, not on every push.
@@ -18,6 +19,7 @@ on:
     branches: [main]
     paths:
       - internal/compose/linux.go
+      - internal/compose/cpio.go
       - test/autoinstall/**
       - .github/workflows/ubuntu-autoinstall.yml
 
@@ -29,7 +31,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        case: [server-24.04, server-26.04, desktop-26.04, desktop-26.04-prompt, server-26.04-programs, desktop-26.04-programs, server-26.04-drivers]
+        case:
+          - server-24.04
+          - server-26.04
+          - desktop-26.04
+          - desktop-26.04-prompt
+          - server-26.04-programs
+          - desktop-26.04-programs
+          - server-26.04-drivers
+          - fedora-44-kickstart
+          - omarchy
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     steps:

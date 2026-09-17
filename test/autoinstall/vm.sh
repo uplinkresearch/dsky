@@ -35,6 +35,11 @@
 #                         a second initramfs rather than a partition to mount —
 #                         see internal/compose/cpio.go for why the obvious way
 #                         cannot work on media made from a hybrid ISO.
+#   omarchy               Omarchy written as its own ISO, unchanged, and booted
+#                         on UEFI. It has no unattended path — archiso goes
+#                         straight into Omarchy's own installer — so this
+#                         checks the part DSKY is responsible for and records
+#                         what a person sees. Observed, not pass/fail.
 #   server-26.04-drivers  `dsky install --drivers` on Ubuntu, which asks its
 #                         installer for the proprietary drivers it finds. A VM
 #                         has none; what this proves is that the section DSKY
@@ -123,6 +128,16 @@ fedora-44-kickstart)
   SHA=85837793bfa36db6bc709b4cecd2ec116951b87d9c53c3d95eb2fac8dcf7cf1f
   KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
   SRC_ID=fedora-44-server ;;
+omarchy)
+  # Omarchy has no unattended path: archiso boots straight into Omarchy's own
+  # installer (timeout=0, menu hidden) and asks its questions there, which is
+  # why it is not in the program picker. What can be checked is the part DSKY
+  # is responsible for — that the pinned ISO is written as the distribution
+  # made it, and boots to that installer on UEFI.
+  URL=https://iso.omarchy.org/omarchy-4.0.3.iso
+  SHA=03d60bc74306dca51f96e1a84b690871d8d606826b260edd0208962da8507d14
+  KIND=desktop FAMILY=plain PATCH=false IDENTITY=false OBSERVE=true
+  SRC_ID=omarchy ;;
 server-26.04-drivers)
   # --drivers on Ubuntu asks its installer to put on the proprietary drivers
   # it finds. A virtual machine has none, so what this proves is the part
@@ -149,7 +164,9 @@ INSTALL_BUTTON=${INSTALL_BUTTON:-}
 say "## $CASE"
 say ""
 say "- ISO: \`$(basename "$URL")\`"
-if [ "$FAMILY" = fedora ]; then
+if [ "$FAMILY" = plain ]; then
+  say "- The distribution's own ISO, written unchanged: nothing appended, nothing rewritten"
+elif [ "$FAMILY" = fedora ]; then
   say "- Anaconda kickstart appended to the ISO; the ISO's own bytes are untouched"
 else
   say "- GRUB patched for zero-touch: $PATCH · account in answers: $IDENTITY"
@@ -200,7 +217,23 @@ ssh_late_commands() { # the root key, for the cases whose ssh section may not ru
   echo "    - curtin in-target --target=/target -- systemctl enable ssh"
 }
 
-if [ "$FAMILY" = fedora ]; then
+if [ "$FAMILY" = plain ]; then
+  # Nothing appended and nothing rewritten: the distribution's own ISO, which
+  # is what DSKY writes for an entry whose installer takes no answers.
+  cat >"$W/ws/recipes/ci-ubuntu.yaml" <<EOF
+version: 1
+id: ci-ubuntu
+name: "CI: $CASE"
+os:
+  type: linux-iso
+  source: $SRC_ID
+target:
+  min_stick: 8GiB
+  boot: uefi-only
+flash:
+  verify: readback-sha256
+EOF
+elif [ "$FAMILY" = fedora ]; then
   # A kickstart that answers everything Anaconda would otherwise ask, so that
   # anything left on screen is a failure rather than a question. The account
   # and key are the test's, the way the Ubuntu cases' are.
@@ -339,7 +372,7 @@ PYEOF
   find "$W/lib/artifacts" -type f -size +1G -delete || true
 fi
 
-if [ "$FAMILY" != fedora ]; then
+if [ "$FAMILY" = ubuntu ]; then
 cat >"$W/ws/recipes/ci-ubuntu.yaml" <<EOF
 version: 1
 id: ci-ubuntu
@@ -363,11 +396,11 @@ fi
 if [ "${DRYRUN:-}" = 1 ]; then
   "$W/dsky" -w "$W/ws" recipes list
   "$W/dsky" -w "$W/ws" sources list
-  if [ "$FAMILY" = fedora ]; then
-    cat "$W/ws/templates/ci-kickstart.cfg.tmpl"
-  else
-    cat "$W/ws/templates/ci-autoinstall.yaml.tmpl"
-  fi
+  case "$FAMILY" in
+  plain)  echo "(no answers: the ISO is written as the distribution made it)" ;;
+  fedora) cat "$W/ws/templates/ci-kickstart.cfg.tmpl" ;;
+  *)      cat "$W/ws/templates/ci-autoinstall.yaml.tmpl" ;;
+  esac
   exit 0
 fi
 
