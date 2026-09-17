@@ -1,0 +1,277 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-17T09:31:44Z",
+  "generated_by": "dsky-scan v0.7.41",
+  "approval": {
+    "approved": false,
+    "approved_at": null,
+    "approved_by": "",
+    "content_hash": ""
+  },
+  "source": {
+    "hostname": "WWFO-OPS-01",
+    "os": {
+      "product_name": "Windows 10 Pro",
+      "build": "19045.4780",
+      "edition": "Professional",
+      "arch": "x64"
+    },
+    "hardware": {
+      "manufacturer": "HP",
+      "model": "HP EliteDesk 800 G4 SFF",
+      "serial": "MXL8351QD9",
+      "cpu": "Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz",
+      "ram_bytes": 34359738368,
+      "disks": [
+        { "index": 0, "model": "Samsung SSD 860 EVO 500GB", "size_bytes": 500107862016, "partitions": 4, "bus_type": "SATA" },
+        { "index": 1, "model": "WDC WD20EZRZ", "size_bytes": 2000398934016, "partitions": 1, "bus_type": "SATA" }
+      ]
+    },
+    "scan_duration_s": 211.7,
+    "scanner_user": "WWFO\\dbaker",
+    "users": [
+      { "account": "WWFO\\jlong", "profile": "C:\\Users\\jlong", "last_logon": "2026-09-17T08:55:00Z", "size_bytes": 48318382080 },
+      { "account": "WWFO\\dispatch", "profile": "C:\\Users\\dispatch", "last_logon": "2026-09-15T13:02:00Z", "size_bytes": 7516192768 },
+      { "account": "WWFO\\seasonal", "profile": "C:\\Users\\seasonal", "last_logon": "2025-08-20T18:44:00Z", "size_bytes": 1073741824 }
+    ]
+  },
+  "target": {
+    "os_edition": "Pro",
+    "hostname": "WWFO-OPS-01",
+    "local_admin": "uplink",
+    "timezone": "Mountain Standard Time",
+    "locale": "en-US",
+    "dsky_options": { "debloat": "standard" }
+  },
+  "identity": {
+    "domain_fqdn": "wwfo.internal",
+    "domain_netbios": "WWFO",
+    "computer_ou_dn": "OU=Ops,OU=Computers,DC=wwfo,DC=internal",
+    "computer_groups": ["WWFO\\GIS Workstations", "WWFO\\Plotter Access"],
+    "local_groups": [
+      { "name": "Administrators", "members": ["WWFO\\Domain Admins", "WWFO\\jlong"] },
+      { "name": "Performance Log Users", "members": ["WWFO\\gis-service"] }
+    ]
+  },
+  "apps": [
+    {
+      "id": "dotnet6desktop",
+      "display_name": "Microsoft Windows Desktop Runtime - 6.0.33 (x64)",
+      "display_version": "6.0.33",
+      "publisher": "Microsoft Corporation",
+      "source_kind": "win32",
+      "arch": "x64",
+      "resolution": {
+        "status": "resolved",
+        "method": "winget",
+        "ref": "Microsoft.DotNet.DesktopRuntime.6",
+        "confidence": 0.9,
+        "resolved_by": "auto",
+        "order": 10
+      },
+      "config_capture": null
+    },
+    {
+      "id": "sqlexpress2019",
+      "display_name": "Microsoft SQL Server 2019 Express LocalDB",
+      "display_version": "15.0.4153.1",
+      "publisher": "Microsoft Corporation",
+      "source_kind": "win32",
+      "arch": "x64",
+      "resolution": {
+        "status": "resolved",
+        "method": "exe",
+        "ref": "\\\\wwfo-fs01\\installers\\sql\\SQL2019-SSEI-Expr.exe",
+        "confidence": 1,
+        "resolved_by": "operator",
+        "args": ["/QUIET", "/IACCEPTSQLSERVERLICENSETERMS", "/ACTION=Install"],
+        "order": 10
+      },
+      "config_capture": null
+    },
+    {
+      "id": "arcgispro",
+      "display_name": "ArcGIS Pro",
+      "display_version": "3.3.2",
+      "publisher": "Environmental Systems Research Institute, Inc.",
+      "source_kind": "win32",
+      "install_location": "C:\\Program Files\\ArcGIS\\Pro",
+      "arch": "x64",
+      "resolution": {
+        "status": "resolved",
+        "method": "msi",
+        "ref": "\\\\wwfo-fs01\\installers\\arcgis\\ArcGISPro.msi",
+        "confidence": 1,
+        "resolved_by": "mapping_table",
+        "args": ["/qn", "ALLUSERS=1", "SOFTWARE_CLASS=Professional", "AUTHORIZATION_TYPE=NAMED_USER"],
+        "order": 60
+      },
+      "config_capture": {
+        "paths": ["C:\\Users\\*\\AppData\\Roaming\\Esri\\ArcGISPro\\*.json"],
+        "registry_keys": []
+      }
+    },
+    {
+      "id": "plotterdriver",
+      "display_name": "HP DesignJet Universal Print Driver",
+      "display_version": "63.0.13023",
+      "publisher": "HP Inc.",
+      "source_kind": "win32",
+      "arch": "x64",
+      "resolution": {
+        "status": "resolved",
+        "method": "exe",
+        "ref": "\\\\wwfo-fs01\\installers\\hp\\hp-designjet-upd.exe",
+        "confidence": 1,
+        "resolved_by": "mapping_table",
+        "args": ["/q", "/norestart"],
+        "order": 70
+      },
+      "config_capture": null
+    },
+    {
+      "id": "fieldmapssync",
+      "display_name": "WWFO Field Sync",
+      "display_version": "2.1.0",
+      "publisher": "West Wildland Fire Ops",
+      "source_kind": "win32",
+      "install_location": "C:\\Program Files (x86)\\WWFO\\FieldSync",
+      "arch": "x86",
+      "resolution": {
+        "status": "unmapped"
+      },
+      "config_capture": null
+    },
+    {
+      "id": "oldcadviewer",
+      "display_name": "AutoVue 2D Professional",
+      "display_version": "21.0.2",
+      "publisher": "Oracle",
+      "source_kind": "win32",
+      "install_location": "C:\\Program Files (x86)\\AutoVue",
+      "arch": "x86",
+      "resolution": {
+        "status": "blocked"
+      },
+      "config_capture": null
+    },
+    {
+      "id": "adobeacrobatpro",
+      "display_name": "Adobe Acrobat Pro DC",
+      "display_version": "24.002.20857",
+      "publisher": "Adobe",
+      "source_kind": "win32",
+      "arch": "x64",
+      "resolution": {
+        "status": "resolved",
+        "method": "manual",
+        "ref": "Sign in with the practice Adobe account after the rebuild — the licence is bound to this machine.",
+        "confidence": 1,
+        "resolved_by": "operator",
+        "order": 90
+      },
+      "config_capture": null
+    },
+    {
+      "id": "hpsupportassistant",
+      "display_name": "HP Support Assistant",
+      "display_version": "9.36.32",
+      "publisher": "HP Inc.",
+      "source_kind": "win32",
+      "arch": "x64",
+      "resolution": {
+        "status": "dropped",
+        "resolved_by": "mapping_table"
+      },
+      "config_capture": null
+    }
+  ],
+  "settings": [
+    {
+      "key": "system.timezone",
+      "value": "Mountain Standard Time",
+      "captured_from": "Get-TimeZone",
+      "apply": { "win11": { "method": "powershell", "ref": "Set-TimeZone -Id 'Mountain Standard Time'" } }
+    },
+    {
+      "key": "power.plan",
+      "value": "High performance",
+      "captured_from": "powercfg /getactivescheme",
+      "apply": { "win11": { "method": "powershell", "ref": "powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" } }
+    },
+    {
+      "key": "explorer.show_hidden",
+      "value": 1,
+      "captured_from": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\Hidden",
+      "apply": { "win11": { "method": "registry", "ref": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\Hidden=1" } }
+    },
+    {
+      "key": "taskbar.search_mode",
+      "value": 2,
+      "captured_from": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Search\\SearchboxTaskbarMode",
+      "apply": { "win11": { "method": "registry", "ref": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Search\\SearchboxTaskbarMode=1" } }
+    }
+  ],
+  "peripherals": {
+    "printers": [
+      { "name": "Ops Plotter", "driver_name": "HP DesignJet T1700 PS", "port": "IP_10.8.4.20", "ip": "10.8.4.20" },
+      { "name": "Ops Mono", "shared_path": "\\\\wwfo-fs01\\OpsMono" }
+    ],
+    "mapped_drives": [
+      { "letter": "G:", "unc": "\\\\wwfo-fs01\\gis", "persistent": true, "user": "WWFO\\jlong" },
+      { "letter": "T:", "unc": "\\\\wwfo-fs01\\incidents", "persistent": true, "user": "WWFO\\jlong" },
+      { "letter": "X:", "unc": "\\\\wwfo-nas\\archive", "persistent": false, "user": "WWFO\\dispatch" }
+    ],
+    "network": {
+      "wifi_ssids": ["WWFO-Ops", "WWFO-Guest"],
+      "static_ips": [
+        {
+          "adapter": "Ethernet",
+          "address": "10.8.4.31",
+          "prefix": 24,
+          "gateway": "10.8.4.1",
+          "dns": ["10.8.4.10", "10.8.4.11"]
+        }
+      ]
+    }
+  },
+  "data": {
+    "strategy": "usmt",
+    "store_path": "\\\\wwfo-fs01\\migration$\\WWFO-OPS-01",
+    "users": ["WWFO\\jlong", "WWFO\\dispatch"],
+    "encrypted": true
+  },
+  "compat": [
+    {
+      "severity": "blocker",
+      "subject": "oldcadviewer",
+      "reason": "AutoVue 2D Professional 21.0.2 is on the known-incompatible list: it installs a 32-bit print driver that Windows 11 refuses.",
+      "suggested_action": "Confirm the replacement viewer with the GIS lead, then drop this application or accept the risk."
+    },
+    {
+      "severity": "warning",
+      "subject": "fieldmapssync",
+      "reason": "32-bit application with no 64-bit version found; the installer came from a share that no longer has it.",
+      "suggested_action": "Find the current installer or mark it as installed by hand."
+    },
+    {
+      "severity": "warning",
+      "subject": "Ethernet",
+      "reason": "This machine has a static IP (10.8.4.31/24). Adapter names differ on new hardware, so DSKY does not copy the configuration.",
+      "suggested_action": "Set the address by hand after the rebuild, or move the reservation to DHCP."
+    },
+    {
+      "severity": "warning",
+      "subject": "hpqkbfiltr.sys",
+      "reason": "An unsigned driver is loaded (HP keyboard filter, for the docking keyboard).",
+      "suggested_action": "Check whether the new machine needs it at all."
+    },
+    {
+      "severity": "info",
+      "subject": "WWFO\\seasonal",
+      "reason": "A profile has not signed in for over a year (last seen 2025-08-20) and is not in the USMT user list.",
+      "suggested_action": "Leave it behind unless the seasonal crew returns to this desk."
+    }
+  ],
+  "notes": []
+}

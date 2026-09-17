@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.M.Source.Hostname}} — migration plan</title>
+<style>
+/* The portal's palette, so a report and the app read as one tool. Printable:
+   this page gets printed and stapled to a work order as often as it is read
+   on screen, so print rules are not an afterthought. */
+:root {
+  --bg: #05050f; --panel: #0a0a1f; --panel2: #14142e; --line: #25254a;
+  --text: #c8c8d4; --dim: #8a8aa6; --accent: #00f5ff; --ok: #00ff41;
+  --warn: #ffd700; --err: #ff4d88; --on-bright: #05050f;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px 18px 64px; background: var(--bg); color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1040px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 0 0 2px; }
+h2 { font-size: 15px; margin: 28px 0 8px; letter-spacing: .02em; }
+.sub { color: var(--dim); font-size: 12px; }
+.mono { font-family: var(--mono); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; margin: 14px 0 4px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+.tile b { display: block; font-family: var(--mono); font-size: 22px; font-weight: 600; line-height: 1.1; }
+.tile span { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.tile.bad b { color: var(--err); } .tile.warn b { color: var(--warn); } .tile.good b { color: var(--ok); }
+table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 13px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+tbody tr:nth-child(odd) { background: rgba(255,255,255,.015); }
+td.mono, th.mono { font-family: var(--mono); overflow-wrap: anywhere; }
+td .sub { overflow-wrap: anywhere; }
+.wrap { overflow-x: auto; }
+.pill { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px;
+  font-family: var(--mono); border: 1px solid var(--line); color: var(--dim); }
+.pill.ok { color: var(--ok); border-color: rgba(0,255,65,.4); }
+.pill.warn { color: var(--warn); border-color: rgba(255,215,0,.4); }
+.pill.err { color: var(--err); border-color: rgba(255,77,136,.45); }
+.banner { border-left: 3px solid var(--warn); background: var(--panel2); padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 16px 0; }
+.banner.ok { border-left-color: var(--ok); }
+.banner.err { border-left-color: var(--err); }
+.banner b { display: block; margin-bottom: 2px; }
+.empty { color: var(--dim); font-size: 13px; padding: 4px 0; }
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 0; font-size: 13px; }
+dl.kv dt { color: var(--dim); } dl.kv dd { margin: 0; }
+footer { color: var(--dim); font-size: 11px; margin-top: 34px; border-top: 1px solid var(--line); padding-top: 10px; }
+@media print {
+  :root { --bg: #fff; --panel: #fff; --panel2: #f4f4f7; --line: #c9c9d4; --text: #111; --dim: #555;
+          --ok: #05702a; --warn: #8a6100; --err: #b00038; }
+  body { padding: 0; font-size: 11pt; } .tile b { font-size: 18px; }
+  h2 { break-after: avoid; } table { break-inside: auto; } tr { break-inside: avoid; }
+}
+</style>
+</head><body><main>
+
+<h1>{{.M.Source.Hostname}} — migration plan</h1>
+<p class="sub">{{.Machine}}
+  {{- if .M.Source.Hardware.Serial}} · serial <span class="mono">{{.M.Source.Hardware.Serial}}</span>{{end}}
+  · {{.M.Source.OS.ProductName}} {{.M.Source.OS.Build}} ({{.M.Source.OS.Arch}})
+  · scanned {{when .M.GeneratedAt}} by {{.M.GeneratedBy}}</p>
+
+{{if .M.Approval.Approved}}
+  <div class="banner ok"><b>Approved</b>
+    {{.M.Approval.ApprovedBy}} approved this plan on {{when .M.Approval.ApprovedAt}}.
+    Hash <span class="mono">{{slice .M.Approval.ContentHash 0 16}}…</span> — DSKY refuses to build it if it changes.</div>
+{{else if .Ready}}
+  <div class="banner"><b>Not ready to approve</b>{{.Ready}}</div>
+{{else}}
+  <div class="banner"><b>Not approved yet</b>Nothing is in the way: every application has a source and every blocker has been answered.</div>
+{{end}}
+
+<div class="tiles">
+  <div class="tile"><b>{{.Counts.Apps}}</b><span>applications</span></div>
+  <div class="tile good"><b>{{len .Order}}</b><span>will install</span></div>
+  <div class="tile {{if nonzero .Counts.Unmapped}}bad{{end}}"><b>{{.Counts.Unmapped}}</b><span>no source</span></div>
+  <div class="tile {{if nonzero .Counts.UnackedBlockers}}bad{{end}}"><b>{{.Counts.Blockers}}</b><span>blockers</span></div>
+  <div class="tile {{if nonzero .Counts.Warnings}}warn{{end}}"><b>{{.Counts.Warnings}}</b><span>warnings</span></div>
+  <div class="tile"><b>{{.Counts.Manual}}</b><span>by hand</span></div>
+  <div class="tile"><b>{{.Counts.SettingsApplied}}/{{.Counts.Settings}}</b><span>settings applied</span></div>
+  <div class="tile"><b>{{.Counts.Printers}}</b><span>printers</span></div>
+</div>
+
+<h2>The new machine</h2>
+<div class="panel"><dl class="kv">
+  <dt>Name</dt><dd class="mono">{{.M.Target.Hostname}}</dd>
+  <dt>Windows</dt><dd>{{.M.Target.OSEdition}}{{if .M.Target.Locale}} · {{.M.Target.Locale}}{{end}}{{if .M.Target.Timezone}} · {{.M.Target.Timezone}}{{end}}</dd>
+  <dt>Local administrator</dt><dd class="mono">{{.M.Target.LocalAdmin}}<span class="sub"> (password entered when the drive is built, never stored here)</span></dd>
+  {{if .M.Identity.Domained}}
+    <dt>Domain</dt><dd class="mono">{{.M.Identity.DomainFQDN}}</dd>
+    {{if .M.Identity.ComputerOUDN}}<dt>Computer goes in</dt><dd class="mono">{{.M.Identity.ComputerOUDN}}</dd>{{end}}
+    {{if .M.Identity.ComputerGroups}}<dt>Computer groups</dt><dd class="mono">{{join ", " .M.Identity.ComputerGroups}}</dd>{{end}}
+    <dt>Joined by</dt><dd>an offline join file made when the drive is built — no domain password goes on the drive</dd>
+  {{else}}
+    <dt>Domain</dt><dd>none — this machine is not in a domain</dd>
+  {{end}}
+  <dt>User files</dt><dd>
+    {{if eq .M.Data.Strategy "usmt"}}copied with USMT from <span class="mono">{{.M.Data.StorePath}}</span> for {{join ", " .M.Data.Users}}{{if .M.Data.Encrypted}} (encrypted store){{end}}
+    {{else if eq .M.Data.Strategy "onedrive_kfm"}}already in OneDrive — they come back at first sign-in, nothing is copied
+    {{else if eq .M.Data.Strategy "folder_redirection"}}on the file server through folder redirection — nothing is copied
+    {{else}}not migrated — this machine has no local data to carry over{{end}}</dd>
+</dl></div>
+
+{{if .Blockers}}
+<h2>Blockers — each needs an answer before this plan can be approved</h2>
+<div class="wrap"><table>
+  <thead><tr><th>Subject</th><th>Why</th><th>What to do</th><th>Answered</th></tr></thead>
+  <tbody>{{range .Blockers}}<tr>
+    <td>{{.Subject}}</td><td>{{.Reason}}</td><td>{{.SuggestedAction}}</td>
+    <td>{{if .Acknowledged}}<span class="pill ok">yes</span>{{else}}<span class="pill err">no</span>{{end}}</td>
+  </tr>{{end}}</tbody>
+</table></div>
+{{end}}
+
+{{if .Unplaced}}
+<h2>Applications with nowhere to install from</h2>
+<p class="sub">Each of these needs a source, a note that it is installed by hand, or a decision to leave it behind.</p>
+<div class="wrap"><table>
+  <thead><tr><th>Application</th><th>Version</th><th>Publisher</th><th></th><th>Suggestion</th></tr></thead>
+  <tbody>{{range .Unplaced}}<tr>
+    <td>{{.DisplayName}}</td><td class="mono">{{.DisplayVersion}}</td><td>{{.Publisher}}</td>
+    <td>{{if eq .Resolution.Status "blocked"}}<span class="pill err">blocked</span>{{else}}<span class="pill warn">no source</span>{{end}}</td>
+    <td class="mono">{{if .Resolution.Ref}}{{.Resolution.Ref}}{{if .Resolution.Confidence}} <span class="sub">({{printf "%.0f%%" (mul100 .Resolution.Confidence)}} sure)</span>{{end}}{{else}}—{{end}}</td>
+  </tr>{{end}}</tbody>
+</table></div>
+{{end}}
+
+<h2>What will be installed, in order</h2>
+{{if .Order}}
+<div class="wrap"><table>
+  <thead><tr><th>#</th><th>Application</th><th>How</th><th>From</th><th>Decided by</th></tr></thead>
+  <tbody>{{range $i, $a := .Order}}<tr>
+    <td class="mono">{{plus1 $i}}</td>
+    <td>{{$a.DisplayName}}</td>
+    <td><span class="pill">{{$a.Resolution.Method}}</span></td>
+    <td class="mono">{{$a.Resolution.Ref}}{{if $a.Resolution.Args}} <span class="sub">{{join " " $a.Resolution.Args}}</span>{{end}}</td>
+    <td class="sub">{{$a.Resolution.ResolvedBy}}</td>
+  </tr>{{end}}</tbody>
+</table></div>
+{{else}}<p class="empty">Nothing yet — no application has a source.</p>{{end}}
+
+{{if .Manual}}
+<h2>To install or licence by hand on the new machine</h2>
+<div class="wrap"><table>
+  <thead><tr><th>Application</th><th>Version</th><th>Note</th></tr></thead>
+  <tbody>{{range .Manual}}<tr><td>{{.DisplayName}}</td><td class="mono">{{.DisplayVersion}}</td><td>{{.Resolution.Ref}}</td></tr>{{end}}</tbody>
+</table></div>
+{{end}}
+
+{{if .Dropped}}
+<h2>Deliberately left behind</h2>
+<div class="wrap"><table>
+  <thead><tr><th>Application</th><th>Publisher</th><th>Decided by</th></tr></thead>
+  <tbody>{{range .Dropped}}<tr><td>{{.DisplayName}}</td><td>{{.Publisher}}</td><td class="sub">{{.Resolution.ResolvedBy}}</td></tr>{{end}}</tbody>
+</table></div>
+{{end}}
+
+{{if .Warnings}}
+<h2>Worth knowing</h2>
+<div class="wrap"><table>
+  <thead><tr><th>Subject</th><th>Why</th><th>What to do</th></tr></thead>
+  <tbody>{{range .Warnings}}<tr><td>{{.Subject}}</td><td>{{.Reason}}</td><td>{{.SuggestedAction}}</td></tr>{{end}}</tbody>
+</table></div>
+{{end}}
+
+<h2>Settings</h2>
+{{if .M.Settings}}
+<div class="wrap"><table>
+  <thead><tr><th>Setting</th><th>Value on the old machine</th><th>Read from</th><th>On the new machine</th></tr></thead>
+  <tbody>{{range .M.Settings}}<tr>
+    <td class="mono">{{.Key}}</td>
+    <td class="mono">{{value .Value}}</td>
+    <td class="mono sub">{{.CapturedFrom}}</td>
+    <td>{{if .Appliable $.OS}}{{with index .Apply $.OS}}<span class="pill ok">{{.Method}}</span> <span class="mono sub">{{.Ref}}</span>{{end}}{{else}}<span class="pill warn">not migrated — re-set it by hand</span>{{end}}</td>
+  </tr>{{end}}</tbody>
+</table></div>
+{{else}}<p class="empty">None captured.</p>{{end}}
+
+<h2>Printers, drives and network</h2>
+<div class="wrap"><table>
+  <thead><tr><th>What</th><th>Name</th><th>Where</th><th>Detail</th></tr></thead>
+  <tbody>
+  {{range .M.Peripherals.Printers}}<tr><td>Printer</td><td>{{.Name}}</td>
+    <td class="mono">{{if .SharedPath}}{{.SharedPath}}{{else if .IP}}{{.IP}}{{else}}{{.Port}}{{end}}</td>
+    <td class="sub">{{.DriverName}}</td></tr>{{end}}
+  {{range .M.Peripherals.MappedDrives}}<tr><td>Mapped drive</td><td class="mono">{{.Letter}}</td>
+    <td class="mono">{{.UNC}}</td>
+    <td class="sub">{{if .User}}{{.User}}{{end}}{{if not .Persistent}} (not persistent){{end}}</td></tr>{{end}}
+  {{range .M.Peripherals.Network.StaticIPs}}<tr><td>Static IP</td><td>{{.Adapter}}</td>
+    <td class="mono">{{.Address}}/{{.Prefix}}</td>
+    <td class="sub">gateway {{.Gateway}}{{if .DNS}} · dns {{join ", " .DNS}}{{end}} — set by hand, adapters differ on the new machine</td></tr>{{end}}
+  {{range .M.Peripherals.Network.WiFiSSIDs}}<tr><td>Wi-Fi</td><td>{{.}}</td><td>—</td>
+    <td class="sub">the password stays on the old machine and has to be entered again</td></tr>{{end}}
+  {{if and (not .M.Peripherals.Printers) (not .M.Peripherals.MappedDrives) (not .M.Peripherals.Network.StaticIPs) (not .M.Peripherals.Network.WiFiSSIDs)}}
+    <tr><td colspan="4" class="empty">None found.</td></tr>{{end}}
+  </tbody>
+</table></div>
+
+{{if .M.Identity.LocalGroups}}
+<h2>Local groups</h2>
+<div class="wrap"><table>
+  <thead><tr><th>Group</th><th>Members</th></tr></thead>
+  <tbody>{{range .M.Identity.LocalGroups}}<tr><td>{{.Name}}</td><td class="mono">{{join ", " .Members}}</td></tr>{{end}}</tbody>
+</table></div>
+{{end}}
+
+{{if .M.Source.Users}}
+<h2>Profiles on the old machine</h2>
+<div class="wrap"><table>
+  <thead><tr><th>Account</th><th>Profile</th><th>Last signed in</th><th>Size</th></tr></thead>
+  <tbody>{{range .M.Source.Users}}<tr><td class="mono">{{.Account}}</td><td class="mono sub">{{.Profile}}</td>
+    <td>{{when .LastLogon}}</td><td class="mono">{{bytes .SizeBytes}}</td></tr>{{end}}</tbody>
+</table></div>
+{{end}}
+
+{{if .M.Notes}}
+<h2>Notes from the review</h2>
+<div class="panel">{{range .M.Notes}}<p>{{.}}</p>{{end}}</div>
+{{end}}
+
+<h2>What does not come across, whatever the plan says</h2>
+<div class="panel"><p class="sub" style="margin:0">
+Saved passwords in browsers and applications, Wi-Fi keys, Windows Hello, certificates in the user's store, and anything else
+Windows protects for this machine and this profile stay behind: they cannot be read off the old machine even with its disk in hand.
+Licences tied to a machine (Adobe, Autodesk, most practice software) need activating again.
+Application settings come across only for the applications listed above as carrying configuration; everything else arrives freshly installed.
+</p></div>
+
+<footer>
+Generated by {{.Version}} at {{when .RenderedAt}} from the manifest — edit the manifest and render again, never this page.
+Applications {{.Counts.Apps}} · installing {{.Counts.Resolved}} · unresolved {{.Counts.Unmapped}} · dropped {{.Counts.Dropped}} · blockers {{.Counts.Blockers}} · warnings {{.Counts.Warnings}}.
+</footer>
+</main></body></html>

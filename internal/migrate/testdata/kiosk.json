@@ -1,0 +1,120 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-17T16:20:03Z",
+  "generated_by": "dsky-scan v0.7.41",
+  "approval": {
+    "approved": false,
+    "approved_at": null,
+    "approved_by": "",
+    "content_hash": ""
+  },
+  "source": {
+    "hostname": "MEAD-LOBBY-KIOSK",
+    "os": {
+      "product_name": "Windows 10 Pro",
+      "build": "19045.4291",
+      "edition": "Professional",
+      "arch": "x64"
+    },
+    "hardware": {
+      "manufacturer": "Lenovo",
+      "model": "ThinkCentre M715q",
+      "serial": "PC0XYZ12",
+      "cpu": "AMD Ryzen 5 PRO 2400GE",
+      "ram_bytes": 4294967296,
+      "disks": [
+        { "index": 0, "model": "LITEON CV8-8E128-HP", "size_bytes": 128035676160, "partitions": 3, "bus_type": "SATA" }
+      ]
+    },
+    "scan_duration_s": 41.2,
+    "scanner_user": "MEAD\\dbaker",
+    "users": [
+      { "account": ".\\kiosk", "profile": "C:\\Users\\kiosk", "last_logon": "2026-09-17T15:58:00Z", "size_bytes": 734003200, "local": true }
+    ]
+  },
+  "target": {
+    "os_edition": "Pro",
+    "hostname": "MEAD-LOBBY-KIOSK",
+    "local_admin": "uplink",
+    "timezone": "Central Standard Time",
+    "locale": "en-US"
+  },
+  "identity": {
+    "domain_fqdn": "",
+    "domain_netbios": "",
+    "computer_ou_dn": "",
+    "local_groups": [
+      { "name": "Administrators", "members": ["MEAD\\practice-it"] }
+    ]
+  },
+  "apps": [
+    {
+      "id": "edgewebview",
+      "display_name": "Microsoft Edge WebView2 Runtime",
+      "display_version": "129.0.2792.52",
+      "publisher": "Microsoft Corporation",
+      "source_kind": "win32",
+      "arch": "x64",
+      "resolution": {
+        "status": "resolved",
+        "method": "winget",
+        "ref": "Microsoft.EdgeWebView2Runtime",
+        "confidence": 0.97,
+        "resolved_by": "auto",
+        "order": 10
+      },
+      "config_capture": null
+    },
+    {
+      "id": "checkinapp",
+      "display_name": "Mead Patient Check-In",
+      "display_version": "5.4.1",
+      "publisher": "Mead Dental",
+      "source_kind": "win32",
+      "install_location": "C:\\Program Files\\Mead\\CheckIn",
+      "arch": "x64",
+      "resolution": {
+        "status": "resolved",
+        "method": "msi",
+        "ref": "\\\\mead-fs01\\installers\\checkin\\MeadCheckIn-5.4.1.msi",
+        "confidence": 1,
+        "resolved_by": "mapping_table",
+        "args": ["/qn", "KIOSK=1"],
+        "order": 50
+      },
+      "config_capture": {
+        "paths": ["C:\\ProgramData\\Mead\\CheckIn\\kiosk.ini"],
+        "registry_keys": ["HKLM\\SOFTWARE\\Mead\\CheckIn"]
+      }
+    }
+  ],
+  "settings": [
+    {
+      "key": "power.sleep_ac_min",
+      "value": 0,
+      "captured_from": "powercfg /q",
+      "apply": { "win11": { "method": "powershell", "ref": "powercfg /change standby-timeout-ac 0" } }
+    },
+    {
+      "key": "system.timezone",
+      "value": "Central Standard Time",
+      "captured_from": "Get-TimeZone",
+      "apply": { "win11": { "method": "powershell", "ref": "Set-TimeZone -Id 'Central Standard Time'" } }
+    }
+  ],
+  "peripherals": {
+    "network": {}
+  },
+  "data": {
+    "strategy": "none"
+  },
+  "compat": [
+    {
+      "severity": "info",
+      "subject": "MEAD-LOBBY-KIOSK",
+      "reason": "No domain membership and one local account with nothing in its profile worth carrying: this machine is rebuilt, not migrated.",
+      "suggested_action": "Check the kiosk account's auto-sign-in after the rebuild."
+    }
+  ],
+  "notes": ["Kiosk sits in the lobby on a stand; keyboard is locked away."]
+}

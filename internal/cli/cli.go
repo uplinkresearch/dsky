@@ -46,6 +46,11 @@ Programs
   apps winget <id>          check winget has a package (for --apps winget:<id>)
   apps set|remove|show <id>   edit, forget, or inspect one of yours
 
+Replacing a PC (see docs/plan-migrate.md)
+  migrate validate <file>   check a migration manifest and summarise it
+  migrate report <file>     render it as a page to read (--out, --os)
+  migrate schema            the published JSON Schema for the manifest
+
 Workspace
   init --org <name> [dir]   scaffold a new org workspace
   recipes list              recipes in the workspace
@@ -238,6 +243,8 @@ func Main(args []string) int {
 		err = cmdDetect(ctx, env, cmdArgs)
 	case "drivers":
 		err = cmdDrivers(ctx, env, cmdArgs)
+	case "migrate":
+		err = cmdMigrate(env, cmdArgs)
 	case "build":
 		err = cmdBuild(ctx, env, cmdArgs)
 	case "flash":

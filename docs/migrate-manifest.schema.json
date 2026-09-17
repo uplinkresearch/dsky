@@ -1,0 +1,817 @@
+{
+  "$defs": {
+    "App": {
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "enum": [
+            "x64",
+            "x86",
+            "arm64"
+          ],
+          "type": "string"
+        },
+        "config_capture": {
+          "description": "files and registry keys holding this application's own settings; only ever from a curated recipe, never guessed",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ConfigCapture"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "display_version": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "install_location": {
+          "type": "string"
+        },
+        "publisher": {
+          "type": "string"
+        },
+        "registry_key": {
+          "type": "string"
+        },
+        "resolution": {
+          "$ref": "#/$defs/Resolution",
+          "description": "how this application is to be installed on the new machine"
+        },
+        "source_kind": {
+          "enum": [
+            "win32",
+            "appx",
+            "msix",
+            "store"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "display_name",
+        "source_kind",
+        "resolution",
+        "config_capture"
+      ],
+      "type": "object"
+    },
+    "ApplyMethod": {
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "enum": [
+            "winget",
+            "msi",
+            "exe",
+            "msix",
+            "script",
+            "manual"
+          ],
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "ref"
+      ],
+      "type": "object"
+    },
+    "Approval": {
+      "additionalProperties": false,
+      "properties": {
+        "approved": {
+          "type": "boolean"
+        },
+        "approved_at": {
+          "oneOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approved_by": {
+          "type": "string"
+        },
+        "content_hash": {
+          "description": "SHA-256 over every section except approval; a build refuses a manifest whose hash does not match",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approved",
+        "approved_at",
+        "approved_by",
+        "content_hash"
+      ],
+      "type": "object"
+    },
+    "Compat": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledged": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "blocker",
+            "warning",
+            "info"
+          ],
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "suggested_action": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "severity",
+        "subject",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "ConfigCapture": {
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "registry_keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "paths",
+        "registry_keys"
+      ],
+      "type": "object"
+    },
+    "Data": {
+      "additionalProperties": false,
+      "properties": {
+        "encrypted": {
+          "type": "boolean"
+        },
+        "store_path": {
+          "type": "string"
+        },
+        "strategy": {
+          "enum": [
+            "usmt",
+            "onedrive_kfm",
+            "folder_redirection",
+            "none"
+          ],
+          "type": "string"
+        },
+        "users": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "strategy"
+      ],
+      "type": "object"
+    },
+    "Disk": {
+      "additionalProperties": false,
+      "properties": {
+        "bus_type": {
+          "type": "string"
+        },
+        "index": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "string"
+        },
+        "partitions": {
+          "type": "integer"
+        },
+        "size_bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "index",
+        "size_bytes"
+      ],
+      "type": "object"
+    },
+    "Hardware": {
+      "additionalProperties": false,
+      "properties": {
+        "cpu": {
+          "type": "string"
+        },
+        "disks": {
+          "items": {
+            "$ref": "#/$defs/Disk"
+          },
+          "type": "array"
+        },
+        "manufacturer": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "ram_bytes": {
+          "type": "integer"
+        },
+        "serial": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "manufacturer",
+        "model",
+        "serial",
+        "cpu",
+        "ram_bytes"
+      ],
+      "type": "object"
+    },
+    "Identity": {
+      "additionalProperties": false,
+      "properties": {
+        "computer_groups": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "computer_ou_dn": {
+          "type": "string"
+        },
+        "domain_fqdn": {
+          "type": "string"
+        },
+        "domain_netbios": {
+          "type": "string"
+        },
+        "local_groups": {
+          "items": {
+            "$ref": "#/$defs/LocalGroup"
+          },
+          "type": "array"
+        },
+        "odj_blob_path": {
+          "description": "offline domain join file produced at build time; never a credential",
+          "type": "string"
+        }
+      },
+      "required": [
+        "domain_fqdn",
+        "domain_netbios",
+        "computer_ou_dn"
+      ],
+      "type": "object"
+    },
+    "LocalGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "members": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "members"
+      ],
+      "type": "object"
+    },
+    "Manifest": {
+      "additionalProperties": false,
+      "properties": {
+        "approval": {
+          "$ref": "#/$defs/Approval"
+        },
+        "apps": {
+          "items": {
+            "$ref": "#/$defs/App"
+          },
+          "type": "array"
+        },
+        "compat": {
+          "description": "what a person has to decide about; an unacknowledged blocker prevents approval",
+          "items": {
+            "$ref": "#/$defs/Compat"
+          },
+          "type": "array"
+        },
+        "data": {
+          "$ref": "#/$defs/Data"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "generated_by": {
+          "type": "string"
+        },
+        "identity": {
+          "$ref": "#/$defs/Identity"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "peripherals": {
+          "$ref": "#/$defs/Peripherals"
+        },
+        "schema_version": {
+          "description": "major.minor; a reader that understands major 1 can read any 1.x",
+          "type": "string"
+        },
+        "settings": {
+          "items": {
+            "$ref": "#/$defs/Setting"
+          },
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/Source"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        }
+      },
+      "required": [
+        "schema_version",
+        "generated_at",
+        "generated_by",
+        "approval",
+        "source",
+        "target",
+        "identity",
+        "apps",
+        "settings",
+        "peripherals",
+        "data",
+        "compat",
+        "notes"
+      ],
+      "title": "manifest",
+      "type": "object"
+    },
+    "MappedDrive": {
+      "additionalProperties": false,
+      "properties": {
+        "letter": {
+          "type": "string"
+        },
+        "persistent": {
+          "type": "boolean"
+        },
+        "unc": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "letter",
+        "unc",
+        "persistent"
+      ],
+      "type": "object"
+    },
+    "Mapping": {
+      "additionalProperties": false,
+      "properties": {
+        "added_at": {
+          "type": "string"
+        },
+        "added_by": {
+          "type": "string"
+        },
+        "config_capture": {
+          "description": "files and registry keys holding this application's own settings; only ever from a curated recipe, never guessed",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ConfigCapture"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "match": {
+          "$ref": "#/$defs/Match"
+        },
+        "note": {
+          "type": "string"
+        },
+        "resolution": {
+          "$ref": "#/$defs/Resolution",
+          "description": "how this application is to be installed on the new machine"
+        }
+      },
+      "required": [
+        "match",
+        "resolution"
+      ],
+      "type": "object"
+    },
+    "Match": {
+      "additionalProperties": false,
+      "properties": {
+        "display_name": {
+          "type": "string"
+        },
+        "publisher": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "display_name"
+      ],
+      "type": "object"
+    },
+    "Network": {
+      "additionalProperties": false,
+      "properties": {
+        "static_ips": {
+          "items": {
+            "$ref": "#/$defs/StaticIP"
+          },
+          "type": "array"
+        },
+        "wifi_ssids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Peripherals": {
+      "additionalProperties": false,
+      "properties": {
+        "mapped_drives": {
+          "items": {
+            "$ref": "#/$defs/MappedDrive"
+          },
+          "type": "array"
+        },
+        "network": {
+          "$ref": "#/$defs/Network"
+        },
+        "printers": {
+          "items": {
+            "$ref": "#/$defs/Printer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "network"
+      ],
+      "type": "object"
+    },
+    "Printer": {
+      "additionalProperties": false,
+      "properties": {
+        "driver_name": {
+          "type": "string"
+        },
+        "ip": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "port": {
+          "type": "string"
+        },
+        "shared_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "Resolution": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "confidence": {
+          "description": "0 to 1; how sure an automatic match is",
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "method": {
+          "enum": [
+            "winget",
+            "msi",
+            "exe",
+            "msix",
+            "script",
+            "manual"
+          ],
+          "type": "string"
+        },
+        "order": {
+          "description": "install sequencing, lower first; 10 for prerequisites, 50 default",
+          "maximum": 99,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "resolved_by": {
+          "enum": [
+            "auto",
+            "mapping_table",
+            "operator"
+          ],
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "resolved",
+            "unmapped",
+            "blocked",
+            "dropped",
+            ""
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    "Setting": {
+      "additionalProperties": false,
+      "properties": {
+        "apply": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ApplyMethod"
+          },
+          "description": "how to set this on each target OS, keyed by OS name (win11); absent or empty means captured for the report but not applied",
+          "type": "object"
+        },
+        "captured_from": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "description": "any JSON value, kept exactly as captured"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "captured_from",
+        "apply"
+      ],
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "hardware": {
+          "$ref": "#/$defs/Hardware"
+        },
+        "hostname": {
+          "type": "string"
+        },
+        "os": {
+          "$ref": "#/$defs/SourceOS"
+        },
+        "scan_duration_s": {
+          "type": "number"
+        },
+        "scanner_user": {
+          "type": "string"
+        },
+        "users": {
+          "items": {
+            "$ref": "#/$defs/UserProf"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "hostname",
+        "os",
+        "hardware",
+        "scan_duration_s",
+        "scanner_user"
+      ],
+      "type": "object"
+    },
+    "SourceOS": {
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "enum": [
+            "x64",
+            "x86",
+            "arm64"
+          ],
+          "type": "string"
+        },
+        "build": {
+          "type": "string"
+        },
+        "edition": {
+          "type": "string"
+        },
+        "product_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "product_name",
+        "build",
+        "edition",
+        "arch"
+      ],
+      "type": "object"
+    },
+    "StaticIP": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "dns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "gateway": {
+          "type": "string"
+        },
+        "prefix": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "adapter",
+        "address",
+        "prefix"
+      ],
+      "type": "object"
+    },
+    "Table": {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/Mapping"
+          },
+          "type": "array"
+        },
+        "schema_version": {
+          "description": "major.minor; a reader that understands major 1 can read any 1.x",
+          "type": "string"
+        },
+        "site": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "entries"
+      ],
+      "title": "mapping table",
+      "type": "object"
+    },
+    "Target": {
+      "additionalProperties": false,
+      "properties": {
+        "dsky_options": {
+          "description": "any JSON value, kept exactly as captured"
+        },
+        "hostname": {
+          "type": "string"
+        },
+        "local_admin": {
+          "type": "string"
+        },
+        "locale": {
+          "type": "string"
+        },
+        "os_edition": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "os_edition",
+        "hostname",
+        "local_admin",
+        "timezone",
+        "locale"
+      ],
+      "type": "object"
+    },
+    "UserProf": {
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "type": "string"
+        },
+        "last_logon": {
+          "oneOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "local": {
+          "type": "boolean"
+        },
+        "profile": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "account",
+        "profile"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/uplinkresearch/dsky/docs/migrate-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One Windows PC, and how each part of it is to be recreated on new hardware. Written by dsky migrate scan, filled in by resolve, approved by review, consumed by build. See docs/plan-migrate.md.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Manifest"
+    },
+    {
+      "$ref": "#/$defs/Table"
+    }
+  ],
+  "title": "DSKY migration manifest 1.0"
+}

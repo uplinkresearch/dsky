@@ -1,0 +1,218 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-17T14:02:11Z",
+  "generated_by": "dsky-scan v0.7.41",
+  "approval": {
+    "approved": false,
+    "approved_at": null,
+    "approved_by": "",
+    "content_hash": ""
+  },
+  "source": {
+    "hostname": "MEAD-FRONT-02",
+    "os": {
+      "product_name": "Windows 10 Pro",
+      "build": "19045.4651",
+      "edition": "Professional",
+      "arch": "x64"
+    },
+    "hardware": {
+      "manufacturer": "Dell Inc.",
+      "model": "OptiPlex 7070",
+      "serial": "7XQ4L23",
+      "cpu": "Intel(R) Core(TM) i5-9500 CPU @ 3.00GHz",
+      "ram_bytes": 8589934592,
+      "disks": [
+        { "index": 0, "model": "SK hynix SC311 SATA 256GB", "size_bytes": 256060514304, "partitions": 4, "bus_type": "SATA" }
+      ]
+    },
+    "scan_duration_s": 94.3,
+    "scanner_user": "MEAD\\dbaker",
+    "users": [
+      { "account": "MEAD\\reception", "profile": "C:\\Users\\reception", "last_logon": "2026-09-16T21:40:00Z", "size_bytes": 3221225472 },
+      { "account": ".\\Administrator", "profile": "C:\\Users\\Administrator", "last_logon": "2025-11-02T16:10:00Z", "size_bytes": 104857600, "local": true }
+    ]
+  },
+  "target": {
+    "os_edition": "Pro",
+    "hostname": "MEAD-FRONT-02",
+    "local_admin": "uplink",
+    "timezone": "Central Standard Time",
+    "locale": "en-US"
+  },
+  "identity": {
+    "domain_fqdn": "mead.local",
+    "domain_netbios": "MEAD",
+    "computer_ou_dn": "OU=Front Desk,OU=Workstations,DC=mead,DC=local",
+    "computer_groups": ["MEAD\\Practice Workstations"],
+    "local_groups": [
+      { "name": "Administrators", "members": ["MEAD\\Domain Admins", "MEAD\\practice-it"] },
+      { "name": "Remote Desktop Users", "members": ["MEAD\\reception"] }
+    ]
+  },
+  "apps": [
+    {
+      "id": "vcredist2015",
+      "display_name": "Microsoft Visual C++ 2015-2022 Redistributable (x64)",
+      "display_version": "14.40.33810",
+      "publisher": "Microsoft Corporation",
+      "source_kind": "win32",
+      "arch": "x64",
+      "registry_key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{7f0e1e26-2f9f-4d0a-9d5e-5b6a0a1f2d3c}",
+      "resolution": {
+        "status": "resolved",
+        "method": "winget",
+        "ref": "Microsoft.VCRedist.2015+.x64",
+        "confidence": 0.94,
+        "resolved_by": "auto",
+        "order": 10
+      },
+      "config_capture": null
+    },
+    {
+      "id": "chrome",
+      "display_name": "Google Chrome",
+      "display_version": "129.0.6668.59",
+      "publisher": "Google LLC",
+      "source_kind": "win32",
+      "install_location": "C:\\Program Files\\Google\\Chrome\\Application",
+      "arch": "x64",
+      "resolution": {
+        "status": "resolved",
+        "method": "winget",
+        "ref": "Google.Chrome",
+        "confidence": 0.99,
+        "resolved_by": "auto",
+        "order": 50
+      },
+      "config_capture": null
+    },
+    {
+      "id": "acrobatreader",
+      "display_name": "Adobe Acrobat Reader (64-bit)",
+      "display_version": "24.003.20112",
+      "publisher": "Adobe",
+      "source_kind": "win32",
+      "install_location": "C:\\Program Files\\Adobe\\Acrobat DC",
+      "arch": "x64",
+      "resolution": {
+        "status": "resolved",
+        "method": "winget",
+        "ref": "Adobe.Acrobat.Reader.64-bit",
+        "confidence": 0.92,
+        "resolved_by": "auto",
+        "order": 50
+      },
+      "config_capture": null
+    },
+    {
+      "id": "7zip",
+      "display_name": "7-Zip 24.08 (x64)",
+      "display_version": "24.08",
+      "publisher": "Igor Pavlov",
+      "source_kind": "win32",
+      "arch": "x64",
+      "resolution": {
+        "status": "resolved",
+        "method": "winget",
+        "ref": "7zip.7zip",
+        "confidence": 0.88,
+        "resolved_by": "auto",
+        "order": 50
+      },
+      "config_capture": null
+    },
+    {
+      "id": "screenconnect",
+      "display_name": "ScreenConnect Client (a1b2c3d4e5f6)",
+      "display_version": "24.2.9",
+      "publisher": "Uplink Research",
+      "source_kind": "win32",
+      "arch": "x64",
+      "resolution": {
+        "status": "resolved",
+        "method": "exe",
+        "ref": "\\\\mead-fs01\\installers\\screenconnect\\ScreenConnect.ClientSetup.exe",
+        "confidence": 1,
+        "resolved_by": "mapping_table",
+        "args": ["/S"],
+        "order": 60
+      },
+      "config_capture": null
+    },
+    {
+      "id": "dellsupportassist",
+      "display_name": "Dell SupportAssist",
+      "display_version": "3.16.2",
+      "publisher": "Dell Inc.",
+      "source_kind": "win32",
+      "arch": "x64",
+      "resolution": {
+        "status": "dropped",
+        "resolved_by": "mapping_table"
+      },
+      "config_capture": null
+    },
+    {
+      "id": "solitairecollection",
+      "display_name": "Microsoft Solitaire Collection",
+      "source_kind": "appx",
+      "resolution": {
+        "status": "dropped",
+        "resolved_by": "auto"
+      },
+      "config_capture": null
+    }
+  ],
+  "settings": [
+    {
+      "key": "system.timezone",
+      "value": "Central Standard Time",
+      "captured_from": "Get-TimeZone",
+      "apply": { "win11": { "method": "powershell", "ref": "Set-TimeZone -Id 'Central Standard Time'" } }
+    },
+    {
+      "key": "power.sleep_ac_min",
+      "value": 0,
+      "captured_from": "powercfg /q",
+      "apply": { "win11": { "method": "powershell", "ref": "powercfg /change standby-timeout-ac 0" } }
+    },
+    {
+      "key": "explorer.show_extensions",
+      "value": 1,
+      "captured_from": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\HideFileExt",
+      "apply": { "win11": { "method": "registry", "ref": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\HideFileExt=0" } }
+    },
+    {
+      "key": "defaults.browser",
+      "value": "ChromeHTML",
+      "captured_from": "HKCU\\SOFTWARE\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice",
+      "apply": {}
+    }
+  ],
+  "peripherals": {
+    "printers": [
+      { "name": "Front Desk HP", "driver_name": "HP Universal Printing PCL 6", "port": "IP_10.20.1.51", "ip": "10.20.1.51" },
+      { "name": "Statements", "shared_path": "\\\\mead-fs01\\Statements" }
+    ],
+    "mapped_drives": [
+      { "letter": "S:", "unc": "\\\\mead-fs01\\shared", "persistent": true, "user": "MEAD\\reception" },
+      { "letter": "P:", "unc": "\\\\mead-fs01\\practice", "persistent": true, "user": "MEAD\\reception" }
+    ],
+    "network": {
+      "wifi_ssids": ["Mead-Staff"]
+    }
+  },
+  "data": {
+    "strategy": "onedrive_kfm"
+  },
+  "compat": [
+    {
+      "severity": "info",
+      "subject": "MEAD-FRONT-02",
+      "reason": "This machine's files are in OneDrive with Known Folder Move, so nothing is copied — they come back at first sign-in.",
+      "suggested_action": "Confirm the user has signed into OneDrive before the old machine is retired."
+    }
+  ],
+  "notes": []
+}
