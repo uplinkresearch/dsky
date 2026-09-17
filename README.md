@@ -87,15 +87,18 @@ had to say plainly what it was about to do.
   put on the proprietary drivers it finds. Server installs unattended; Desktop
   keeps Ubuntu's own "Review your choices" confirmation before it erases
   anything.
-- **Anaconda installers** — Fedora Server installed from a kickstart DSKY
-  appends to the ISO, whose own bytes are left exactly as the distribution
-  published them (`linux.kickstart`). Proven on Fedora Server 44: three minutes
-  and no questions but the account. Picking **programs** writes that kickstart
-  for you, with no workspace to author, from Fedora's own repositories, Flathub,
-  a vendor's rpm repository or a published release — `dsky apps --os fedora`
-  lists what Fedora gets and where each comes from. The answers are handed to
-  the kernel as a second initramfs rather than a partition to mount: the ISO's
-  volume label belongs to the whole disk on hybrid media, so the installer
+- **Anaconda installers** — Fedora Server and the RHEL family installed from a
+  kickstart DSKY appends to the ISO, whose own bytes are left exactly as the
+  distribution published them (`linux.kickstart`). Proven on Fedora Server 44
+  and AlmaLinux 10.2: three minutes and no questions but the account. Picking
+  **programs** writes that kickstart for you, with no workspace to author, from
+  Fedora's own repositories, Flathub, a vendor's rpm repository or a published
+  release — `dsky apps --os fedora` lists what Fedora gets and where each comes
+  from. That picker is Fedora Server only for now: the RHEL rebuilds carry
+  barely a third of Fedora's package names, so the same list there would offer
+  programs that cannot install (`docs/plan-linux-apps.md`). The answers are
+  handed to the kernel as a second initramfs rather than a partition to mount —
+  the ISO's volume label belongs to the whole disk on hybrid media, so the installer
   mounts the disk and no partition on it can then be opened. Fedora's shipped
   default entry also media-checks itself to a halt on any media with anything
   appended, so DSKY rewrites the boot menu in place, same byte length, as it

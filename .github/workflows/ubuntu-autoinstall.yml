@@ -43,6 +43,7 @@ jobs:
           - server-26.04-drivers
           - fedora-44-kickstart
           - fedora-44-programs
+          - almalinux-10-kickstart
           - omarchy
     runs-on: ubuntu-24.04
     timeout-minutes: 150

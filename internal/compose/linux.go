@@ -185,8 +185,15 @@ var (
 	grubInitrdRe = regexp.MustCompile(`(?m)^\s*initrd\s+(\S+)`)
 	// Whole lines, arguments and all: an Anaconda installer will not start
 	// without the inst.stage2= its own menu entry carries.
-	grubKernelLineRe = regexp.MustCompile(`(?m)^\s*linux\s+(.+)$`)
-	grubInitrdLineRe = regexp.MustCompile(`(?m)^\s*initrd\s+(.+)$`)
+	//
+	// The command is captured as well as its arguments because the family does
+	// not agree on what it is called. Fedora writes linux/initrd; AlmaLinux
+	// and the other RHEL rebuilds write linuxefi/initrdefi. A replacement menu
+	// that assumes Fedora's spelling finds nothing on an AlmaLinux ISO, and
+	// the build stops with "could not find linux/initrd lines". Whichever the
+	// ISO used is what the replacement writes back.
+	grubKernelLineRe = regexp.MustCompile(`(?m)^\s*(linuxefi|linux16|linux)\s+(.+)$`)
+	grubInitrdLineRe = regexp.MustCompile(`(?m)^\s*(initrdefi|initrd16|initrd)\s+(.+)$`)
 	// The line that points $root at the install medium, which every path in
 	// the menu entry is relative to.
 	grubSearchLineRe = regexp.MustCompile(`(?m)^\s*search\s+.*--set=root.*$`)
@@ -217,8 +224,9 @@ func grubKickstartMenu(orig []byte, extraArgs ...string) ([]byte, error) {
 	// The first entry is the plain install on every Anaconda ISO seen so far,
 	// but the check is stripped by name rather than by position, because that
 	// holds whichever order a distribution lists them in.
-	kernel := strings.Join(strings.Fields(strings.ReplaceAll(string(k[1]), "rd.live.check", "")), " ")
-	initrd := strings.TrimSpace(string(i[1]))
+	kernelCmd, initrdCmd := string(k[1]), string(i[1])
+	kernel := strings.Join(strings.Fields(strings.ReplaceAll(string(k[2]), "rd.live.check", "")), " ")
+	initrd := strings.TrimSpace(string(i[2]))
 
 	// Name the kickstart rather than relying on Anaconda finding it.
 	//
@@ -257,7 +265,8 @@ func grubKickstartMenu(orig []byte, extraArgs ...string) ([]byte, error) {
 	// GRUB finds the answers partition by its label and hands its ks.img to
 	// the kernel as a second initramfs. GRUB reading a FAT partition is a far
 	// smaller ask than the installer mounting one mid-boot.
-	menu := fmt.Sprintf("set default=0\nset timeout=0\nset timeout_style=hidden\n%ssearch --no-floppy --set=ksdev -l %s\nmenuentry \"Install\" {\n\tlinux\t%s\n\tinitrd\t%s ($ksdev)/ks.img\n}\n", search, kickstartLabel, kernel, initrd)
+	menu := fmt.Sprintf("set default=0\nset timeout=0\nset timeout_style=hidden\n%ssearch --no-floppy --set=ksdev -l %s\nmenuentry \"Install\" {\n\t%s\t%s\n\t%s\t%s ($ksdev)/ks.img\n}\n",
+		search, kickstartLabel, kernelCmd, kernel, initrdCmd, initrd)
 	if len(menu) > len(orig) {
 		return nil, fmt.Errorf("compose: replacement grub.cfg (%d bytes) exceeds the original (%d) — cannot patch in place", len(menu), len(orig))
 	}

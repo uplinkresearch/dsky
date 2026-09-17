@@ -35,6 +35,9 @@
 #                         a second initramfs rather than a partition to mount —
 #                         see internal/compose/cpio.go for why the obvious way
 #                         cannot work on media made from a hybrid ISO.
+#   almalinux-10-kickstart  The same kickstart path on a RHEL rebuild, from a
+#                         minimal image rather than a DVD: does what was proven
+#                         on Fedora hold for the family it was written for?
 #   fedora-44-programs    The Fedora program picker end to end: one program
 #                         from each source Fedora has — its own repositories,
 #                         Flathub, a vendor's rpm repository and a published
@@ -132,6 +135,14 @@ fedora-44-kickstart)
   SHA=85837793bfa36db6bc709b4cecd2ec116951b87d9c53c3d95eb2fac8dcf7cf1f
   KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
   SRC_ID=fedora-44-server ;;
+almalinux-10-kickstart)
+  # The same Anaconda as Fedora, on a RHEL rebuild and a minimal image rather
+  # than a DVD. DSKY's kickstart path has never been run on one, which is why
+  # the RHEL family does not offer programs yet.
+  URL=https://repo.almalinux.org/almalinux/10/isos/x86_64/AlmaLinux-10.2-x86_64-minimal.iso
+  SHA=1b532f534231da0d1cd0ccae622bea6cd588d8a0d7b259f1f131501a6eed41a4
+  KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
+  SRC_ID=almalinux-10 ENVGROUP=minimal-environment KSPKG=nano ;;
 fedora-44-programs)
   # The Fedora program picker, end to end: one program from each kind of
   # source Fedora has — its own repositories, Flathub, a vendor's rpm
@@ -166,6 +177,11 @@ DRIVERS=${DRIVERS:-}
 # Which installer answers the media carries: Ubuntu's cloud-init autoinstall on
 # a CIDATA partition, or Anaconda's kickstart as a second initramfs.
 FAMILY=${FAMILY:-ubuntu}
+# The environment group and the extra package the hand-written CI kickstart
+# asks for. They differ per distribution: Fedora Server has a server product
+# environment and vim-enhanced on its DVD, a minimal RHEL rebuild has neither.
+ENVGROUP=${ENVGROUP:-server-product-environment}
+KSPKG=${KSPKG:-vim-enhanced}
 SRC_ID=${SRC_ID:-ci-ubuntu-iso}
 # Ubuntu Desktop stops at "Ready to install — Review your choices" and waits,
 # which is the one confirmation before anything is erased. The cases that get
@@ -263,13 +279,13 @@ autopart --type=plain --nohome
 bootloader --location=mbr
 firstboot --disable
 services --enabled=sshd
-%packages
-@^server-product-environment
+%packages --ignoremissing
+@^$ENVGROUP
 # On the DVD (checked in its Packages tree) and not in the default selection,
 # so finding it afterwards means %packages was honoured. A package that is not
 # on the media fails the whole install with "No match for argument", which is
 # how this line was chosen rather than guessed.
-vim-enhanced
+$KSPKG
 %end
 %post
 mkdir -p /root/.ssh
@@ -749,7 +765,7 @@ elif [ "$FAMILY" = fedora ]; then
     "grep -q 'Generated for DSKY' /root/original-ks.cfg"
   check "the answers came from the initramfs, not a mounted partition" \
     "grep -q 'ks=file:/ks.cfg' /root/original-ks.cfg /var/log/anaconda/anaconda.log || grep -qr 'inst.ks=file' /var/log/anaconda/"
-  check "package from %packages installed (vim-enhanced)" "rpm -q vim-enhanced"
+  check "package from %packages installed ($KSPKG)" "rpm -q $KSPKG"
 else
   check "late-command ran (/etc/dsky-provisioned)" "test -s /etc/dsky-provisioned"
   check "answers were the ones DSKY wrote (autoinstall user-data mentions hello-world)" \
