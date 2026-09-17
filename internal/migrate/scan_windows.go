@@ -28,6 +28,12 @@ import (
 //go:embed scan.ps1
 var scanFS embed.FS
 
+// toCRLF gives the script Windows line endings without doubling any it
+// already has.
+func toCRLF(b []byte) []byte {
+	return []byte(strings.ReplaceAll(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n", "\r\n"))
+}
+
 // ScanTimeout is the whole scan. The slow parts are the Store packages and,
 // with --all-users, loading hives; both are minutes at worst on a tired
 // machine, and a scan that hangs forever is worse than one that gives up.
@@ -53,7 +59,10 @@ func NewCollector(ctx context.Context, opts ScanOptions, usmtPath string) (Colle
 	}
 	defer os.RemoveAll(dir)
 	path := filepath.Join(dir, "dsky-scan.ps1")
-	if err := os.WriteFile(path, script, 0o600); err != nil {
+	// CRLF on the way out rather than in the checkout: the embedded copy is
+	// the same bytes on every platform that builds DSKY (see .gitattributes),
+	// and Windows gets the line endings its shell expects.
+	if err := os.WriteFile(path, toCRLF(script), 0o600); err != nil {
 		return nil, err
 	}
 

@@ -11,3 +11,14 @@
 # two are excluded from the text handling above.
 catalog/index.json      -text
 catalog/index.json.sig  -text
+
+# Files compiled into the binary must be the same bytes whichever platform
+# built it. Left to the rules above, a Windows checkout gets CRLF and a Linux
+# one LF, so one commit produces two different binaries -- and an embedded
+# unattend or page that differs by platform is exactly the kind of difference
+# nobody thinks to look for. The scripts are converted to CRLF when they are
+# written out for Windows to run, not by the checkout.
+internal/webui/index.html                       text eol=lf
+internal/oscatalog/templates/autounattend.xml.tmpl text eol=lf
+internal/migrate/report.html.tmpl               text eol=lf
+internal/migrate/scan.ps1                       text eol=lf
