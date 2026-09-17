@@ -166,7 +166,10 @@ func AddPack(ctx context.Context, ws *workspace.Workspace, lib *library.Library,
 		if install == recipe.InstallExe && len(p.Args) > 0 {
 			fmt.Fprintf(&b, "args: [%s]\n", quote(p.Args))
 		}
-		note := strings.TrimSpace(fmt.Sprintf("%s %s %s %s", p.Model, p.OSVersion, p.Version, p.Released))
+		// The component goes first where there is one: a model with twenty
+		// packages has twenty manifests named by hash, and this is the line
+		// that says which driver each is.
+		note := strings.Join(strings.Fields(fmt.Sprintf("%s %s %s %s %s", p.Component, p.Model, p.OSVersion, p.Version, p.Released)), " ")
 		fmt.Fprintf(&b, "notes: %q\n", note)
 		if err := os.WriteFile(manPath, []byte(b.String()), 0o644); err != nil {
 			return "", err
