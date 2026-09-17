@@ -105,10 +105,11 @@ type model struct {
 	hw      *hwdetect.Hardware
 	hwErr   error
 
-	apps     []appcatalog.App
-	appPick  map[string]bool
-	appIdx   int
-	appOrder []string
+	apps      []appcatalog.App
+	appTarget appcatalog.Target
+	appPick   map[string]bool
+	appIdx    int
+	appOrder  []string
 
 	devs   []device.Device
 	devIdx int
@@ -140,12 +141,30 @@ func newModel(ctx context.Context, lib *library.Library) *model {
 		appPick: map[string]bool{},
 		ch:      make(chan tea.Msg, 64),
 	}
+	m.buildAppList()
+	return m
+}
+
+// buildAppList narrows the program list to what the chosen operating system
+// can actually install: winget packages and the operator's own installers on
+// Windows, apt, snaps, Flathub and vendor repositories on Ubuntu. Offering a
+// program that cannot run there is worse than not offering it. When the
+// target changes the picks are dropped, so a Windows-only program cannot ride
+// along to Ubuntu on a mind changed at the first screen.
+func (m *model) buildAppList() {
+	target := m.entry().AppTarget()
+	m.apps = nil
 	for _, a := range appcatalog.Catalog() {
-		if a.InstallsOnWindows() {
+		if a.InstallsOn(target) {
 			m.apps = append(m.apps, a)
 		}
 	}
-	return m
+	m.appIdx = 0
+	if m.appTarget != target {
+		m.appTarget = target
+		m.appPick = map[string]bool{}
+		m.appOrder = nil
+	}
 }
 
 func (m *model) Init() tea.Cmd { return listDevices(m.ctx) }
@@ -174,8 +193,26 @@ func (m *model) entry() oscatalog.Entry { return m.entries[m.osIdx] }
 
 func (m *model) buildOptions() {
 	e := m.entry()
+	m.buildAppList()
 	m.opts = nil
+	// Answered again for every operating system picked, never carried over.
+	// An entry with no options screen never clears it otherwise, so a Yes
+	// given to Windows or Ubuntu was still a Yes after changing to a distro
+	// that has no such question — and the build then wrote Ubuntu's answers
+	// onto, say, a Fedora stick.
+	m.drivers = false
 	if e.Family != oscatalog.Windows {
+		// Ubuntu has one thing to choose: its installer can put on the
+		// proprietary drivers the kernel does not carry. Everything else
+		// Windows asks about — edition, account, bloatware — has no Ubuntu
+		// counterpart, so the screen has one line rather than five.
+		if e.ProgramsSupported() {
+			m.opts = append(m.opts, &choice{
+				label:  "Drivers for this computer",
+				values: []string{"no", "yes"},
+				labels: []string{"No", "Yes — the proprietary ones Ubuntu finds (NVIDIA…)"},
+			})
+		}
 		return
 	}
 	eds := e.Editions
@@ -262,14 +299,7 @@ func (m *model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.err = nil
-		m.stage--
-		switch {
-		case m.entry().Family != oscatalog.Windows:
-			// Linux has none of the Windows-only screens to step back through.
-			m.stage = stageOS
-		case m.stage == stageISO && !m.needISO:
-			m.stage = stageOS
-		}
+		m.stage = m.prevStage(m.stage)
 		return m, nil
 	}
 
@@ -294,6 +324,37 @@ func (m *model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// prevStage is the screen before this one for the operating system chosen.
+// Going back has to skip exactly what going forward skipped: Windows walks
+// every screen, while a Linux entry has no options to set, may have nothing
+// to download, and only offers programs where its installer takes a list.
+func (m *model) prevStage(s stage) stage {
+	e := m.entry()
+	for s > stageOS {
+		s--
+		switch s {
+		case stageISO:
+			// Windows is offered the prompt whenever the image is not in the
+			// library, since Microsoft's downloads are rate-limited. A Linux
+			// entry only sees it when there is nothing to download at all.
+			if m.needISO && (e.Family == oscatalog.Windows || m.mustISO) {
+				return s
+			}
+		case stageOptions:
+			if len(m.opts) > 0 {
+				return s
+			}
+		case stageApps:
+			if e.ProgramsSupported() {
+				return s
+			}
+		default:
+			return s
+		}
+	}
+	return stageOS
+}
+
 func (m *model) keyOS(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch k.String() {
 	case "up", "k":
@@ -313,8 +374,20 @@ func (m *model) keyOS(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.needISO = !oscatalog.InLibrary(m.lib, e)
 		m.mustISO = m.needISO && e.ImportOnly()
 		if e.Family != oscatalog.Windows && !m.mustISO {
-			m.stage = stageDevice
-			return m, listDevices(m.ctx)
+			// Ubuntu has options to set and takes a program list, through its
+			// installer's own answers. Everything else goes straight to the
+			// stick, because there is nothing to ask it.
+			switch {
+			case len(m.opts) > 0:
+				m.cursor = 0
+				m.stage = stageOptions
+			case e.ProgramsSupported():
+				m.stage = stageApps
+			default:
+				m.stage = stageDevice
+				return m, listDevices(m.ctx)
+			}
+			return m, nil
 		}
 		m.cursor = 0
 		m.stage = stageOptions
@@ -353,9 +426,14 @@ func (m *model) keyISO(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.err = nil
-		// Linux entries have no options to set, so skipping the empty screen
-		// goes straight to picking the stick.
+		// Linux entries have no options to set, so the empty screen is
+		// skipped: to the programs where they can take a list, and to the
+		// stick where they cannot.
 		if len(m.opts) == 0 {
+			if m.entry().ProgramsSupported() {
+				m.stage = stageApps
+				return m, nil
+			}
 			m.stage = stageDevice
 			return m, listDevices(m.ctx)
 		}
@@ -478,8 +556,15 @@ func (m *model) start() tea.Cmd {
 		BypassRequirement: m.opt("Skip TPM / Secure Boot checks") == "yes",
 		Apps:              append([]string(nil), m.appOrder...),
 	}
+	// "Drivers for this computer" means two different jobs. On Windows it
+	// stages the packs this machine's hardware needs; on Ubuntu it tells the
+	// installer to fetch the proprietary drivers itself, with nothing staged
+	// and nothing detected.
 	var hw []recipe.HardwareSpec
-	if m.drivers && m.hw != nil {
+	switch {
+	case m.drivers && e.Family != oscatalog.Windows:
+		opts.ThirdPartyDrivers = true
+	case m.drivers && m.hw != nil:
 		hw = driverresolve.SpecsFor(m.hw, e.DriverOS())
 	}
 	opts.Hardware = hw

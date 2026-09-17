@@ -124,9 +124,16 @@ type Options struct {
 	// because a pack that could not be resolved right then was quietly left
 	// out along with the machine that asked for it.
 	Models []recipe.HardwareSpec
-	// Apps are appcatalog picker ids to install at first boot (windows only,
-	// via winget). Resolved to package ids by the caller.
+	// Apps are appcatalog picker ids to install with the operating system: at
+	// first boot through winget on Windows, and through the installer's own
+	// answers on Ubuntu (apt, snaps, Flathub, a vendor's repository).
 	Apps []string
+	// ThirdPartyDrivers is "drivers for this computer" on Ubuntu, where that
+	// means the proprietary ones the kernel does not carry — NVIDIA above
+	// all. Ubuntu's installer finds and installs them itself when the answers
+	// ask it to, so there is nothing to detect and nothing to stage, which is
+	// why this is a flag rather than Hardware above.
+	ThirdPartyDrivers bool
 	// DomainBlob is a file from `djoin /provision`: an offline domain join.
 	//
 	// Only the offline path is offered here, and that asymmetry is deliberate.
@@ -344,8 +351,13 @@ func SaveRecipe(ctx context.Context, lib *library.Library, wsDir, id, name strin
 		}
 	}
 	meta := recipeMeta{ID: id, Name: name, Template: savedTemplate}
-	if e.Family == Linux && len(opts.Apps) > 0 {
-		rel, err := writeUbuntuUserData(wsDir, id, e, opts.Apps)
+	// ProgramsSupported is what makes these answers meaningful: they are
+	// Ubuntu's autoinstall, and appending them to any other distro's ISO
+	// gives it a CIDATA partition its installer will never read. Checked here
+	// rather than trusted from the caller, because all three of them build
+	// these options separately.
+	if e.Family == Linux && e.ProgramsSupported() && (len(opts.Apps) > 0 || opts.ThirdPartyDrivers) {
+		rel, err := writeUbuntuUserData(wsDir, id, e, opts.Apps, opts.ThirdPartyDrivers)
 		if err != nil {
 			return "", err
 		}
@@ -643,8 +655,8 @@ func scaffoldQuickWorkspace(lib *library.Library, e Entry, opts Options, hw []re
 
 func writeQuickRecipe(dir string, e Entry, opts Options, hw []recipe.HardwareSpec) error {
 	meta := recipeMeta{ID: e.ID, Name: e.Name, Template: quickTemplate}
-	if e.Family == Linux && len(opts.Apps) > 0 {
-		rel, err := writeUbuntuUserData(dir, e.ID, e, opts.Apps)
+	if e.Family == Linux && e.ProgramsSupported() && (len(opts.Apps) > 0 || opts.ThirdPartyDrivers) {
+		rel, err := writeUbuntuUserData(dir, e.ID, e, opts.Apps, opts.ThirdPartyDrivers)
 		if err != nil {
 			return err
 		}

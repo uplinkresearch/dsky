@@ -65,11 +65,14 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 	account := fs.String("account", "local", "Windows account setup: local | oobe")
 	debloat := fs.String("debloat", "standard", "Windows debloat: off | standard | aggressive")
 	bypass := fs.Bool("bypass-checks", false, "Windows: skip TPM/Secure Boot/RAM checks")
-	withDrivers := fs.Bool("drivers", false, "Windows: detect this machine and stage its drivers")
+	withDrivers := fs.Bool("drivers", false, "drivers for this computer: on Windows, detect this machine and stage\n"+
+		"its driver packs; on Ubuntu, have the installer put on the proprietary\n"+
+		"drivers it finds (NVIDIA and the like)")
 	var driversFor stringList
 	fs.Var(&driversFor, "drivers-for", "Windows: stage drivers for another machine, e.g.\n"+
 		"\"dell:OptiPlex 7010\" (repeatable; one stick can carry several models)")
-	apps := fs.String("apps", "", "Windows: programs to install at first boot (see `dsky apps`)")
+	apps := fs.String("apps", "", "programs to install with the operating system, on Windows and on\n"+
+		"Ubuntu (see `dsky apps`, and `dsky apps --os ubuntu`)")
 	domainBlob := fs.String("domain-blob", "", "Windows: join a domain using a blob from\n"+
 		"`djoin /provision` (one machine per blob). A credentialed join belongs\n"+
 		"in a workspace recipe, so its password is not left in shell history.")
@@ -116,9 +119,17 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 
 	// Detected hardware and named models are additive: pnputil installs only
 	// what matches the machine being imaged, so one stick can carry packs for
-	// several models.
+	// several models. On Ubuntu, "drivers for this computer" is a different
+	// job under the same name — nothing is staged and nothing is detected,
+	// because the kernel carries all of it but the proprietary drivers, and
+	// Ubuntu's installer finds and installs those itself when asked to.
+	thirdParty := false
 	var hw []recipe.HardwareSpec
-	if *withDrivers {
+	switch {
+	case *withDrivers && e.Family != oscatalog.Windows && e.ProgramsSupported():
+		thirdParty = true
+		fmt.Println("Ubuntu will install the proprietary drivers it finds for this machine (NVIDIA and the like).")
+	case *withDrivers:
 		var err error
 		if hw, err = detectedHardware(ctx, e); err != nil {
 			return err
@@ -217,7 +228,8 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 	prog := &stageProgress{}
 	art, err := oscatalog.BuildQuick(ctx, lib, e, oscatalog.Options{
 		Edition: *edition, AccountMode: *account, Debloat: *debloat, BypassRequirement: *bypass,
-		Hardware: hw, Apps: appIDs, DomainBlob: *domainBlob, DomainBlobsDir: *domainBlobs,
+		Hardware: hw, Apps: appIDs, ThirdPartyDrivers: thirdParty,
+		DomainBlob: *domainBlob, DomainBlobsDir: *domainBlobs,
 	}, prog.report)
 	prog.finish()
 	if err != nil {

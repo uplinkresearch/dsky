@@ -77,10 +77,16 @@ had to say plainly what it was about to do.
   agent identities collide in RMMs). WIMs over FAT32's 4 GiB limit are split
   automatically (DISM on Windows hosts, wimlib elsewhere).
 - **Linux distro installers** — hybrid ISOs raw-written and verified; Ubuntu
-  server can be made **zero-touch**: a recipe's `linux.autoinstall` renders
-  cloud-init user-data into an appended CIDATA partition and rewrites the
-  ISO's GRUB menu in place (same byte length, no ISO rebuild) to boot with
-  `autoinstall`, so the installer never asks a question.
+  can be made **zero-touch**: `linux.autoinstall` renders cloud-init user-data
+  into an appended CIDATA partition and rewrites the ISO's GRUB menu in place
+  (same byte length, no ISO rebuild) to boot with `autoinstall`, so the
+  installer never asks a question. Picking **programs** or **drivers** for an
+  Ubuntu entry writes those answers with no workspace to author: apt packages
+  and snaps go in the installer's own sections, Flathub apps and a vendor's
+  own apt repository install at first boot, and Ubuntu's installer is told to
+  put on the proprietary drivers it finds. Server installs unattended; Desktop
+  keeps Ubuntu's own "Review your choices" confirmation before it erases
+  anything.
 - **Appliance images** — raw `.img` (xz/zstd/gz-compressed supported),
   stream-decompressed while writing.
 
@@ -263,6 +269,46 @@ staged network drivers are for. Some packages only install for the first
 account that signs in; the list says which. Programs winget doesn't have, such
 as RustDesk, go in with `dsky apps add` and ride on the stick.
 
+### Programs on Ubuntu
+
+The same picker, and the same `--apps`, for Ubuntu Server 24.04 and 26.04 and
+Ubuntu Desktop 26.04 — the entries whose installer takes DSKY's answers:
+
+```
+dsky apps --os ubuntu            # what Ubuntu gets, and where each comes from
+dsky install ubuntu-26.04-server --drivers --apps set:it,vlc,chrome
+```
+
+Each program comes from the best source Ubuntu has for it, in this order:
+Ubuntu's own archive, then the Snap Store where the publisher is the vendor,
+then Flathub for publisher-verified apps, and last a vendor's own apt
+repository where that is the only official channel — Google Chrome, AnyDesk
+and TeamViewer. `dsky apps --os ubuntu` names the source beside every program,
+because what installs is often not spelled the way the program is. The picker
+only offers what the chosen OS can install, so nothing Windows-only appears
+for Ubuntu and nothing Ubuntu-only for Windows.
+
+apt packages and snaps go into the installer's own `packages:` and `snaps:`
+sections. Flathub apps and vendor repositories install at first boot from a
+small systemd service, which also confirms that everything else arrived —
+a machine whose network came up late finishes its install quietly missing
+packages, and that pass is what notices and puts them on. Everything is logged
+to `/var/log/dsky-apps.log`, one failure never stops the rest, and whatever
+failed is tried again at the next boot.
+
+`--drivers` on Ubuntu means what it says on the machine in front of you, but
+by Ubuntu's route: nothing is staged, because the kernel already carries all of
+it but the proprietary drivers, and the answers ask Ubuntu's installer to find
+and install those (NVIDIA above all).
+
+**What it erases, and what it asks.** Autoinstall takes the first disk without
+asking, as DSKY's Windows sticks do. On Server that is the whole of it: the
+install runs with no input except the account, which the installer asks for on
+screen, because no password goes into DSKY's answers. On Desktop, Ubuntu's own
+"Review your choices" screen is left in deliberately — it lists the answers and
+waits for **Install**, so a stick booted on the wrong machine stops once before
+erasing it.
+
 ### Programs on a machine that already runs Windows
 
 Half of what a recipe does needs no operating system installed: the drivers for
@@ -402,6 +448,17 @@ An Ubuntu stick has been flashed and verified on real hardware. Driver
 auto-resolve is verified live against all four catalogs. The web UI, the
 terminal wizard, and self-update are working.
 
+**Ubuntu installs end to end, proven in virtual machines** (`test/autoinstall/vm.sh`,
+which builds the media with DSKY from the real ISOs, installs from it onto a
+blank disk, then boots the installed system and asks it what it got). Server
+26.04 installs with no input in 8 minutes; Desktop 26.04 installs and reaches
+the desktop. With programs picked the way the app picks them, all four sources
+arrive on the installed machine: an apt package during setup, a snap, a Flathub
+app, and Chrome from Google's own repository, with `/var/log/dsky-apps.log`
+reporting no failures. `--drivers` writes an answer Ubuntu's installer accepts
+and acts on. Every apt, snap and Flathub name in the program list is checked
+against Ubuntu, the Snap Store and Flathub weekly.
+
 Known gaps, stated plainly:
 
 - **No physical Windows install has been done end to end yet** with drivers
@@ -414,6 +471,16 @@ Known gaps, stated plainly:
   pairing — but against an in-memory target. The platform write path it
   depends on is not exercised by any of that.
 - **The race detector has never run** over the test suite.
+- **No physical Ubuntu install with programs has been done yet.** The whole
+  path is proven in virtual machines, on the real ISOs, but a VM is not a
+  computer: it has no proprietary drivers for `--drivers` to find, and its
+  network is the host's. Real hardware is the remaining acceptance step.
+- **Ubuntu's programs need the machine online.** apt packages and snaps are
+  installed by Ubuntu's own installer, and Flathub apps and vendor
+  repositories at first boot; an offline machine gets none of them. It is not
+  silent about it — whatever failed is logged and tried again at the next boot
+  — but there is no equivalent of the Windows path's installers riding on the
+  stick.
 - **Parallel multi-stick writing has not been run on more than one stick.**
   The engine is there and its guards are tested; the concurrency is not
   hardware-proven.

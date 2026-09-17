@@ -24,6 +24,9 @@ type autoinstallDoc struct {
 				Name string `yaml:"name"`
 			} `yaml:"layout"`
 		} `yaml:"storage"`
+		Drivers *struct {
+			Install bool `yaml:"install"`
+		} `yaml:"drivers"`
 		Packages []string `yaml:"packages"`
 		Snaps    []struct {
 			Name    string `yaml:"name"`
@@ -40,7 +43,7 @@ func TestUbuntuUserData(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, desktop := range []bool{false, true} {
-		out := ubuntuUserData(plan, desktop)
+		out := ubuntuUserData(plan, desktop, false)
 		if !strings.HasPrefix(out, "#cloud-config\n") || strings.Contains(out, "{{") {
 			t.Fatalf("desktop=%v: not a plain cloud-config:\n%s", desktop, out)
 		}
@@ -86,10 +89,59 @@ func TestUbuntuUserData(t *testing.T) {
 		}
 	}
 
-	// Nothing for first boot: no late-commands at all.
+	// Even a plan the installer can carry out entirely by itself gets a
+	// first-boot pass, because that is what confirms the programs actually
+	// arrived on a machine whose network was late.
 	plain, _ := appcatalog.ResolveUbuntu([]string{"vlc"})
-	if strings.Contains(ubuntuUserData(plain, true), "late-commands") {
-		t.Error("late-commands written with nothing to install on first boot")
+	out := ubuntuUserData(plain, true, false)
+	if !strings.Contains(out, "late-commands") || !strings.Contains(out, "dsky-apps.sh") {
+		t.Error("no first-boot pass for a plan that still needs confirming")
+	}
+
+	// Nothing picked at all: nothing to run.
+	empty, _ := appcatalog.ResolveUbuntu(nil)
+	if !empty.Empty() || strings.Contains(ubuntuUserData(empty, true, false), "dsky-apps.sh") {
+		t.Error("a first-boot pass was written for an empty program list")
+	}
+
+	// The first-boot service must neither be ordered after cloud-init nor
+	// wait for it, however much its race with cloud-init invites both.
+	// cloud-final.service is itself ordered after multi-user.target, which
+	// this unit is wanted by, so either one closes an ordering cycle:
+	// After= makes systemd break it by deleting this job, and the service
+	// silently never runs at all; waiting inside the script deadlocks the
+	// boot instead. Both were watched happening on Ubuntu Server 26.04.
+	script := firstBootScript(t, ubuntuUserData(plan, false, false))
+	for _, forbidden := range []string{"cloud-final", "cloud-init status"} {
+		if strings.Contains(ubuntuFirstBootUnit, forbidden) {
+			t.Errorf("the first-boot unit mentions %q, which closes an ordering cycle", forbidden)
+		}
+		if strings.Contains(script, forbidden) {
+			t.Errorf("the first-boot script waits on %q, which deadlocks the boot", forbidden)
+		}
+	}
+	// What replaces them: apt waits for the lock cloud-init is holding, and a
+	// snap is waited for rather than declared missing the moment snapd, which
+	// has not been asked for it yet, looks idle.
+	if !strings.Contains(script, "DPkg::Lock::Timeout") {
+		t.Error("apt does not wait for dpkg's lock, which cloud-init is still holding")
+	}
+	if !strings.Contains(script, `[ "$i" -le "$grace" ]`) {
+		t.Error("the snap waiter has no grace period before it races cloud-init")
+	}
+
+	// Drivers for this computer, Ubuntu's way: its installer is told to put on
+	// the proprietary ones it finds, and nothing is staged on the media.
+	drivers := ubuntuUserData(empty, true, true)
+	var doc autoinstallDoc
+	if err := yaml.Unmarshal([]byte(drivers), &doc); err != nil {
+		t.Fatalf("drivers answers are not YAML: %v\n%s", err, drivers)
+	}
+	if doc.Autoinstall.Drivers == nil || !doc.Autoinstall.Drivers.Install {
+		t.Errorf("the answers do not ask for third-party drivers:\n%s", drivers)
+	}
+	if strings.Contains(ubuntuUserData(empty, true, false), "drivers:") {
+		t.Error("third-party drivers were asked for when nobody asked")
 	}
 }
 
@@ -124,7 +176,19 @@ func TestUbuntuProgramsReachTheRecipe(t *testing.T) {
 			t.Fatalf("%s: autoinstall without programs", id)
 		}
 	}
+	// A distro whose installer does not read Ubuntu's answers must never be
+	// given them, whatever the options say. Asking for drivers and then
+	// changing the operating system is the way this happened: the answers are
+	// Ubuntu autoinstall, and appending them to another distro's ISO leaves a
+	// CIDATA partition nothing will ever read — on a stick that looks built.
 	fedora, _ := Get("fedora-44-workstation")
+	dir, err := scaffoldQuickWorkspace(lib, fedora, Options{ThirdPartyDrivers: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := assertLoads(t, dir, fedora.ID); r.Linux != nil && r.Linux.Autoinstall != nil {
+		t.Error("Fedora was given Ubuntu's autoinstall answers")
+	}
 	if err := CheckPrograms(fedora, []string{"vlc"}); err == nil {
 		t.Fatal("programs accepted for Fedora")
 	}
@@ -132,4 +196,26 @@ func TestUbuntuProgramsReachTheRecipe(t *testing.T) {
 	if err := CheckPrograms(win, []string{"nosuchprogram"}); err == nil {
 		t.Fatal("an unknown program accepted for Windows")
 	}
+}
+
+// firstBootScript pulls DSKY's first-boot script back out of the answers,
+// where it travels base64-encoded inside a late-command.
+func firstBootScript(t *testing.T, userData string) string {
+	t.Helper()
+	var doc autoinstallDoc
+	if err := yaml.Unmarshal([]byte(userData), &doc); err != nil {
+		t.Fatalf("answers are not YAML: %v", err)
+	}
+	for _, c := range doc.Autoinstall.LateCommands {
+		if !strings.Contains(c, "dsky-apps.sh") || !strings.HasPrefix(c, "echo ") {
+			continue
+		}
+		raw, err := base64.StdEncoding.DecodeString(strings.Fields(c)[1])
+		if err != nil {
+			t.Fatalf("the first-boot script is not base64: %v", err)
+		}
+		return string(raw)
+	}
+	t.Fatal("no first-boot script in the answers")
+	return ""
 }

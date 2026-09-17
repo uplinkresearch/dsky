@@ -37,6 +37,104 @@ type UbuntuSource struct {
 // RepoGoogleChrome is Google's apt repository for Chrome.
 const RepoGoogleChrome = "google-chrome"
 
+// RepoAnyDesk and RepoTeamViewer are those vendors' own apt repositories.
+const (
+	RepoAnyDesk    = "anydesk"
+	RepoTeamViewer = "teamviewer"
+)
+
+// UbuntuRepo is a vendor's own apt repository: rule 4, for a program whose
+// vendor ships it themselves and nowhere above. Everything the first-boot
+// script needs in order to add one is here, so a new vendor is a table entry
+// rather than another branch in a generated shell script.
+//
+// The key is fetched into /etc/apt/keyrings and named in the sources line with
+// signed-by, which is how Debian and Ubuntu want a third-party repository
+// added: apt-key is deprecated, and a key in trusted.gpg.d would be trusted
+// for every repository on the machine rather than this one.
+type UbuntuRepo struct {
+	ID      string // the Repo value in the program table
+	Name    string // what to call it in the log
+	KeyURL  string // the vendor's armoured signing key
+	URL     string // the repository root
+	Suite   string // "stable", "all", …
+	Comps   string // "main"
+	Package string // what to install once it is added
+	// AMD64Only marks a vendor that publishes for amd64 alone, so the script
+	// says it skipped rather than failing on another architecture.
+	AMD64Only bool
+	// ProbeURL is a file that is there for as long as the repository is: its
+	// Release file, which every apt repository has. For the weekly check.
+	ProbeURL string
+}
+
+// ubuntuRepos are the vendor repositories DSKY knows how to add. Each comes
+// from the vendor's own Linux installation instructions, and
+// TestUbuntuVendorReposLive checks the key and the Release file weekly.
+var ubuntuRepos = []UbuntuRepo{{
+	ID:        RepoGoogleChrome,
+	Name:      "Google Chrome",
+	KeyURL:    "https://dl.google.com/linux/linux_signing_key.pub",
+	URL:       "https://dl.google.com/linux/chrome/deb/",
+	Suite:     "stable",
+	Comps:     "main",
+	Package:   "google-chrome-stable",
+	AMD64Only: true,
+	ProbeURL:  "https://dl.google.com/linux/chrome/deb/dists/stable/Release",
+}, {
+	ID:       RepoAnyDesk,
+	Name:     "AnyDesk",
+	KeyURL:   "https://keys.anydesk.com/repos/DEB-GPG-KEY",
+	URL:      "http://deb.anydesk.com/",
+	Suite:    "all",
+	Comps:    "main",
+	Package:  "anydesk",
+	ProbeURL: "http://deb.anydesk.com/dists/all/Release",
+}, {
+	ID:       RepoTeamViewer,
+	Name:     "TeamViewer",
+	KeyURL:   "https://download.teamviewer.com/download/linux/signature/TeamViewer2017.asc",
+	URL:      "https://linux.teamviewer.com/deb/",
+	Suite:    "stable",
+	Comps:    "main",
+	Package:  "teamviewer",
+	ProbeURL: "https://linux.teamviewer.com/deb/dists/stable/Release",
+}}
+
+// Where says in plain words where this program comes from on Ubuntu, for the
+// pickers and for `dsky apps`. What installs is often not spelled the way the
+// program is, and an operator checking a list wants to see that before the
+// machine does.
+func (s UbuntuSource) Where() string {
+	switch {
+	case s.Apt != "":
+		return "apt: " + s.Apt
+	case s.Snap != "":
+		if s.Classic {
+			return "snap: " + s.Snap + " (classic)"
+		}
+		return "snap: " + s.Snap
+	case s.Flatpak != "":
+		return "Flathub: " + s.Flatpak
+	case s.Repo != "":
+		if r, ok := UbuntuRepoByID(s.Repo); ok {
+			return r.Name + "'s own apt repository"
+		}
+		return "the " + s.Repo + " repository"
+	}
+	return ""
+}
+
+// UbuntuRepoByID returns the repository a program's Repo field names.
+func UbuntuRepoByID(id string) (UbuntuRepo, bool) {
+	for _, r := range ubuntuRepos {
+		if r.ID == id {
+			return r, true
+		}
+	}
+	return UbuntuRepo{}, false
+}
+
 var ubuntu = map[string]UbuntuSource{
 	"chrome":      {Repo: RepoGoogleChrome},
 	"firefox":     {Snap: "firefox"},
@@ -73,6 +171,13 @@ var ubuntu = map[string]UbuntuSource{
 	"wireguard":     {Apt: "wireguard-tools"},
 	"openvpn":       {Apt: "openvpn"},
 	"remotedesktop": {Apt: "remmina", Note: "installs Remmina"},
+	// AnyDesk and TeamViewer publish a Linux client themselves, with their own
+	// apt repository, which is rule 4 exactly as Chrome is. They were left out
+	// when the table was written for having no verified Flathub app — true,
+	// and beside the point, because neither vendor ships through Flathub at
+	// all. Checked against each vendor's own Linux instructions.
+	"anydesk":    {Repo: RepoAnyDesk},
+	"teamviewer": {Repo: RepoTeamViewer},
 
 	"wireshark": {Apt: "wireshark"},
 	"nmap":      {Apt: "nmap"},
@@ -88,7 +193,9 @@ var ubuntu = map[string]UbuntuSource{
 	"python":     {Apt: "python3"},
 	"powershell": {Snap: "powershell", Classic: true},
 	"nodejs":     {Apt: "nodejs"},
-	"docker":     {Apt: "docker.io"},
+	// Docker Desktop is not published for Ubuntu as a package; docker.io is
+	// the engine, which is what the word "Docker" means on a Linux machine.
+	"docker": {Apt: "docker.io", Note: "installs the Docker engine, not Docker Desktop"},
 	"postman":    {Snap: "postman"},
 	"putty":      {Apt: "putty"},
 
@@ -139,12 +246,17 @@ type UbuntuSnap struct {
 	Classic bool
 }
 
-// FirstBoot reports whether anything has to wait for the installed system.
-func (p UbuntuPlan) FirstBoot() bool { return len(p.Flatpaks) > 0 || len(p.Repos) > 0 }
+// FirstBoot reports whether the installed system has work to do once it comes
+// up. Flatpaks and vendor repositories can only be done there. So, now, can
+// confirming that the programs the installer was asked for actually arrived:
+// a machine whose network was late finishes its install missing them silently,
+// and the first-boot pass is what notices and puts them on. So any plan at all
+// gets one.
+func (p UbuntuPlan) FirstBoot() bool { return !p.Empty() }
 
 // Empty reports whether nothing is to be installed.
 func (p UbuntuPlan) Empty() bool {
-	return len(p.Apt) == 0 && len(p.Snaps) == 0 && !p.FirstBoot()
+	return len(p.Apt) == 0 && len(p.Snaps) == 0 && len(p.Flatpaks) == 0 && len(p.Repos) == 0
 }
 
 // ResolveUbuntu turns picker ids into an Ubuntu install plan. A program with
