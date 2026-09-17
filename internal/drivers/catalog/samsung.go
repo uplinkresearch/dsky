@@ -116,10 +116,7 @@ func (f *samsungFeed) models(ctx context.Context) ([]samsungModel, error) {
 		}(name)
 	}
 	wg.Wait()
-	if len(codes) == 0 && len(errs) > 0 {
-		return nil, errs[0]
-	}
-	return groupSamsungModels(codes), nil
+	return groupSamsungModels(codes), listResult(len(codes), errs, len(names.Response.ResultData.List))
 }
 
 // groupSamsungModels turns marketing names and their model codes into base
@@ -254,13 +251,14 @@ func (f *samsungFeed) Models(ctx context.Context, osName, arch string) ([]string
 		return nil, nil
 	}
 	models, err := f.models(ctx)
-	if err != nil {
+	if err != nil && !IsPartial(err) {
 		return nil, err
 	}
 	var (
 		mu    sync.Mutex
 		wg    sync.WaitGroup
 		names []string
+		errs  []error
 		limit = make(chan struct{}, 8)
 	)
 	for _, m := range models {
@@ -269,22 +267,28 @@ func (f *samsungFeed) Models(ctx context.Context, osName, arch string) ([]string
 			defer wg.Done()
 			limit <- struct{}{}
 			defer func() { <-limit }()
-			if comps, err := f.forModel(ctx, m, q.OS); err == nil && len(comps) > 0 {
-				mu.Lock()
+			comps, err := f.forModel(ctx, m, q.OS)
+			mu.Lock()
+			defer mu.Unlock()
+			if len(comps) > 0 {
 				names = append(names, m.Name)
-				mu.Unlock()
+			} else if err != nil {
+				errs = append(errs, err)
 			}
 		}(m)
 	}
 	wg.Wait()
-	return sortedUnique(names), nil
+	if len(errs) > 0 {
+		return sortedUnique(names), listResult(len(names), errs, len(models))
+	}
+	return sortedUnique(names), err
 }
 
 // Search finds Galaxy Book models by name or model code.
 func (f *samsungFeed) Search(ctx context.Context, q Query) ([]Pack, error) {
 	q.defaults()
 	models, err := f.models(ctx)
-	if err != nil {
+	if err != nil && !IsPartial(err) {
 		return nil, err
 	}
 	var out []Pack
@@ -313,7 +317,7 @@ func (f *samsungFeed) Search(ctx context.Context, q Query) ([]Pack, error) {
 func (f *samsungFeed) Components(ctx context.Context, q Query) ([]Pack, error) {
 	q.defaults()
 	models, err := f.models(ctx)
-	if err != nil {
+	if err != nil && !IsPartial(err) {
 		return nil, err
 	}
 	want := strings.Join(strings.Fields(strings.ToLower(q.Model)), " ")

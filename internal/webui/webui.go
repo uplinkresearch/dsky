@@ -873,6 +873,8 @@ type vendorModels struct {
 	Name   string   `json:"name"`
 	Models []string `json:"models"`
 	Error  string   `json:"error,omitempty"`
+	// Partial is an Error that left the list incomplete rather than empty.
+	Partial bool `json:"partial,omitempty"`
 }
 
 // handleDriverModels lists every model the model feeds publish driver
@@ -901,18 +903,33 @@ func (s *Server) handleDriverModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	names := catalog.VendorNames
-	out := make([]vendorModels, len(catalog.ModelFeeds))
+	// One vendor at a time is what the Install screen asks for, so the fast
+	// lists show while a slow one is still coming in; with no vendor, all.
+	feeds := catalog.ModelFeeds
+	if want := r.URL.Query().Get("vendor"); want != "" {
+		if !catalog.IsModelFeed(want) {
+			httpErr(w, 400, "%q has no model list", want)
+			return
+		}
+		feeds = []catalog.Vendor{catalog.Vendor(strings.ToLower(want))}
+	}
+	out := make([]vendorModels, len(feeds))
 	var wg sync.WaitGroup
-	for i, v := range catalog.ModelFeeds {
+	for i, v := range feeds {
 		wg.Add(1)
 		go func(i int, v catalog.Vendor) {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 			defer cancel()
 			vm := vendorModels{Vendor: string(v), Name: names[v], Models: []string{}}
-			if models, err := lister(ctx, string(v), osName); err != nil {
+			// A list that came back incomplete is still shown, with the
+			// reason next to it: dropping it made a vendor look unsupported.
+			models, err := lister(ctx, string(v), osName)
+			if err != nil {
 				vm.Error = err.Error()
-			} else {
+				vm.Partial = catalog.IsPartial(err)
+			}
+			if models != nil {
 				vm.Models = models
 			}
 			out[i] = vm

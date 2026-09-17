@@ -27,6 +27,15 @@ var client = &http.Client{
 	Timeout: 0,
 }
 
+// StatusError is a server answering with something other than the file.
+type StatusError struct {
+	URL    string
+	Code   int
+	Status string
+}
+
+func (e *StatusError) Error() string { return fmt.Sprintf("fetch: GET %s: %s", e.URL, e.Status) }
+
 // Download fetches url into dest, resuming a dest+".part" file when the
 // server supports byte ranges, and returns the SHA-256 of the complete file.
 // The caller verifies the hash against the pin and deletes dest on mismatch.
@@ -74,7 +83,7 @@ func Download(ctx context.Context, url, dest string, progress Progress) (string,
 		}
 		total = resp.ContentLength
 	default:
-		return "", fmt.Errorf("fetch: GET %s: %s", url, resp.Status)
+		return "", &StatusError{URL: url, Code: resp.StatusCode, Status: resp.Status}
 	}
 
 	done := offset

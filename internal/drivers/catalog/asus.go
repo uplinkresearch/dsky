@@ -149,10 +149,7 @@ func (f *asusFeed) products(ctx context.Context) ([]asusProduct, error) {
 		}(s)
 	}
 	wg.Wait()
-	if len(out) == 0 && len(errs) > 0 {
-		return nil, errs[0]
-	}
-	return out, nil
+	return out, listResult(len(out), errs, len(series))
 }
 
 // asusDriverList is one product's drivers for one OS.
@@ -358,7 +355,7 @@ func (f *asusFeed) Models(ctx context.Context, osName, arch string) ([]string, e
 		return nil, nil
 	}
 	products, err := f.products(ctx)
-	if err != nil {
+	if err != nil && !IsPartial(err) {
 		return nil, err
 	}
 	if !f.nuc {
@@ -366,12 +363,13 @@ func (f *asusFeed) Models(ctx context.Context, osName, arch string) ([]string, e
 		for _, p := range products {
 			names = append(names, p.Name)
 		}
-		return sortedUnique(names), nil
+		return sortedUnique(names), err
 	}
 	var (
 		mu    sync.Mutex
 		wg    sync.WaitGroup
 		names []string
+		errs  []error
 		limit = make(chan struct{}, 8)
 	)
 	for _, p := range products {
@@ -381,21 +379,26 @@ func (f *asusFeed) Models(ctx context.Context, osName, arch string) ([]string, e
 			limit <- struct{}{}
 			defer func() { <-limit }()
 			list, err := f.driverList(ctx, p.ID)
-			if err == nil && len(asusComponents(p.Name, list, q.OS, true)) > 0 {
-				mu.Lock()
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				errs = append(errs, err)
+			} else if len(asusComponents(p.Name, list, q.OS, true)) > 0 {
 				names = append(names, p.Name)
-				mu.Unlock()
 			}
 		}(p)
 	}
 	wg.Wait()
-	return sortedUnique(names), nil
+	if len(errs) > 0 {
+		return sortedUnique(names), listResult(len(names), errs, len(products))
+	}
+	return sortedUnique(names), err
 }
 
 // matching finds the products named model, exactly, then loosely.
 func (f *asusFeed) matching(ctx context.Context, model string, exact bool) ([]asusProduct, error) {
 	products, err := f.products(ctx)
-	if err != nil {
+	if err != nil && !IsPartial(err) {
 		return nil, err
 	}
 	want := strings.Join(strings.Fields(strings.ToLower(model)), " ")

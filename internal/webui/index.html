@@ -1619,13 +1619,20 @@ function textOpt(label, placeholder, hint) {
 // The lists come from the vendors' catalogs, fetched once by the server and
 // cached. Several models can be picked; one stick carries packs for all of
 // them, and each machine installs only what matches it.
-const modelLists = {};
+const modelLists = {}; // os id -> vendor -> the request for its list
+// The vendors with model lists, as the server's catalog.ModelFeeds has them.
+const MODEL_VENDORS = [
+  { id: "dell", name: "Dell" }, { id: "hp", name: "HP" }, { id: "lenovo", name: "Lenovo" },
+  { id: "framework", name: "Framework" }, { id: "alienware", name: "Alienware" },
+  { id: "surface", name: "Surface" }, { id: "asus", name: "ASUS" }, { id: "nuc", name: "Intel NUC" },
+  { id: "samsung", name: "Samsung" },
+];
 function modelPickerOpt(os, carrier = "stick") {
   const wrap = el("div", "opt modelpick");
   wrap.append(el("label", null, "Also stage drivers for other computer models"));
   const chips = el("div", "chips");
   const box = el("input"); box.type = "search"; box.autocomplete = "off";
-  box.placeholder = "Search Dell, HP, Lenovo, ASUS, Surface, NUC, Alienware, Framework models";
+  box.placeholder = "Search Dell, HP, Lenovo, ASUS, Surface, Samsung, NUC, Alienware, Framework models";
   box.setAttribute("role", "combobox"); box.setAttribute("aria-expanded", "false");
   const results = el("div", "modelresults"); results.hidden = true;
   results.setAttribute("role", "listbox");
@@ -1653,16 +1660,26 @@ function modelPickerOpt(os, carrier = "stick") {
     if (!q || !all) { results.hidden = true; box.setAttribute("aria-expanded", "false"); return; }
     // Each word typed must start a word of the name: "4" finds "Gen 4" but not
     // the 4 inside "T14", which would put the wrong ThinkPad at the top of the
-    // list — where Enter picks it. Names containing the words in the order
-    // typed come first, then shorter names, which are the closer matches.
+    // list — where Enter picks it.
+    //
+    // Order, closest first: the name typed exactly; then names where more of
+    // the typed words are whole words, not just the start of one; then names
+    // with the words in the order typed; then shorter names. The whole-word
+    // step is what ASUS made necessary. Its 3,552 model codes are short, and
+    // "m16" starts "M1603IA" as well as being Alienware's "m16" -- with only
+    // phrase and length to go on, the codes won and the m16 was off the list.
     const tokens = q.split(/[^a-z0-9]+/).filter(Boolean);
     const phrase = tokens.join(" ");
+    const exact = m => (m.flat === phrase || m.modelFlat === phrase) ? 1 : 0;
+    const whole = m => tokens.filter(t => m.words.includes(t)).length;
     const hits = [];
     for (const m of all) {
       if (picked.has(m.spec)) continue;
       if (tokens.every(t => m.words.some(w => w.startsWith(t)))) hits.push(m);
     }
     hits.sort((a, b) =>
+      (exact(b) - exact(a)) ||
+      (whole(b) - whole(a)) ||
       (b.flat.includes(phrase) - a.flat.includes(phrase)) ||
       (a.words.length - b.words.length) ||
       a.hay.localeCompare(b.hay));
@@ -1687,7 +1704,7 @@ function modelPickerOpt(os, carrier = "stick") {
 
   box.oninput = draw;
   box.onblur = () => setTimeout(() => { results.hidden = true; }, 120);
-  box.onfocus = draw;
+  box.onfocus = () => { retry(); draw(); };
   box.onkeydown = e => {
     if (e.key === "ArrowDown" && shown.length) { e.preventDefault(); active = (active + 1) % shown.length; mark(); }
     else if (e.key === "ArrowUp" && shown.length) { e.preventDefault(); active = (active - 1 + shown.length) % shown.length; mark(); }
@@ -1700,37 +1717,80 @@ function modelPickerOpt(os, carrier = "stick") {
     } else if (e.key === "Escape" && !results.hidden) { e.preventDefault(); e.stopPropagation(); results.hidden = true; }
   };
 
-  async function load() {
+  // Each vendor is asked for separately and shown as it arrives: Dell's list
+  // is ready in a second, and nobody should wait on Alienware's 120 catalogs
+  // to search for an OptiPlex. A vendor that failed, or came back incomplete,
+  // is asked again when somebody next clicks into the search box -- the
+  // Payload screen's picker is built once and never reopens.
+  const status = {};
+  const labelChips = () => {
+    for (const [spec, label] of picked) {
+      if (label !== spec) continue;
+      const m = all.find(x => x.spec === spec);
+      if (m) picked.set(spec, m.vendorName + " " + m.model);
+    }
+    drawChips();
+  };
+  const describe = () => {
+    const waiting = MODEL_VENDORS.filter(v => !status[v.id]).map(v => v.name);
+    const partial = MODEL_VENDORS.filter(v => status[v.id] && status[v.id].partial);
+    const failed = MODEL_VENDORS.filter(v => status[v.id] && status[v.id].error && !status[v.id].partial);
+    const osName = os.id === "windows-10" ? "Windows 10" : "Windows 11";
+    let text = waiting.length
+      ? `${all.length} computer models listed so far for ${osName}; still loading ${waiting.join(", ")}.`
+      : `${all.length} computer models listed for ${osName}. One ${carrier} can carry drivers for several.`;
+    for (const v of partial)
+      text += ` ${v.name}'s list is incomplete, so a model may be missing: ${status[v.id].error}.`;
+    for (const v of failed)
+      text += ` ${v.name}'s list could not be loaded: ${status[v.id].error}.`;
+    if (partial.length || failed.length)
+      text += " Click in the search box to try again, or type vendor:model, such as alienware:Alienware m16 R2, and press Enter.";
+    note.textContent = text;
+  };
+  const addVendor = (v, r) => {
+    const got = (r.vendors || [])[0] || { models: [], error: "no answer" };
+    status[v.id] = { error: got.error || "", partial: !!got.partial };
+    for (const model of got.models || []) {
+      // HP's names already start with "HP"; don't say it twice.
+      const shownName = model.toLowerCase().startsWith(v.name.toLowerCase() + " ") ? model.slice(v.name.length + 1) : model;
+      const hay = (v.name + " " + model).toLowerCase();
+      const words = hay.split(/[^a-z0-9]+/).filter(Boolean);
+      const modelFlat = model.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join(" ");
+      all.push({ spec: v.id + ":" + model, model: shownName, vendorName: v.name, hay, words, flat: words.join(" "), modelFlat });
+    }
+  };
+  const ask = v => {
+    const lists = modelLists[os.id] = modelLists[os.id] || {};
+    if (!lists[v.id])
+      lists[v.id] = api("/api/drivers/models?os_id=" + encodeURIComponent(os.id) + "&vendor=" + v.id);
+    lists[v.id].then(r => {
+      if (r.vendors && r.vendors[0] && r.vendors[0].error) delete lists[v.id];
+      addVendor(v, r);
+    }, e => {
+      delete lists[v.id];
+      addVendor(v, { vendors: [{ models: [], error: e.message }] });
+    }).then(() => {
+      describe();
+      labelChips();
+      if (document.activeElement === box) draw();
+    });
+  };
+  function load() {
     if (all) return;
-    const key = os.id;
-    if (!modelLists[key]) {
-      note.textContent = "Loading the model lists from Dell, HP, Lenovo, ASUS, Microsoft, Intel NUC, Alienware and Framework… the first time takes a moment.";
-      modelLists[key] = api("/api/drivers/models?os_id=" + encodeURIComponent(os.id));
-    }
-    try {
-      const r = await modelLists[key];
-      all = [];
-      const missing = [];
-      for (const v of r.vendors) {
-        if (v.error) missing.push(v.name);
-        for (const model of v.models)
-          {
-            // HP's names already start with "HP"; don't say it twice.
-            const shownName = model.toLowerCase().startsWith(v.name.toLowerCase() + " ") ? model.slice(v.name.length + 1) : model;
-            const hay = (v.name + " " + model).toLowerCase();
-            const words = hay.split(/[^a-z0-9]+/).filter(Boolean);
-            all.push({ spec: v.vendor + ":" + model, model: shownName, vendorName: v.name, hay, words, flat: words.join(" ") });
-          }
-      }
-      note.textContent = `${all.length} computer models listed for ${r.os === "win10" ? "Windows 10" : "Windows 11"}. One ${carrier} can carry drivers for several.` +
-        (missing.length ? ` ${missing.join(" and ")} could not be loaded (${r.vendors.find(v => v.error).error}); type vendor:model to add one anyway.` : "");
-      draw();
-    } catch (e) {
-      delete modelLists[key];
-      note.textContent = "The model lists could not be loaded (" + e.message + "). Type vendor:model, such as dell:OptiPlex 3070, and press Enter.";
-      all = [];
-    }
+    all = [];
+    describe();
+    MODEL_VENDORS.forEach(ask);
   }
+  // Ask again for the vendors that failed or came back short, dropping what
+  // they gave last time so a model is not listed twice.
+  const retry = () => {
+    const again = MODEL_VENDORS.filter(v => status[v.id] && status[v.id].error);
+    if (!again.length) return;
+    for (const v of again) delete status[v.id];
+    all = all.filter(m => !again.some(v => m.spec.startsWith(v.id + ":")));
+    describe();
+    again.forEach(ask);
+  };
   // Started as the dialog opens rather than on first focus, so the lists are
   // ready by the time somebody types.
   load();

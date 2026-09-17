@@ -197,14 +197,16 @@ func driversModels(ctx context.Context, env *Env, args []string) error {
 		return fmt.Errorf("%s is not organised by computer model — search it by hardware ID instead", fs.Arg(0))
 	}
 	models, err := lister.Models(ctx, *osName, "x64")
-	if err != nil {
+	if err != nil && !catalog.IsPartial(err) {
 		return err
 	}
 	for _, m := range models {
 		fmt.Println(m)
 	}
 	fmt.Fprintf(os.Stderr, "%d %s models listed for %s\n", len(models), fs.Arg(0), *osName)
-	return nil
+	// An incomplete list is printed, and still fails: a script counting
+	// models must not take a short list for the whole one.
+	return err
 }
 
 // modelFeedNames is the vendors organised by computer model, for usage lines.

@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -166,6 +167,41 @@ func Exact(packs []Pack, model string) Pack {
 		}
 	}
 	return packs[0]
+}
+
+// PartialError is a model list that came back short: some of the vendor's
+// pages could not be read, so the models they would have added are missing.
+// A Lister returns it alongside the models it did find. It is not a failure
+// to hide -- a list that quietly lost half of Alienware reads, to somebody
+// looking for their machine, as DSKY not supporting it.
+type PartialError struct {
+	Failed, Of int
+	Err        error // the first of the failures
+}
+
+func (e *PartialError) Error() string {
+	return fmt.Sprintf("%d of %d could not be read (%v)", e.Failed, e.Of, e.Err)
+}
+
+func (e *PartialError) Unwrap() error { return e.Err }
+
+// IsPartial reports whether err only says a list is incomplete.
+func IsPartial(err error) bool {
+	var p *PartialError
+	return errors.As(err, &p)
+}
+
+// listResult finishes a list read from many pages: every failure when
+// nothing was found, a PartialError when some were, nothing when all were.
+func listResult(found int, errs []error, of int) error {
+	switch {
+	case len(errs) == 0:
+		return nil
+	case found == 0:
+		return errs[0]
+	default:
+		return &PartialError{Failed: len(errs), Of: of, Err: errs[0]}
+	}
 }
 
 // sortedUnique trims, de-duplicates case-insensitively and sorts model names.

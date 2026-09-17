@@ -242,3 +242,58 @@ func TestDriverModelsPerVendor(t *testing.T) {
 		t.Errorf("hp failure not reported alongside the others: %+v", h)
 	}
 }
+
+// The picker asks one vendor at a time, from a list written into the page. A
+// vendor added to the catalog and not to the page would never be asked --
+// which is how a new maker goes missing from the picker with nothing failing.
+func TestPickerAsksEveryModelFeed(t *testing.T) {
+	page := string(indexHTML)
+	a := strings.Index(page, "const MODEL_VENDORS = [")
+	if a < 0 {
+		t.Fatal("the page has no MODEL_VENDORS list")
+	}
+	block := page[a : a+strings.Index(page[a:], "];")]
+	for _, v := range catalog.ModelFeeds {
+		want := `{ id: "` + string(v) + `", name: "` + catalog.VendorNames[v] + `" }`
+		if !strings.Contains(block, want) {
+			t.Errorf("the page's vendor list lacks %s", want)
+		}
+	}
+	if n := strings.Count(block, "{ id:"); n != len(catalog.ModelFeeds) {
+		t.Errorf("the page lists %d vendors, the catalog %d", n, len(catalog.ModelFeeds))
+	}
+}
+
+// One vendor's list, and an incomplete list shown with its reason rather than
+// thrown away.
+func TestDriverModelsOneVendorPartial(t *testing.T) {
+	s := testServer(t)
+	s.ModelLister = func(ctx context.Context, vendor, osName string) ([]string, error) {
+		return []string{"Alienware m16 R2"}, &catalog.PartialError{Failed: 3, Of: 66, Err: errors.New("403 Forbidden")}
+	}
+	get := func(q string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/drivers/models?"+q, nil)
+		req.Host = "127.0.0.1:8931"
+		req.Header.Set("X-DSKY-Token", "sekrit")
+		w := httptest.NewRecorder()
+		s.handler().ServeHTTP(w, req)
+		return w
+	}
+	if w := get("os_id=windows-11&vendor=acer"); w.Code != 400 {
+		t.Errorf("unknown vendor: %d", w.Code)
+	}
+	w := get("os_id=windows-11&vendor=Alienware")
+	var resp struct {
+		Vendors []vendorModels `json:"vendors"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil || w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if len(resp.Vendors) != 1 {
+		t.Fatalf("asked for one vendor, got %d", len(resp.Vendors))
+	}
+	v := resp.Vendors[0]
+	if v.Vendor != "alienware" || len(v.Models) != 1 || !v.Partial || !strings.Contains(v.Error, "3 of 66") {
+		t.Errorf("partial list: %+v", v)
+	}
+}

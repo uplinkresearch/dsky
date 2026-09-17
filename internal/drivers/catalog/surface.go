@@ -164,6 +164,9 @@ func (f *surfaceFeed) packs(ctx context.Context, osName, arch string) ([]Pack, e
 			}
 			page, err := os.ReadFile(path)
 			if err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
 				return
 			}
 			if p, ok := parseSurfaceDetails(page, m.Name, osName, arch); ok {
@@ -174,11 +177,8 @@ func (f *surfaceFeed) packs(ctx context.Context, osName, arch string) ([]Pack, e
 		}(m)
 	}
 	wg.Wait()
-	if len(out) == 0 && len(errs) > 0 {
-		return nil, errs[0]
-	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Model < out[j].Model })
-	return out, nil
+	return out, listResult(len(out), errs, len(models))
 }
 
 // Models lists every Surface model with a driver MSI for the OS.
@@ -186,21 +186,21 @@ func (f *surfaceFeed) Models(ctx context.Context, osName, arch string) ([]string
 	q := Query{OS: osName, Arch: arch}
 	q.defaults()
 	packs, err := f.packs(ctx, q.OS, q.Arch)
-	if err != nil {
+	if err != nil && !IsPartial(err) {
 		return nil, err
 	}
 	names := make([]string, 0, len(packs))
 	for _, p := range packs {
 		names = append(names, p.Model)
 	}
-	return sortedUnique(names), nil
+	return sortedUnique(names), err
 }
 
 // Search finds Surface models by name.
 func (f *surfaceFeed) Search(ctx context.Context, q Query) ([]Pack, error) {
 	q.defaults()
 	packs, err := f.packs(ctx, q.OS, q.Arch)
-	if err != nil {
+	if err != nil && !IsPartial(err) {
 		return nil, err
 	}
 	var out []Pack

@@ -5,12 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf16"
 
 	"github.com/uplinkresearch/dsky/internal/fetch"
@@ -357,7 +359,7 @@ func (f *alienwareFeed) catalog(ctx context.Context, s alienwareSystem) ([]byte,
 		return nil, err
 	}
 	if !fileHasSHA256(path, s.SHA256) {
-		sum, err := fetch.Download(ctx, "https://downloads.dell.com/"+strings.TrimPrefix(s.Path, "/"), path, nil)
+		sum, err := dellDownload(ctx, "https://downloads.dell.com/"+strings.TrimPrefix(s.Path, "/"), path)
 		if err != nil {
 			return nil, fmt.Errorf("fetching the %s catalog: %w", s.Model, err)
 		}
@@ -367,6 +369,64 @@ func (f *alienwareFeed) catalog(ctx context.Context, s alienwareSystem) ([]byte,
 		}
 	}
 	return f.cache.expandOne(ctx, path, strings.TrimSuffix(name, ".cab")+"-x")
+}
+
+// dellDownload is fetch.Download paced for downloads.dell.com. Asked for too
+// many files in a short time -- some 150 in a minute did it -- Dell answers
+// 403 Forbidden to everything from that address for a while, then serves it
+// again. Taken as a real refusal, that dropped every model whose catalog
+// landed in the window: a Windows machine listed 35 Alienware models of 66,
+// with no word that any were missing. So requests leave at most a few a
+// second, and a 403 holds every one of them back, not only its own, since
+// retrying into the block is what keeps it up.
+func dellDownload(ctx context.Context, url, dest string) (string, error) {
+	for try := 0; ; try++ {
+		if err := dellPace.wait(ctx); err != nil {
+			return "", err
+		}
+		sum, err := fetch.Download(ctx, url, dest, nil)
+		var st *fetch.StatusError
+		if err == nil || !errors.As(err, &st) || (st.Code != 403 && st.Code != 429) || try == 6 {
+			return sum, err
+		}
+		dellPace.holdOff(30 * time.Second)
+	}
+}
+
+// pacer spaces requests to one server across every goroutine using it.
+type pacer struct {
+	mu    sync.Mutex
+	every time.Duration
+	next  time.Time
+}
+
+var dellPace = &pacer{every: 350 * time.Millisecond}
+
+// wait takes the next free slot.
+func (p *pacer) wait(ctx context.Context) error {
+	p.mu.Lock()
+	now := time.Now()
+	if p.next.Before(now) {
+		p.next = now
+	}
+	at := p.next
+	p.next = at.Add(p.every)
+	p.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(time.Until(at)):
+		return nil
+	}
+}
+
+// holdOff pushes every slot not yet started back to at least d from now.
+func (p *pacer) holdOff(d time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if until := time.Now().Add(d); p.next.Before(until) {
+		p.next = until
+	}
 }
 
 func fileHasSHA256(path, want string) bool {
@@ -406,6 +466,12 @@ func (f *alienwareFeed) forModel(ctx context.Context, systems []alienwareSystem)
 // Models lists every Alienware model with drivers for the OS: all of the
 // index's Alienware systems, less those whose catalogs hold no driver for it
 // -- M17x and its generation are in the index and have nothing for Windows 11.
+//
+// That is some 120 catalogs, each small but taking Dell's server about a
+// second to start sending, and Dell refuses an address that asks for too many
+// too quickly; see dellDownload for the pace. They are fetched as one pool
+// rather than model by model, so the pace, not the grouping, sets how long
+// the list takes.
 func (f *alienwareFeed) Models(ctx context.Context, osName, arch string) ([]string, error) {
 	q := Query{OS: osName, Arch: arch}
 	q.defaults()
@@ -413,43 +479,50 @@ func (f *alienwareFeed) Models(ctx context.Context, osName, arch string) ([]stri
 	if err != nil {
 		return nil, err
 	}
-	byModel := map[string][]alienwareSystem{}
-	for _, s := range systems {
-		byModel[s.Model] = append(byModel[s.Model], s)
-	}
-	var (
-		mu    sync.Mutex
-		names []string
-		wg    sync.WaitGroup
-		errs  []error
-	)
-	limit := make(chan struct{}, 2)
-	for model, ss := range byModel {
+	// The pool fetches and expands; the XML is read again model by model, so
+	// only a model's own catalogs are ever in memory, not all 200 MB of them.
+	errs := make([]error, len(systems))
+	var wg sync.WaitGroup
+	limit := make(chan struct{}, 6)
+	for i, s := range systems {
 		wg.Add(1)
-		go func(model string, ss []alienwareSystem) {
+		go func(i int, s alienwareSystem) {
 			defer wg.Done()
 			limit <- struct{}{}
 			defer func() { <-limit }()
-			cats, err := f.forModel(ctx, ss)
-			if err != nil {
-				mu.Lock()
-				errs = append(errs, err)
-				mu.Unlock()
-				return
-			}
-			packs, err := alienwareComponents(model, cats, q.OS, q.Arch)
-			if err == nil && len(packs) > 0 {
-				mu.Lock()
-				names = append(names, model)
-				mu.Unlock()
-			}
-		}(model, ss)
+			_, errs[i] = f.catalog(ctx, s)
+		}(i, s)
 	}
 	wg.Wait()
-	if len(names) == 0 && len(errs) > 0 {
-		return nil, errs[0]
+
+	byModel := map[string][]int{}
+	for i, s := range systems {
+		byModel[s.Model] = append(byModel[s.Model], i)
 	}
-	return sortedUnique(names), nil
+	var names []string
+	var failed []error
+	for model, idx := range byModel {
+		var cats [][]byte
+		var bad error
+		for _, i := range idx {
+			b := []byte(nil)
+			if bad = errs[i]; bad == nil {
+				b, bad = f.catalog(ctx, systems[i])
+			}
+			if bad != nil {
+				break
+			}
+			cats = append(cats, b)
+		}
+		if bad != nil {
+			failed = append(failed, bad)
+			continue
+		}
+		if packs, err := alienwareComponents(model, cats, q.OS, q.Arch); err == nil && len(packs) > 0 {
+			names = append(names, model)
+		}
+	}
+	return sortedUnique(names), listResult(len(names), failed, len(byModel))
 }
 
 // Search finds Alienware models by name. Each result stands for the model's
