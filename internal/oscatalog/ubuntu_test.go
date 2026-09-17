@@ -219,3 +219,31 @@ func firstBootScript(t *testing.T, userData string) string {
 	t.Fatal("no first-boot script in the answers")
 	return ""
 }
+
+// The release installer runs on both families, so it must not reach for a
+// tool only one of them has. dpkg --print-architecture left $arch empty on
+// Fedora, which made the asset name "dsky-v0.7.41-linux-" and the download a
+// 404 — reported as "no v0.7.41 build for ", with nothing after "for".
+func TestReleaseInstallIsPortable(t *testing.T) {
+	ubuntu, _ := appcatalog.ResolveUbuntu([]string{"dsky"})
+	fedora, _ := appcatalog.ResolveFedora([]string{"dsky"})
+	for name, script := range map[string]string{
+		"ubuntu": ubuntuFirstBootScript(ubuntu),
+		"fedora": fedoraFirstBootScript(fedora),
+	} {
+		if strings.Contains(script, "dpkg --print-architecture") {
+			t.Errorf("%s: the release installer asks dpkg for the architecture; Fedora has no dpkg", name)
+		}
+		if !strings.Contains(script, `x86_64) arch=amd64 ;;`) {
+			t.Errorf("%s: no portable architecture mapping:\n%s", name, script)
+		}
+		// Both scripts have to parse with the shell that will run them.
+		if bash, err := exec.LookPath("bash"); err == nil {
+			f := filepath.Join(t.TempDir(), "dsky-apps.sh")
+			os.WriteFile(f, []byte(script), 0o755)
+			if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil {
+				t.Errorf("%s: first-boot script does not parse: %v\n%s", name, err, out)
+			}
+		}
+	}
+}

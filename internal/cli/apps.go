@@ -13,6 +13,7 @@ const appsUsage = `Manage the programs Quick Install can add.
 
   apps                            list every program
   apps --os ubuntu                list what Ubuntu gets, and where each comes from
+  apps --os fedora                the same for Fedora Server
   apps --os windows               list what Windows gets
   apps winget <Publisher.Package>  check winget has a package, for --apps winget:<id>
   apps add <installer> [flags]    add your own .msi or .exe
@@ -65,13 +66,14 @@ func listApps(target appcatalog.Target, one bool) error {
 	switch {
 	case !one:
 		fmt.Println("Programs `dsky install --apps` can add (comma-separated ids).")
-		fmt.Println("A program that installs on only one operating system says so;")
-		fmt.Println("`dsky apps --os ubuntu` lists what Ubuntu gets, and where from.")
-	case target == appcatalog.TargetUbuntu:
-		fmt.Println("Programs `dsky install --apps` can add to Ubuntu, and where each")
-		fmt.Println("comes from (comma-separated ids):")
-	default:
+		fmt.Println("A program that does not install everywhere says where it does;")
+		fmt.Println("`dsky apps --os ubuntu` (or fedora, or windows) lists one of them,")
+		fmt.Println("and where each program comes from there.")
+	case target == appcatalog.TargetWindows:
 		fmt.Println("Programs `dsky install --apps` can add to Windows (comma-separated ids):")
+	default:
+		fmt.Printf("Programs `dsky install --apps` can add to %s, and where each\n", target.Name())
+		fmt.Println("comes from (comma-separated ids):")
 	}
 	for _, cat := range appcatalog.Categories() {
 		var lines []string
@@ -82,20 +84,25 @@ func listApps(target appcatalog.Target, one bool) error {
 			line := fmt.Sprintf("    %-18s %s", a.ID, a.Name)
 			var notes []string
 			switch {
-			case one && target == appcatalog.TargetUbuntu:
-				notes = append(notes, a.Ubuntu.Where())
-				if a.Ubuntu.Note != "" {
-					notes = append(notes, a.Ubuntu.Note)
+			case one && target != appcatalog.TargetWindows:
+				notes = append(notes, a.WhereOn(target))
+				if n := a.NoteOn(target); n != "" {
+					notes = append(notes, n)
 				}
 			case a.Custom != nil:
 				notes = append(notes, fmt.Sprintf("%s · %s%s", a.Custom.Filename,
 					strings.ToUpper(a.Custom.Format), argsNote(a.Custom)))
-			case !one && !a.InstallsOnWindows():
-				notes = append(notes, "Ubuntu only")
-			case !one && a.Ubuntu == nil:
-				notes = append(notes, "Windows only")
+			case !one:
+				// Which operating systems it installs on, when that is not all
+				// of them. Left to first boot, this is a machine that comes up
+				// missing something nobody was told it could not have.
+				if only := a.InstallsOnly(); only != "" {
+					notes = append(notes, only)
+				}
 			}
-			if target != appcatalog.TargetUbuntu {
+			// The Windows labels — per-user installers, licences, large
+			// downloads — describe winget packages, not apt or dnf ones.
+			if target == appcatalog.TargetWindows {
 				notes = append(notes, a.Labels()...)
 			}
 			if len(notes) > 0 {
@@ -132,17 +139,30 @@ func listApps(target appcatalog.Target, one bool) error {
 		}
 		fmt.Printf("    set:%-14s %s: %s\n", s.ID, s.Name, strings.Join(members, ", "))
 	}
-	if one && target == appcatalog.TargetUbuntu {
-		fmt.Println("\nOn Ubuntu a starter set brings the programs Ubuntu has; the rest of")
-		fmt.Println("the set is Windows software and is left out.")
+	if one && target != appcatalog.TargetWindows {
+		fmt.Printf("\nA starter set brings the programs %s has; the rest of the set is\n", target.Name())
+		fmt.Println("software for another operating system and is left out.")
 		fmt.Println("\nExample:")
-		fmt.Println("  dsky install ubuntu-26.04-server --apps set:it,vlc,chrome")
-		fmt.Println("\napt packages and snaps are installed by Ubuntu's own installer.")
-		fmt.Println("Flathub apps and a vendor's repository are added at first boot, which")
-		fmt.Println("needs the machine to be online then; everything is logged to")
-		fmt.Println("/var/log/dsky-apps.log, and anything that failed is tried again at the")
-		fmt.Println("next boot. Programs are offered for Ubuntu Server 24.04 and 26.04 and")
-		fmt.Println("Ubuntu Desktop 26.04, whose installer takes DSKY's answers.")
+		if target == appcatalog.TargetFedora {
+			fmt.Println("  dsky install fedora-44-server --apps set:it,vlc,chrome")
+			fmt.Println("\nWhat the install media carries goes on during setup; everything else")
+			fmt.Println("— Flathub apps, a vendor's rpm repository, a published release, and any")
+			fmt.Println("package the media did not happen to carry — is installed at first boot,")
+			fmt.Println("which needs the machine to be online then.")
+		} else {
+			fmt.Println("  dsky install ubuntu-26.04-server --apps set:it,vlc,chrome")
+			fmt.Println("\napt packages and snaps are installed by Ubuntu's own installer.")
+			fmt.Println("Flathub apps and a vendor's repository are added at first boot, which")
+			fmt.Println("needs the machine to be online then.")
+		}
+		fmt.Println("Everything is logged to /var/log/dsky-apps.log, and anything that failed")
+		fmt.Println("is tried again at the next boot.")
+		if target == appcatalog.TargetFedora {
+			fmt.Println("\nOffered for Fedora Server, whose installer takes DSKY's kickstart.")
+		} else {
+			fmt.Println("\nOffered for Ubuntu Server 24.04 and 26.04 and Ubuntu Desktop 26.04,")
+			fmt.Println("whose installer takes DSKY's answers.")
+		}
 		return nil
 	}
 	fmt.Println("\nAny other winget package works by its id, as winget:Publisher.Package.")
@@ -178,10 +198,12 @@ func appsOS(args []string) (appcatalog.Target, bool, error) {
 	switch strings.ToLower(val) {
 	case "ubuntu", "linux":
 		return appcatalog.TargetUbuntu, true, nil
+	case "fedora", "rhel":
+		return appcatalog.TargetFedora, true, nil
 	case "windows", "win":
 		return appcatalog.TargetWindows, true, nil
 	}
-	return appcatalog.TargetWindows, false, fmt.Errorf("apps --os takes windows or ubuntu, not %q", val)
+	return appcatalog.TargetWindows, false, fmt.Errorf("apps --os takes windows, ubuntu or fedora, not %q", val)
 }
 
 // appsWinget looks a package up in winget's repository.

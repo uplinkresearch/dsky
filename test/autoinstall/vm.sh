@@ -35,6 +35,10 @@
 #                         a second initramfs rather than a partition to mount —
 #                         see internal/compose/cpio.go for why the obvious way
 #                         cannot work on media made from a hybrid ISO.
+#   fedora-44-programs    The Fedora program picker end to end: one program
+#                         from each source Fedora has — its own repositories,
+#                         Flathub, a vendor's rpm repository and a published
+#                         release — checked on the installed system.
 #   omarchy               Omarchy written as its own ISO, unchanged, and booted
 #                         on UEFI. It has no unattended path — archiso goes
 #                         straight into Omarchy's own installer — so this
@@ -128,6 +132,14 @@ fedora-44-kickstart)
   SHA=85837793bfa36db6bc709b4cecd2ec116951b87d9c53c3d95eb2fac8dcf7cf1f
   KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
   SRC_ID=fedora-44-server ;;
+fedora-44-programs)
+  # The Fedora program picker, end to end: one program from each kind of
+  # source Fedora has — its own repositories, Flathub, a vendor's rpm
+  # repository, and a published release — picked the way the app picks them.
+  URL=https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-dvd-x86_64-44-1.7.iso
+  SHA=85837793bfa36db6bc709b4cecd2ec116951b87d9c53c3d95eb2fac8dcf7cf1f
+  KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
+  PROGRAMS=vlc,obsidian,chrome,dsky SRC_ID=fedora-44-server ;;
 omarchy)
   # Omarchy has no unattended path: archiso boots straight into Omarchy's own
   # installer (timeout=0, menu hidden) and asks its questions there, which is
@@ -325,7 +337,48 @@ if [ "${DRYRUN:-}" != 1 ] && [ -n "${DSKY_ISO_DIR:-}" ] && [ -f "$LOCAL_ISO" ]; 
   "$W/dsky" -w "$W/ws" sources import "$SRC_ID" "$LOCAL_ISO"
 fi
 
-if [ -n "$PROGRAMS" ]; then
+if [ -n "$PROGRAMS" ] && [ "$FAMILY" = fedora ]; then
+  # Build exactly what the app builds for these programs, then take the
+  # kickstart it generated and add the account and key the checks need. DSKY's
+  # own answers carry neither, so a real one stops once at Anaconda's user
+  # screen; the test cannot stop there.
+  "$W/dsky" install "$SRC_ID" --apps "$PROGRAMS" --build-only
+  gen="$W/lib/quick/templates/dsky-fedora-$SRC_ID.cfg.tmpl"
+  [ -s "$gen" ] || { say "- **FAIL** dsky install --apps wrote no kickstart"; exit 1; }
+  cp "$gen" "$W/generated-kickstart.cfg"
+  python3 - "$gen" "$W/ws/templates/ci-kickstart.cfg.tmpl" "$PUBKEY" <<'PYEOF'
+import sys
+src, dst, pubkey = sys.argv[1:]
+lines = open(src).read().splitlines()
+
+# The account goes in with the other commands, and the test's %post before the
+# reboot: a kickstart is read as commands then sections, and putting either
+# after `reboot` is asking the parser to be generous.
+account = [
+    "# Added by the test: the account DSKY deliberately leaves to be asked for.",
+    "rootpw --lock",
+    "user --name=dsky --groups=wheel --password=dsky --plaintext",
+]
+post = [
+    "%post",
+    "mkdir -p /root/.ssh",
+    "chmod 700 /root/.ssh",
+    "echo '%s' > /root/.ssh/authorized_keys" % pubkey,
+    "chmod 600 /root/.ssh/authorized_keys",
+    "echo 'provisioned by DSKY' > /etc/dsky-provisioned",
+    "%end",
+]
+# Before the first section or the reboot, whichever comes first.
+cut = next((i for i, l in enumerate(lines)
+            if l.startswith("%") or l.strip() == "reboot"), len(lines))
+out = lines[:cut] + account + lines[cut:]
+at = next((i for i, l in enumerate(out) if l.strip() == "reboot"), len(out))
+out = out[:at] + post + out[at:]
+open(dst, "w").write("\n".join(out) + "\n")
+PYEOF
+  say "- \`dsky install $SRC_ID --apps $PROGRAMS\` wrote the kickstart; the test adds an account and SSH key"
+  find "$W/lib/artifacts" -type f -size +1G -delete || true
+elif [ -n "$PROGRAMS" ]; then
   # Build exactly what the app builds for these programs, which also downloads
   # Ubuntu the way DSKY does (fastest mirror), then take its answers and add
   # the test account and SSH key: the real ones ask for the account on screen.
@@ -619,6 +672,28 @@ if [ -n "$PROGRAMS" ]; then
   # Each program is checked where it was meant to come from, and only when
   # this case picked it: the cases do not all pick the same list.
   picked() { case ",$PROGRAMS," in *",$1,"*) return 0 ;; esac; return 1; }
+  if [ "$FAMILY" = fedora ]; then
+    # One from each kind of source Fedora has.
+    if picked vlc; then
+      check "package from Fedora's own repositories (vlc)" "rpm -q vlc"
+    fi
+    if picked obsidian; then
+      check "Flathub app installed (md.obsidian.Obsidian)" "flatpak info md.obsidian.Obsidian"
+    fi
+    if picked chrome; then
+      check "Chrome installed from Google's rpm repository" "rpm -q google-chrome-stable"
+    fi
+    if picked dsky; then
+      check "DSKY installed from its own release, and runs" \
+        "/usr/local/bin/dsky version | grep -q '^dsky v'"
+    fi
+    check "first-boot programs finished (/var/lib/dsky/apps-done)" \
+      "test -e /var/lib/dsky/apps-done"
+    check "the first-boot pass ran and logged no failure" \
+      "test -s /var/log/dsky-apps.log && ! grep -q FAILED /var/log/dsky-apps.log"
+    check "the kickstart DSKY wrote is the one Anaconda used" \
+      "grep -q 'Generated by DSKY' /root/original-ks.cfg"
+  else
   if picked vlc; then
     check "Ubuntu package installed during setup (vlc)" \
       "dpkg-query -W -f='\${Status}' vlc | grep -q 'install ok installed'"
@@ -648,6 +723,7 @@ if [ -n "$PROGRAMS" ]; then
     "test -e /var/lib/dsky/apps-done"
   check "the first-boot pass ran and logged no failure" \
     "test -s /var/log/dsky-apps.log && ! grep -q FAILED /var/log/dsky-apps.log"
+  fi
   if [ "$DRIVERS" = true ]; then
     check "the answers asked Ubuntu for third-party drivers" \
       "grep -A2 '^  drivers:' /var/log/installer/autoinstall-user-data | grep -q 'install: true'"

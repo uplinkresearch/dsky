@@ -63,13 +63,13 @@ jobs:
       # has lapsed. Each is looked up where it comes from. The vendor
       # repositories DSKY adds by hand are checked for their signing key and
       # their package list at the same time.
-      - name: Check every Ubuntu package name in the program list
+      - name: Check every Linux package name in the program list
         id: ubuntu
         if: always()
         run: |
           set -o pipefail
           go test ./internal/appcatalog/ -count=1 -timeout 20m -v \
-            -run 'TestUbuntuNamesLive|TestUbuntuVendorReposLive|TestUbuntuReleasesLive' 2>&1 | tee ubuntu.txt
+            -run 'TestUbuntuNamesLive|TestUbuntuVendorReposLive|TestUbuntuReleasesLive|TestFedoraNamesLive|TestFedoraVendorReposLive' 2>&1 | tee ubuntu.txt
 
       # Only the failing lines, so the issue says what rotted rather than
       # burying it in 27 successes.

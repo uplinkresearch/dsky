@@ -357,7 +357,7 @@ func SaveRecipe(ctx context.Context, lib *library.Library, wsDir, id, name strin
 	// rather than trusted from the caller, because all three of them build
 	// these options separately.
 	if e.Family == Linux && e.ProgramsSupported() && (len(opts.Apps) > 0 || opts.ThirdPartyDrivers) {
-		rel, err := writeUbuntuUserData(wsDir, id, e, opts.Apps, opts.ThirdPartyDrivers)
+		rel, err := writeLinuxAnswers(wsDir, id, e, opts)
 		if err != nil {
 			return "", err
 		}
@@ -656,7 +656,7 @@ func scaffoldQuickWorkspace(lib *library.Library, e Entry, opts Options, hw []re
 func writeQuickRecipe(dir string, e Entry, opts Options, hw []recipe.HardwareSpec) error {
 	meta := recipeMeta{ID: e.ID, Name: e.Name, Template: quickTemplate}
 	if e.Family == Linux && e.ProgramsSupported() && (len(opts.Apps) > 0 || opts.ThirdPartyDrivers) {
-		rel, err := writeUbuntuUserData(dir, e.ID, e, opts.Apps, opts.ThirdPartyDrivers)
+		rel, err := writeLinuxAnswers(dir, e.ID, e, opts)
 		if err != nil {
 			return err
 		}
@@ -831,7 +831,11 @@ func recipeYAML(m recipeMeta, e Entry, opts Options, hw []recipe.HardwareSpec) s
 			minStick = "8GiB"
 		}
 		linux := ""
-		if m.UserData != "" {
+		switch {
+		case m.UserData != "" && e.kickstartPrograms():
+			linux = fmt.Sprintf("linux:\n  kickstart:\n    file: %s\n", m.UserData)
+			minStick = "8GiB"
+		case m.UserData != "":
 			// Desktop keeps Ubuntu's confirmation screen; Server is hands-off.
 			linux = fmt.Sprintf("linux:\n  autoinstall:\n    user_data: %s\n    kernel_patch: %v\n", m.UserData, !e.ubuntuDesktop())
 			minStick = "8GiB"

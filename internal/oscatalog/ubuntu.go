@@ -38,15 +38,45 @@ func (e Entry) ProgramsSupported() bool {
 	if e.Family == Windows {
 		return true
 	}
+	return e.ubuntuPrograms() || e.kickstartPrograms()
+}
+
+// ubuntuPrograms reports whether this entry's installer takes Ubuntu's
+// cloud-init autoinstall answers.
+func (e Entry) ubuntuPrograms() bool {
 	return e.Family == Linux && strings.HasPrefix(e.ID, "ubuntu-") && e.Kind() != ImageRaw
 }
 
+// kickstartPrograms reports whether this entry installs through Anaconda and
+// so takes a kickstart.
+//
+// Fedora Server only, for now. The RHEL family -- AlmaLinux, Rocky, RHEL --
+// runs the same Anaconda through the same code, and turning each on is one VM
+// run each; none of them has had it, and an entry that offers programs it has
+// never been watched install is worse than one that offers none. Fedora
+// Workstation is a live image, where %packages is not what installs the
+// system, so it is a different job rather than one more id here.
+func (e Entry) kickstartPrograms() bool {
+	return e.Family == Linux && e.ID == "fedora-44-server" && e.Kind() != ImageRaw
+}
+
+// ThirdPartyDriversSupported reports whether "drivers for this computer" means
+// anything for this entry. It is Ubuntu's question: its installer can fetch the
+// proprietary drivers the kernel does not carry when the answers ask it to.
+// Anaconda has no equivalent to ask for, so offering the choice on Fedora would
+// be a control that changes nothing.
+func (e Entry) ThirdPartyDriversSupported() bool { return e.ubuntuPrograms() }
+
 // AppTarget is the operating system the program picker resolves for.
 func (e Entry) AppTarget() appcatalog.Target {
-	if e.Family == Windows {
+	switch {
+	case e.Family == Windows:
 		return appcatalog.TargetWindows
+	case e.kickstartPrograms():
+		return appcatalog.TargetFedora
+	default:
+		return appcatalog.TargetUbuntu
 	}
-	return appcatalog.TargetUbuntu
 }
 
 // ubuntuDesktop reports whether this is Ubuntu's desktop installer, which
@@ -62,10 +92,14 @@ func checkPrograms(e Entry, ids []string) error {
 		return nil
 	}
 	if !e.ProgramsSupported() {
-		return fmt.Errorf("installing programs alongside %s is not supported — programs can be installed with Windows and with Ubuntu (Server 24.04 and 26.04, Desktop 26.04)", e.Name)
+		return fmt.Errorf("installing programs alongside %s is not supported — programs can be installed with Windows, with Ubuntu (Server 24.04 and 26.04, Desktop 26.04) and with Fedora Server", e.Name)
 	}
-	if e.Family == Windows {
+	switch e.AppTarget() {
+	case appcatalog.TargetWindows:
 		_, _, err := appcatalog.Resolve(ids)
+		return err
+	case appcatalog.TargetFedora:
+		_, err := appcatalog.ResolveFedora(ids)
 		return err
 	}
 	_, err := appcatalog.ResolveUbuntu(ids)
@@ -199,14 +233,22 @@ WantedBy=multi-user.target
 // match. The release to take is whichever one is current, resolved by asking
 // GitHub what /releases/latest redirects to — no JSON parsing, and no version
 // pinned in DSKY that would go stale between DSKY's own releases.
-func writeReleaseInstall(w func(string, ...any), rel appcatalog.UbuntuRelease) {
+func writeReleaseInstall(w func(string, ...any), rel appcatalog.UbuntuRelease, ensureCurl string) {
 	asset := strings.NewReplacer("{tag}", `$tag`, "{arch}", `$arch`).Replace(rel.Asset)
 	base := "https://github.com/" + rel.Repo + "/releases"
 	w(`if command -v %s >/dev/null 2>&1; then`, rel.Binary)
 	w(`  note "%s is installed"`, rel.Name)
 	w(`else`)
-	w(`  apt install -y -q curl ca-certificates >/dev/null 2>&1 || true`)
-	w(`  arch=$(dpkg --print-architecture)`)
+	w(`  %s >/dev/null 2>&1 || true`, ensureCurl)
+	// uname, not dpkg: this same block runs on Fedora, where dpkg does not
+	// exist and the arch came out empty -- which made the asset name
+	// "dsky-v0.7.41-linux-" and the download a 404 reported as "no build for
+	// ". The names releases use are not uname's, so they are mapped.
+	w(`  case "$(uname -m)" in`)
+	w(`    x86_64) arch=amd64 ;;`)
+	w(`    aarch64|arm64) arch=arm64 ;;`)
+	w(`    *) arch=$(uname -m) ;;`)
+	w(`  esac`)
 	w(`  tag=$(curl -fsSLI -o /dev/null -w '%%{url_effective}' %s/latest | sed 's#.*/tag/##')`, base)
 	w(`  d=$(mktemp -d)`)
 	w(`  if [ -z "$tag" ]; then`)
@@ -479,7 +521,7 @@ func ubuntuFirstBootScript(plan appcatalog.UbuntuPlan) string {
 			w(`note "FAILED %s: DSKY does not know this release"; failed=1`, id)
 			continue
 		}
-		writeReleaseInstall(w, rel)
+		writeReleaseInstall(w, rel, "apt install -y -q curl ca-certificates")
 	}
 	w(`if [ "$failed" = 0 ]; then`)
 	w(`  mkdir -p /var/lib/dsky && touch /var/lib/dsky/apps-done`)
