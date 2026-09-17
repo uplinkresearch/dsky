@@ -1,11 +1,11 @@
 package cli
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/uplinkresearch/dsky/internal/buildinfo"
 	"github.com/uplinkresearch/dsky/internal/migrate"
@@ -20,11 +20,13 @@ import (
 // The verbs that need more than a file (scan, resolve, review, build, verify)
 // arrive with the milestones in docs/plan-migrate.md; until then this command
 // says so rather than pretending.
-func cmdMigrate(env *Env, args []string) error {
+func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("migrate: need validate, report or schema (see docs/plan-migrate.md)")
+		return fmt.Errorf("migrate: need scan, validate, report or schema (see docs/plan-migrate.md)")
 	}
 	switch args[0] {
+	case "scan":
+		return migrateScan(ctx, args[1:])
 	case "validate":
 		return migrateValidate(args[1:])
 	case "report":
@@ -35,11 +37,45 @@ func cmdMigrate(env *Env, args []string) error {
 		}
 		_, err := os.Stdout.Write(migrate.JSONSchema())
 		return err
-	case "scan", "resolve", "review", "build", "verify":
-		return fmt.Errorf("migrate %s is not built yet — %s reads, checks and renders a manifest; see docs/plan-migrate.md", args[0], strings.Join([]string{"validate", "report", "schema"}, ", "))
+	case "resolve", "review", "build", "verify":
+		return fmt.Errorf("migrate %s is not built yet — scan, validate, report and schema are; see docs/plan-migrate.md", args[0])
 	default:
-		return fmt.Errorf("migrate: no such thing as %q (validate, report, schema)", args[0])
+		return fmt.Errorf("migrate: no such thing as %q (scan, validate, report, schema)", args[0])
 	}
+}
+
+// migrateScan reads the machine it runs on. It is the one command in this
+// family that touches a computer rather than a file, and the computer it
+// touches is somebody's working PC -- so it reads, writes its two files
+// wherever it was told, and leaves nothing behind.
+//
+// A scan that could not read part of the machine still writes its manifest
+// and exits 3, so that a script driving a fleet can tell a complete reading
+// from a partial one without parsing the output.
+func migrateScan(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("migrate scan", flag.ContinueOnError)
+	out := fs.String("out", ".", "where to write manifest.json and report.html")
+	allUsers := fs.Bool("all-users", false, "include users who are not signed in (slower: their registry hives are loaded)")
+	sizes := fs.Bool("profile-sizes", false, "measure each profile, to size a USMT store (slow on large profiles)")
+	usmt := fs.String("usmt", "", "folder holding scanstate.exe, from the Windows ADK")
+	hostname := fs.String("hostname", "", "name for the new machine (default: this machine's name)")
+	admin := fs.String("local-admin", "uplink", "the local administrator DSKY creates on the new machine")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("migrate scan [--out dir] [--all-users] [--profile-sizes] [--usmt folder]")
+	}
+	res, err := migrate.ScanToFiles(ctx, *out, migrate.ScanOptions{
+		AllUsers: *allUsers, ProfileSizes: *sizes, Hostname: *hostname, LocalAdmin: *admin,
+	}, *usmt, "dsky "+buildinfo.Version, os.Stdout)
+	if err != nil {
+		return err
+	}
+	if len(res.Unread) > 0 {
+		return exitError{code: 3, err: fmt.Errorf("%d part(s) of this machine could not be read; the manifest says which", len(res.Unread))}
+	}
+	return nil
 }
 
 // migrateValidate is the answer to "is this file a migration plan DSKY will

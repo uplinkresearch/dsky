@@ -66,6 +66,14 @@ func (m *Manifest) ReadyToApprove() error {
 			}
 		}
 	}
+	if m.Data.Strategy == DataUSMT {
+		switch {
+		case m.Data.StorePath == "":
+			return fmt.Errorf("the files are to be copied with USMT and no store has been named — give data.store_path a share, or choose another way to move them")
+		case len(m.Data.Users) == 0:
+			return fmt.Errorf("the files are to be copied with USMT and nobody is named — say whose files in data.users, or choose another way to move them")
+		}
+	}
 	if c.Unmapped > 0 {
 		for _, a := range m.Apps {
 			if s := a.Resolution.Status; s == StatusUnmapped || s == StatusUnset {

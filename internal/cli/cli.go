@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -244,7 +245,7 @@ func Main(args []string) int {
 	case "drivers":
 		err = cmdDrivers(ctx, env, cmdArgs)
 	case "migrate":
-		err = cmdMigrate(env, cmdArgs)
+		err = cmdMigrate(ctx, env, cmdArgs)
 	case "build":
 		err = cmdBuild(ctx, env, cmdArgs)
 	case "flash":
@@ -275,10 +276,27 @@ func Main(args []string) int {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
+		// A few commands distinguish degrees of not-quite-working: a scan
+		// that read most of a machine is worth a different exit code from
+		// one that could not run at all, so that a script can tell them
+		// apart without reading the words.
+		var coded exitError
+		if errors.As(err, &coded) {
+			return coded.code
+		}
 		return 1
 	}
 	return 0
 }
+
+// exitError is an error that also says what to exit with.
+type exitError struct {
+	code int
+	err  error
+}
+
+func (e exitError) Error() string { return e.err.Error() }
+func (e exitError) Unwrap() error { return e.err }
 
 // soleRecipe returns the id of the workspace's only recipe, or "".
 func soleRecipe(env *Env) string {

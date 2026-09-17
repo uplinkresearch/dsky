@@ -480,14 +480,11 @@ func (m *Manifest) Validate() error {
 	}
 
 	switch m.Data.Strategy {
-	case DataUSMT:
-		if m.Data.StorePath == "" {
-			return fail("data.strategy is usmt, so data.store_path is required")
-		}
-		if len(m.Data.Users) == 0 {
-			return fail("data.strategy is usmt, so data.users must name whose files to carry over")
-		}
-	case DataKFM, DataRedirect, DataNoneStrat:
+	// Where a USMT store lives and whose files go in it are decisions made in
+	// review, not readings taken by a scan, so a manifest without them is
+	// still a valid manifest -- just not an approvable one. ReadyToApprove
+	// has that rule.
+	case DataUSMT, DataKFM, DataRedirect, DataNoneStrat:
 	case "":
 		return fail("data.strategy is required (usmt, onedrive_kfm, folder_redirection or none)")
 	default:

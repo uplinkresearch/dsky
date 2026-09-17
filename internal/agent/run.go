@@ -307,7 +307,7 @@ func Main(args []string) error {
 			if len(args) > 0 {
 				return fmt.Errorf("unknown command %q (this agent carries no payload; try: dsky-agent apply %s)", args[0], strings.Join(args, " "))
 			}
-			return fmt.Errorf("usage: dsky-agent apply [dir] [--quiet] [--unattended] | dsky-agent verify [dir] | dsky-agent user-install <job> <result>")
+			return fmt.Errorf("usage: dsky-agent apply [dir] [--quiet] [--unattended] | dsky-agent scan [dir] [--all-users] | dsky-agent verify [dir] | dsky-agent user-install <job> <result>")
 		}
 		args = append([]string{"apply"}, args...)
 	}
@@ -392,6 +392,12 @@ func Main(args []string) error {
 		fmt.Println("\nThis machine does not match the build; see the lines marked FAIL.")
 		os.Exit(1)
 		return nil
+	case "scan":
+		// Reading the PC that is being replaced. This is the agent rather
+		// than dsky.exe because this is the binary that rides on a stick:
+		// one file, no installation, run from D:\ on somebody's desk while
+		// they watch.
+		return scanThisMachine(args[1:])
 	case "user-install":
 		// The unelevated half of an install that refuses an administrator.
 		if len(args) != 3 {

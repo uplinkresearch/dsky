@@ -90,8 +90,6 @@ func TestValidateRefusesWhatCannotBeBuilt(t *testing.T) {
 		{"resolved with no ref", func(m *Manifest) { m.Apps[0].Resolution.Ref = "" }, "ref is required"},
 		{"resolved by nobody", func(m *Manifest) { m.Apps[0].Resolution.ResolvedBy = "" }, "resolved_by"},
 		{"confidence over one", func(m *Manifest) { m.Apps[0].Resolution.Confidence = 1.5 }, "confidence"},
-		{"usmt with no store", func(m *Manifest) { m.Data = Data{Strategy: DataUSMT} }, "store_path"},
-		{"usmt with no users", func(m *Manifest) { m.Data = Data{Strategy: DataUSMT, StorePath: `\\fs\store`} }, "users"},
 		{"unknown data strategy", func(m *Manifest) { m.Data.Strategy = "robocopy" }, "strategy"},
 		{"unknown severity", func(m *Manifest) { m.Compat = []Compat{{Severity: "scary", Reason: "x"}} }, "severity"},
 		{"compat with no reason", func(m *Manifest) { m.Compat = []Compat{{Severity: Warning, Subject: "x"}} }, "reason"},
@@ -127,6 +125,29 @@ func TestValidateRefusesWhatCannotBeBuilt(t *testing.T) {
 		if !strings.Contains(err.Error(), c.says) {
 			t.Errorf("%s: error %q does not mention %q", c.what, err, c.says)
 		}
+	}
+}
+
+// Where a USMT store lives and whose files go in it are review decisions, so
+// a scanned manifest without them still reads -- and still cannot be
+// approved, which is where the operator is asked.
+func TestUSMTNeedsAStoreBeforeApproval(t *testing.T) {
+	m := load(t, "office")
+	m.Data = Data{Strategy: DataUSMT}
+	if err := m.Validate(); err != nil {
+		t.Fatalf("a manifest proposing USMT with no store yet: %v", err)
+	}
+	err := m.ReadyToApprove()
+	if err == nil || !strings.Contains(err.Error(), "no store has been named") {
+		t.Fatalf("approval: %v", err)
+	}
+	m.Data.StorePath = `\\fs\migration$\PC01`
+	if err := m.ReadyToApprove(); err == nil || !strings.Contains(err.Error(), "nobody is named") {
+		t.Fatalf("approval with a store but no users: %v", err)
+	}
+	m.Data.Users = []string{`MEAD\reception`}
+	if err := m.ReadyToApprove(); err != nil {
+		t.Errorf("approval with both: %v", err)
 	}
 }
 
