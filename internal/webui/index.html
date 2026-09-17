@@ -2199,13 +2199,20 @@ function openInstall(os, edit) {
     });
   } else {
     const iso = editing ? null : isoOpt(os);
-    // Ubuntu's installer takes answers, so programs can go on with it.
+    // Ubuntu's installer takes answers, so programs can go on with it — and
+    // it can be told to put on the drivers the kernel does not carry. Nothing
+    // is staged for that, unlike Windows: Ubuntu fetches them itself.
     const ap = os.programs ? appsOpt("ubuntu") : null;
-    if (ap && saved) ap.set(saved.apps);
+    const dv = os.programs ? checkOpt("Drivers for this computer — the proprietary ones Ubuntu finds (NVIDIA and the like)") : null;
+    if (saved) {
+      if (ap) ap.set(saved.apps);
+      if (dv) dv.set(!!saved.third_party_drivers);
+    }
+    if (dv) opts.append(dv.wrap);
     if (ap) opts.append(ap.wrap);
     if (iso) opts.append(iso.wrap);
     if (!ap && !iso) opts.append(el("div", "sub", "Boots the installer — nothing to configure here."));
-    getOpts = () => ({ iso: iso ? iso.get() : "", apps: ap ? ap.get() : [] });
+    getOpts = () => ({ iso: iso ? iso.get() : "", apps: ap ? ap.get() : [], drivers: dv ? dv.get() : false });
   }
   const run = (mode, extra) => {
     api("/api/install", { os_id: os.id, ...getOpts(), mode, ...extra })

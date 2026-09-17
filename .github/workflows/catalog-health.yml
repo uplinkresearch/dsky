@@ -57,6 +57,20 @@ jobs:
           go test ./internal/appcatalog/ -count=1 -timeout 20m -v \
             -run 'TestWingetIDsLive' 2>&1 | tee winget.txt
 
+      # The Ubuntu program list names apt packages, snaps and Flathub apps,
+      # which rot the same way winget ids do: a package dropped between
+      # releases, a snap renamed, a Flathub app whose publisher verification
+      # has lapsed. Each is looked up where it comes from. The vendor
+      # repositories DSKY adds by hand are checked for their signing key and
+      # their package list at the same time.
+      - name: Check every Ubuntu package name in the program list
+        id: ubuntu
+        if: always()
+        run: |
+          set -o pipefail
+          go test ./internal/appcatalog/ -count=1 -timeout 20m -v \
+            -run 'TestUbuntuNamesLive|TestUbuntuVendorReposLive' 2>&1 | tee ubuntu.txt
+
       # Only the failing lines, so the issue says what rotted rather than
       # burying it in 27 successes.
       - name: Summarise what broke
@@ -68,6 +82,7 @@ jobs:
             echo '```'
             grep -E "oscatalog_test.go:[0-9]+: [a-z0-9.-]+:" result.txt | grep -v ": ok (" || true
             grep -E "appcatalog_test.go:[0-9]+: " winget.txt | grep -v ": ok$" || true
+            grep -E "ubuntulive_test.go:[0-9]+: " ubuntu.txt | grep -v ": ok$" || true
             echo '```'
           } > summary.md
           cat summary.md >> "$GITHUB_STEP_SUMMARY"
@@ -80,7 +95,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          title="Catalog link rot: an OS download or winget package is failing"
+          title="Catalog link rot: an OS download or a program package is failing"
           existing=$(gh issue list --state open --search "$title in:title" \
             --json number --jq '.[0].number // empty')
           body="$(cat summary.md)

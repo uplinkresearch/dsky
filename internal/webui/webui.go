@@ -1054,6 +1054,11 @@ func (s *Server) installOptions(ctx context.Context, req installRequest) (oscata
 		return e, oscatalog.Options{}, fmt.Errorf("unknown OS %q", req.OSID)
 	}
 	var hw []recipe.HardwareSpec
+	// "Drivers for this computer" is two jobs under one name. On Windows it
+	// detects this machine and stages its packs. On Ubuntu there is nothing to
+	// stage — the kernel carries all of it but the proprietary drivers — so
+	// the answers ask Ubuntu's own installer to put those on.
+	thirdParty := req.Drivers && e.Family != oscatalog.Windows && e.ProgramsSupported()
 	if req.Drivers && e.Family == oscatalog.Windows {
 		h, err := hwdetect.Detect(ctx)
 		if err != nil {
@@ -1108,7 +1113,8 @@ func (s *Server) installOptions(ctx context.Context, req installRequest) (oscata
 	return e, oscatalog.Options{
 		Edition: req.Edition, AccountMode: req.AccountMode,
 		Debloat: req.Debloat, BypassRequirement: req.BypassRequirement,
-		Hardware: hw, Models: models, Apps: req.Apps, DomainBlob: blob, DomainBlobsDir: blobsDir,
+		Hardware: hw, Models: models, Apps: req.Apps, ThirdPartyDrivers: thirdParty,
+		DomainBlob: blob, DomainBlobsDir: blobsDir,
 	}, nil
 }
 

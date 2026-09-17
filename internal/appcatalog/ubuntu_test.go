@@ -29,9 +29,27 @@ func TestUbuntuTableIsConsistent(t *testing.T) {
 		}
 	}
 	// Left out on purpose: unofficial clients, and Windows-only programs.
-	for _, id := range []string{"teams", "notion", "zoom", "dropbox", "anydesk", "githubdesktop", "zotero", "webex", "teamviewer", "sysinternals", "office"} {
+	// AnyDesk and TeamViewer have come off this list: both vendors publish a
+	// Linux client through their own apt repository, which is the rule Chrome
+	// comes in under.
+	for _, id := range []string{"teams", "notion", "zoom", "dropbox", "githubdesktop", "zotero", "webex", "sysinternals", "office"} {
 		if _, ok := ubuntu[id]; ok {
 			t.Errorf("%s is offered for Ubuntu", id)
+		}
+	}
+	// Every repository a program names has to be one DSKY can actually add,
+	// or the first boot logs a failure for a program that was offered.
+	for id, src := range ubuntu {
+		if src.Repo == "" {
+			continue
+		}
+		if _, ok := UbuntuRepoByID(src.Repo); !ok {
+			t.Errorf("%s names repository %q, which DSKY has no recipe for", id, src.Repo)
+		}
+	}
+	for _, r := range ubuntuRepos {
+		if r.ID == "" || r.Name == "" || r.KeyURL == "" || r.URL == "" || r.Suite == "" || r.Comps == "" || r.Package == "" {
+			t.Errorf("repository %+v is missing a field the first-boot script needs", r)
 		}
 	}
 }

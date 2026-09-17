@@ -241,31 +241,126 @@ func TestQuitIgnoredWhileWriting(t *testing.T) {
 	}
 }
 
-// TestLinuxSkipsWindowsStages: a Linux ISO has no editions or programs to
-// choose, so the wizard goes straight to the stick.
+// TestLinuxSkipsWindowsStages: a Linux ISO whose installer takes no answers
+// has no editions or programs to choose, so the wizard goes straight to the
+// stick — and comes straight back.
 func TestLinuxSkipsWindowsStages(t *testing.T) {
 	m := newTestModel(t)
 	found := false
 	for i, e := range m.entries {
-		if e.Family == oscatalog.Linux {
+		if e.Family == oscatalog.Linux && !e.ProgramsSupported() {
 			m.osIdx, found = i, true
 			break
 		}
 	}
 	if !found {
-		t.Skip("no Linux entry in the catalog")
+		t.Skip("no Linux entry without programs in the catalog")
 	}
+	// A drivers answer left over from an operating system that asks the
+	// question must not follow one that does not: this entry gets no options
+	// screen to clear it, and the build would write Ubuntu's answers onto it.
+	m.drivers = true
 	press(t, m, "enter")
 	if m.stage != stageDevice {
 		t.Fatalf("Linux should skip to the device stage, got %v", m.stage)
 	}
+	if m.drivers {
+		t.Error("a drivers answer carried over to an entry that never asks")
+	}
 	if len(m.opts) != 0 {
 		t.Errorf("Linux built %d Windows options", len(m.opts))
 	}
-	// Backing out of the device stage must not land on a Windows-only screen.
+	// Backing out must not land on a screen this entry never saw.
 	press(t, m, "esc")
-	if m.stage == stageApps {
-		t.Error("esc from the device stage landed on the Windows-only apps screen")
+	if m.stage != stageOS {
+		t.Errorf("esc from the device stage landed on %v, not the OS list", m.stage)
+	}
+}
+
+// Ubuntu's installer does take a program list, so the wizard offers one — and
+// offers the programs Ubuntu can install, not Windows's.
+func TestUbuntuOffersPrograms(t *testing.T) {
+	m := newTestModel(t)
+	found := false
+	for i, e := range m.entries {
+		if e.Family == oscatalog.Linux && e.ProgramsSupported() {
+			m.osIdx, found = i, true
+			break
+		}
+	}
+	if !found {
+		t.Skip("no Ubuntu entry in the catalog")
+	}
+	press(t, m, "enter")
+	// Ubuntu's one option: the proprietary drivers its installer can fetch.
+	// None of Windows's — there is no edition or bloatware to choose.
+	if m.stage != stageOptions {
+		t.Fatalf("Ubuntu should ask about drivers first, got stage %v", m.stage)
+	}
+	if len(m.opts) != 1 || m.opts[0].label != "Drivers for this computer" {
+		t.Fatalf("Ubuntu options are %+v", m.opts)
+	}
+	press(t, m, "right") // yes
+	press(t, m, "enter")
+	if !m.drivers {
+		t.Error("the drivers choice did not stick")
+	}
+	if m.stage != stageApps {
+		t.Fatalf("Ubuntu should offer programs, got stage %v", m.stage)
+	}
+	if len(m.apps) == 0 {
+		t.Fatal("the program list is empty for Ubuntu")
+	}
+	for _, a := range m.apps {
+		if a.Ubuntu == nil {
+			t.Errorf("%s is offered for Ubuntu but has no Ubuntu source", a.ID)
+		}
+	}
+	if strings.TrimSpace(m.View()) == "" {
+		t.Error("the programs screen rendered nothing for Ubuntu")
+	}
+	// A pick reaches the list handed to the build, and the way back out is
+	// the way in, in reverse.
+	press(t, m, "space")
+	if len(m.appOrder) != 1 || m.appOrder[0] != m.apps[0].ID {
+		t.Errorf("picking a program did not reach the order: %v", m.appOrder)
+	}
+	press(t, m, "enter")
+	if m.stage != stageDevice {
+		t.Fatalf("programs should lead to the stick, got %v", m.stage)
+	}
+	press(t, m, "esc")
+	if m.stage != stageApps {
+		t.Errorf("esc from the stick should come back to the programs, got %v", m.stage)
+	}
+	press(t, m, "esc")
+	if m.stage != stageOptions {
+		t.Errorf("esc from the programs should come back to the options, got %v", m.stage)
+	}
+	press(t, m, "esc")
+	if m.stage != stageOS {
+		t.Errorf("esc from the options should come back to the OS list, got %v", m.stage)
+	}
+
+	// Changing to Windows must not carry an Ubuntu-only pick across: a
+	// program that cannot install where it is going fails the whole build.
+	for i, e := range m.entries {
+		if e.Family == oscatalog.Windows {
+			m.osIdx = i
+			break
+		}
+	}
+	press(t, m, "enter")
+	if len(m.appOrder) != 0 {
+		t.Errorf("an Ubuntu program survived the change to Windows: %v", m.appOrder)
+	}
+	if m.drivers {
+		t.Error("the drivers answer survived the change of operating system")
+	}
+	for _, a := range m.apps {
+		if !a.InstallsOnWindows() {
+			t.Errorf("%s is offered for Windows but cannot install there", a.ID)
+		}
 	}
 }
 

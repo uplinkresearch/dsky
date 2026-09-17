@@ -25,22 +25,76 @@ of DSKY for now, so the account is not in DSKY's answers. **Step 1** (booting
 real Ubuntu ISOs in a VM) is built as `test/autoinstall/vm.sh` and the
 `ubuntu-autoinstall` workflow; nothing after it is.
 
+**Step 2 done (2026-09-17):** programs install with Ubuntu, from all four
+sources, proven in VMs on this machine. See "What step 2 turned out to be"
+below — most of the work was not the program table.
+
 ## Where it is today
 
-- **Picking programs is Windows only.** Choosing a program for any Linux
-  entry fails with "installing programs alongside … is not supported yet — it
-  needs an autoinstall recipe".
-- **A Linux entry writes the distro's own ISO to the stick, unchanged.** The
-  installer runs as the distro made it, so DSKY has nowhere to add anything.
-- **One exception, not yet proven:** a workspace recipe can make an *Ubuntu
-  Server* stick install itself with nobody at the keyboard. DSKY appends a
-  small CIDATA partition holding the cloud-init answers and rewrites GRUB, at
-  the same length, to boot with `autoinstall`. The answer file already
-  installs a package (`openssh-server`). **That has only been tested against a
-  synthetic ISO. It has never booted a real Ubuntu ISO**, which makes it step 1
-  below.
-- **What there is to start from:** the program list has an `Apt` field on 12
-  of its 92 entries, unused by anything.
+Steps 1 to 3 are built and proven. Ubuntu takes a program list through the
+same picker Windows uses, in all three ways in (CLI, terminal wizard, portal),
+and `--drivers` means something on Ubuntu too.
+
+Steps 4 and 5 — kickstart for the Fedora/RHEL family, and the after-install
+script for distros with a live installer — are as they were.
+
+## What step 2 turned out to be
+
+The program table was the easy half. Every bug worth the name was in *when*
+things happen on a machine that has just installed itself, and none of them
+would have been found by reading the code — each was watched happening in a
+VM.
+
+**The snaps are not there when the login prompt is.** A snap in the answers'
+`snaps:` section is an ordinary store install that cloud-init asks snapd for
+once the system is up. DSKY's first-boot pass checked for one, did not find
+it, saw snapd with nothing in flight, concluded the installer had not
+installed it, and installed it itself — 13 seconds into the first boot, which
+is before cloud-init has asked snapd for anything at all. The install failed,
+the log said `FAILED brave`, and then the installer's own request installed
+Brave a minute later. An idle snapd means "not asked yet" as often as it means
+"finished".
+
+**Waiting for cloud-init deadlocks the boot, and ordering after it is worse.**
+The obvious fix — have the first-boot service wait for cloud-init to finish —
+hangs: `cloud-final.service` is itself ordered after `multi-user.target`, which
+the service is wanted by, so it cannot start until the service it is waiting
+for can start. Fifteen minutes of nothing, then a timeout.
+
+Declaring `After=cloud-final.service` instead looks like the correct systemd
+way to say it and is the most dangerous of the three. It closes an ordering
+cycle, and systemd resolves a cycle by deleting a job from it. It deleted this
+one:
+
+    multi-user.target: Found ordering cycle: dsky-apps.service/start after
+    cloud-final.service/start after multi-user.target/start - after
+    dsky-apps.service
+    multi-user.target: Job dsky-apps.service/start deleted to break ordering
+    cycle starting with multi-user.target/start
+
+The service never ran, no programs arrived, nothing failed, and the only trace
+was that line in the journal. A test that asked "did the install succeed" would
+have passed.
+
+So the races are handled where they happen rather than by ordering around them:
+apt is given `DPkg::Lock::Timeout` so it waits for the lock cloud-init is
+holding instead of failing on it, and each snap is waited for — with a grace
+period before DSKY will believe it is missing — and retried, rather than
+declared absent the first time snapd looks idle. `ubuntuFirstBootUnit` carries
+the whole story, because the next person to read that unit will think of
+exactly the same two "fixes".
+
+**Enter does not press Install.** On Desktop, Ubuntu's review screen puts the
+keyboard focus in the scrollable list of answers, which takes Enter for itself.
+The run that "pressed Install" sat there until it timed out, with screenshots
+that looked like a hung installer. Tab, then Enter.
+
+**The harness stopped needing root.** It checked the installed system by
+attaching the disk with `qemu-nbd` and mounting it, which needs root, a kernel
+module and a spare device node. It now boots the installed system and asks it,
+over SSH, with a key the test's own answers carry. That runs on a workstation
+with no sudo at all, it checks the running system rather than files on a disk,
+and it is faster: the first check lands 15 seconds after the installer reboots.
 
 ## How Linux installers can be given a program list
 
@@ -89,7 +143,14 @@ Ubuntu has three sources. The rule, in order:
    official channel and nothing above is: Google Chrome.
 
 Checked on 2026-09-14 against packages.ubuntu.com (noble = 24.04,
-resolute = 26.04), the Snapcraft store API and the Flathub API:
+resolute = 26.04), the Snapcraft store API and the Flathub API, and re-checked
+on 2026-09-17 — this time by a test rather than by hand
+(`TestUbuntuNamesLive`, run weekly by catalog-health), which also refuses a
+Flathub app whose publisher verification has lapsed. AnyDesk and TeamViewer
+came in on the 17th: both were left out for having no verified Flathub app,
+which is true and beside the point, because neither vendor ships through
+Flathub at all — each runs its own apt repository, which is the rule Chrome
+comes in under.
 
 | Program | Ubuntu source | Notes |
 |---|---|---|
@@ -101,13 +162,13 @@ resolute = 26.04), the Snapcraft store API and the Flathub API:
 | VS Code, PowerShell | snap, verified, **classic** confinement | Installer needs `classic: true` |
 | Obsidian | Flathub (verified) | Its snap is classic and unverified |
 | LibreWolf, 1Password, Epic Games and GOG (both through Heroic Games Launcher) | Flathub, verified | |
-| Zoom, Dropbox, AnyDesk, GitHub Desktop, Zotero | Flathub, unverified | Zoom and Zotero snaps are unofficial too |
-| Google Chrome | Google's apt repository | The Flathub Chrome is an unverified wrapper |
+| Zoom, Dropbox, GitHub Desktop, Zotero | Flathub, unverified | Zoom and Zotero snaps are unofficial too |
+| Google Chrome, AnyDesk, TeamViewer | the vendor's own apt repository | Each is the vendor's own Linux channel; the Flathub Chrome is an unverified wrapper |
 | Microsoft Teams | none official | Only "Teams for Linux", an unofficial client: leave out, or label it |
 | Notion | none official | Unofficial snap only: leave out |
 
 **Not on Linux, so hidden when the OS is Linux:** Microsoft 365 Apps, Webex,
-TeamViewer (no Flathub, deb only), OneDrive, Google Drive, Box, Malwarebytes,
+OneDrive, Google Drive, Box, Malwarebytes,
 PowerToys, Notepad++, ShareX, Everything, Flow Launcher, Sysinternals, WizTree,
 WinDirStat, Rufus, CPU-Z, HWMonitor, HWiNFO, CrystalDiskInfo, WinMerge,
 mRemoteNG, WinSCP, Paint.NET, IrfanView, K-Lite, Greenshot, VC++ and .NET

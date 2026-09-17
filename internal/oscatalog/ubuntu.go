@@ -79,7 +79,7 @@ func ubuntuUserDataFile(recipeID string) string {
 
 // writeUbuntuUserData writes the autoinstall answers for a program list into
 // the workspace and returns their workspace-relative path.
-func writeUbuntuUserData(wsDir, recipeID string, e Entry, ids []string) (string, error) {
+func writeUbuntuUserData(wsDir, recipeID string, e Entry, ids []string, thirdPartyDrivers bool) (string, error) {
 	plan, err := appcatalog.ResolveUbuntu(ids)
 	if err != nil {
 		return "", err
@@ -92,14 +92,14 @@ func writeUbuntuUserData(wsDir, recipeID string, e Entry, ids []string) (string,
 	// The picker's choices go in as a comment, so the recipe can be opened
 	// in the install dialog again: the answers alone only say what Ubuntu
 	// installs, not which programs were picked.
-	data := strings.Replace(ubuntuUserData(plan, e.ubuntuDesktop()), "\n", "\n"+programsMarker+strings.Join(ids, " ")+"\n", 1)
+	data := strings.Replace(ubuntuUserData(plan, e.ubuntuDesktop(), thirdPartyDrivers), "\n", "\n"+programsMarker+strings.Join(ids, " ")+"\n", 1)
 	return rel, os.WriteFile(p, []byte(data), 0o644)
 }
 
 // ubuntuUserData renders the cloud-config autoinstall answers. The output is
 // also a Go template (compose renders user_data as one), so it must never
 // contain "{{".
-func ubuntuUserData(plan appcatalog.UbuntuPlan, desktop bool) string {
+func ubuntuUserData(plan appcatalog.UbuntuPlan, desktop, thirdPartyDrivers bool) string {
 	var b strings.Builder
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format+"\n", args...) }
 	w("#cloud-config")
@@ -114,6 +114,15 @@ func ubuntuUserData(plan appcatalog.UbuntuPlan, desktop bool) string {
 	w("  storage:")
 	w("    layout:")
 	w("      name: direct")
+	if thirdPartyDrivers {
+		// Ubuntu's own answer to "drivers for this computer". Linux carries
+		// its drivers in the kernel, with one exception that matters on a
+		// desktop: the proprietary ones, NVIDIA above all. Ubuntu's installer
+		// finds and installs those itself when asked, so DSKY asks rather
+		// than staging packs the way it must for Windows.
+		w("  drivers:")
+		w("    install: true")
+	}
 	if len(plan.Apt) > 0 {
 		w("  packages:")
 		for _, p := range plan.Apt {
@@ -143,6 +152,27 @@ func ubuntuUserData(plan appcatalog.UbuntuPlan, desktop bool) string {
 	return b.String()
 }
 
+// ubuntuFirstBootUnit runs the script once per boot until it has nothing left
+// to do.
+//
+// It must not be ordered after cloud-init, and must not wait for it either,
+// though both are tempting: cloud-init's last stage is still putting on the
+// programs the answers asked for while this runs. Both were tried on Ubuntu
+// Server 26.04, and both are worse than the race they fix, because
+// cloud-final.service is itself ordered after multi-user.target, which this
+// unit is wanted by:
+//
+//   - After=cloud-final.service closes the loop, and systemd breaks an
+//     ordering cycle by deleting a job from it. It deleted this one. The
+//     service never ran at all, the programs never arrived, and the only
+//     sign of it was one line in the journal.
+//   - Waiting for cloud-init from inside the script is the same cycle with
+//     the deadlock left in: cloud-final cannot start until multi-user.target
+//     is reached, which cannot happen while this service is still running.
+//
+// So the race is handled where it happens instead: apt is told to wait for
+// dpkg's lock rather than fail on it, and each snap is waited for and retried
+// rather than declared missing the moment snapd looks idle.
 const ubuntuFirstBootUnit = `[Unit]
 Description=DSKY: install the programs picked in DSKY
 Wants=network-online.target
@@ -158,6 +188,57 @@ TimeoutStartSec=0
 WantedBy=multi-user.target
 `
 
+// ubuntuProbeHosts are the hosts this plan has to reach before it is worth
+// starting, in the order they are needed. Only what the plan actually uses:
+// waiting on a host nothing needs is fifteen minutes of a machine doing
+// nothing, once per boot, on any network that happens to block it.
+func ubuntuProbeHosts(plan appcatalog.UbuntuPlan) []string {
+	var hosts []string
+	if len(plan.Apt) > 0 || len(plan.Repos) > 0 || len(plan.Flatpaks) > 0 {
+		// Flatpak and every vendor repository are installed with apt's help,
+		// so the archive is the first thing any of them needs.
+		hosts = append(hosts, "archive.ubuntu.com")
+	}
+	if len(plan.Snaps) > 0 {
+		hosts = append(hosts, "api.snapcraft.io")
+	}
+	if len(plan.Flatpaks) > 0 {
+		hosts = append(hosts, "dl.flathub.org")
+	}
+	for _, id := range plan.Repos {
+		if repo, ok := appcatalog.UbuntuRepoByID(id); ok {
+			if h := repoHost(repo.KeyURL); h != "" {
+				hosts = append(hosts, h)
+			}
+		}
+	}
+	seen := map[string]bool{}
+	out := hosts[:0]
+	for _, h := range hosts {
+		if !seen[h] {
+			seen[h] = true
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// repoHost is the host part of a repository URL, for the readiness probe.
+func repoHost(rawURL string) string {
+	rest := rawURL
+	for _, scheme := range []string{"https://", "http://"} {
+		if s, ok := strings.CutPrefix(rest, scheme); ok {
+			rest = s
+			break
+		}
+	}
+	host, _, _ := strings.Cut(rest, "/")
+	if host == "" || strings.ContainsAny(host, " \t'\"`$") {
+		return ""
+	}
+	return host
+}
+
 // ubuntuFirstBootScript installs what the installer's sections can't: Flathub
 // apps and vendor-repository packages. It runs until everything succeeds,
 // once per boot, and one failure never stops the rest.
@@ -165,39 +246,155 @@ func ubuntuFirstBootScript(plan appcatalog.UbuntuPlan) string {
 	var b strings.Builder
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format+"\n", args...) }
 	w("#!/bin/bash")
-	w("# Generated by DSKY. Installs the programs picked in DSKY that Ubuntu's")
-	w("# installer can't: Flathub apps and vendor repositories. Log: /var/log/dsky-apps.log")
+	w("# Generated by DSKY. Puts on the programs picked in DSKY that Ubuntu's")
+	w("# installer can't — Flathub apps and vendor repositories — and confirms")
+	w("# the ones it can. Log: /var/log/dsky-apps.log")
 	w("exec >>/var/log/dsky-apps.log 2>&1")
 	w(`note() { echo "$(date -Is) $*"; }`)
 	w(`note "first-boot programs starting"`)
 	w(`export DEBIAN_FRONTEND=noninteractive`)
-	w(`for i in $(seq 1 90); do`)
-	w(`  if timeout 10 bash -c '</dev/tcp/dl.google.com/443' 2>/dev/null; then break; fi`)
-	w(`  [ "$i" = 1 ] && note "waiting for the network"`)
-	w(`  sleep 10`)
-	w(`done`)
+	// cloud-init's last stage is still installing what the answers asked for
+	// while this runs, and it holds dpkg's lock while it does. Waiting for the
+	// lock is the whole fix: without it, apt fails immediately with "could not
+	// get lock" and a program is reported failed for being early.
+	w(`apt() { apt-get -o DPkg::Lock::Timeout=600 "$@"; }`)
+	// Waiting for the hosts this plan actually needs, rather than one host
+	// that stood for "the internet". A plan with no Chrome in it used to
+	// spend fifteen minutes every boot waiting for dl.google.com on a network
+	// that blocks Google, and then install everything else perfectly well.
+	// One loop over all of them, not one loop each: a loop per host puts the
+	// worst case at fifteen minutes times however many programs were picked
+	// from different places, and the thing being waited for is the same
+	// network in every case.
+	if hosts := ubuntuProbeHosts(plan); len(hosts) > 0 {
+		w(`for i in $(seq 1 90); do`)
+		w(`  ready=1`)
+		w(`  for h in %s; do`, strings.Join(hosts, " "))
+		w(`    timeout 5 bash -c "</dev/tcp/$h/443" 2>/dev/null || { ready=0; break; }`)
+		w(`  done`)
+		w(`  [ "$ready" = 1 ] && break`)
+		w(`  [ "$i" = 1 ] && note "waiting for the network ($h)"`)
+		w(`  sleep 10`)
+		w(`done`)
+		// Carrying on after the wait runs out is deliberate: a machine behind
+		// a proxy that refuses a bare TCP connection can still install
+		// everything, and each program says for itself whether it arrived.
+		w(`[ "$ready" = 1 ] || note "carrying on without reaching $h; what fails is tried again at the next boot"`)
+	}
 	w(`failed=0`)
-	w(`apt-get update -q || note "apt-get update failed"`)
-	for _, repo := range plan.Repos {
-		switch repo {
-		case appcatalog.RepoGoogleChrome:
-			w(`if dpkg -s google-chrome-stable >/dev/null 2>&1; then`)
-			w(`  note "Google Chrome already installed"`)
-			w(`elif [ "$(dpkg --print-architecture)" != amd64 ]; then`)
-			w(`  note "SKIPPED Google Chrome: Google only publishes it for amd64"`)
-			w(`else`)
-			w(`  install -d -m 0755 /etc/apt/keyrings`)
-			w(`  if apt-get install -y -q curl && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /etc/apt/keyrings/google-chrome.asc; then`)
-			w(`    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.asc] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list`)
-			w(`    if apt-get update -q && apt-get install -y -q google-chrome-stable; then note "installed Google Chrome"; else note "FAILED Google Chrome"; failed=1; fi`)
-			w(`  else`)
-			w(`    note "FAILED Google Chrome: could not fetch Google's signing key"; failed=1`)
-			w(`  fi`)
-			w(`fi`)
+	// apt's own list lock is not DPkg::Lock::Timeout's to hold, so an update
+	// racing cloud-init can still lose. It is worth retrying rather than
+	// carrying on with a stale list, which is what turns into a package that
+	// "does not exist" further down.
+	w(`for i in 1 2 3; do`)
+	w(`  apt update -q && break`)
+	w(`  [ "$i" = 3 ] && note "apt-get update failed"`)
+	w(`  sleep 20`)
+	w(`done`)
+
+	// What the installer's own sections were asked for, checked on the
+	// installed system. A machine whose network came up late, or not at all,
+	// finishes its install with those programs quietly missing: the installer
+	// does not fail for them and nothing else looks. So the programs are
+	// confirmed here and put on if they are not there, which is also what
+	// makes trying again at the next boot worth anything.
+	// dpkg -s is not the question. It exits 0 for any package dpkg still has
+	// a record of, including "install ok half-configured" and "deinstall ok
+	// config-files" — which is exactly the state an install cut short by a
+	// late network leaves behind, and exactly what this pass exists to find.
+	// Only "install ok installed" means the program is there.
+	w(`installed() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q '^install ok installed$'; }`)
+	for _, pkg := range plan.Apt {
+		w(`if installed %s; then`, pkg)
+		w(`  note "%s is installed"`, pkg)
+		w(`elif apt install -y -q %s; then`, pkg)
+		w(`  note "installed %s (the installer did not)"`, pkg)
+		w(`else`)
+		w(`  note "FAILED %s"; failed=1`, pkg)
+		w(`fi`)
+	}
+	if len(plan.Snaps) > 0 {
+		// A snap from the snaps: section is not on the disk when the login
+		// prompt appears: the installer hands it to snapd, which installs it
+		// from the store once the system is up. So this waits for it rather
+		// than looking once — and racing it is worse than waiting, because
+		// installing a snap that snapd is already installing fails both.
+		//
+		// The order matters, which is why the unit runs after cloud-final:
+		// "snapd has no change in flight" means nothing before cloud-init has
+		// asked it for anything, because at that point snapd is idle for want
+		// of work rather than for having finished it.
+		w(`if command -v snap >/dev/null; then`)
+		w(`  snap wait system seed.loaded 2>/dev/null || true`)
+		// A grace period before concluding anything: cloud-init asks snapd
+		// for these, and until it has, snapd is idle for want of work rather
+		// than for having finished, and an install started here races the one
+		// about to be started there. Both then fail.
+		w(`  grace=18`)
+		// One waiter, used for each snap: appear on your own, or be installed.
+		w(`  dsky_snap() { # name [--classic]`)
+		w(`    local name=$1; shift`)
+		w(`    local i`)
+		w(`    for i in $(seq 1 60); do`)
+		w(`      if snap list "$name" >/dev/null 2>&1; then`)
+		w(`        note "$name is installed"; return 0`)
+		w(`      fi`)
+		w(`      if [ "$i" -le "$grace" ] || snap changes 2>/dev/null | grep -qE '^[0-9]+ +(Do|Doing) '; then`)
+		w(`        [ "$i" = 1 ] && note "waiting for $name, which the installer asks snapd for"`)
+		w(`        sleep 10; continue`)
+		w(`      fi`)
+		w(`      if snap install "$@" "$name"; then`)
+		w(`        note "installed $name (the installer did not)"; return 0`)
+		w(`      fi`)
+		w(`      sleep 10`)
+		w(`    done`)
+		w(`    note "FAILED $name"; failed=1; return 1`)
+		w(`  }`)
+		for _, s := range plan.Snaps {
+			if s.Classic {
+				w(`  dsky_snap %s --classic`, s.Name)
+			} else {
+				w(`  dsky_snap %s`, s.Name)
+			}
 		}
+		w(`else`)
+		w(`  note "FAILED: snapd is not on this system, so the snaps cannot be installed"; failed=1`)
+		w(`fi`)
+	}
+	for _, id := range plan.Repos {
+		repo, ok := appcatalog.UbuntuRepoByID(id)
+		if !ok {
+			// A program naming a repository DSKY has no recipe for would
+			// otherwise install nothing and say nothing about it.
+			w(`note "FAILED %s: DSKY does not know this repository"; failed=1`, id)
+			continue
+		}
+		arch := ""
+		if repo.AMD64Only {
+			arch = "arch=amd64 "
+		}
+		keyring := "/etc/apt/keyrings/" + repo.ID + ".asc"
+		w(`if installed %s; then`, repo.Package)
+		w(`  note "%s already installed"`, repo.Name)
+		if repo.AMD64Only {
+			w(`elif [ "$(dpkg --print-architecture)" != amd64 ]; then`)
+			w(`  note "SKIPPED %s: the vendor only publishes it for amd64"`, repo.Name)
+		}
+		w(`else`)
+		w(`  install -d -m 0755 /etc/apt/keyrings`)
+		w(`  if apt install -y -q curl && curl -fsSL %s -o %s; then`, repo.KeyURL, keyring)
+		w(`    echo "deb [%ssigned-by=%s] %s %s %s" > /etc/apt/sources.list.d/%s.list`,
+			arch, keyring, repo.URL, repo.Suite, repo.Comps, repo.ID)
+		w(`    for i in 1 2 3; do apt update -q && break; sleep 20; done`)
+		w(`    if apt install -y -q %s; then note "installed %s"; else note "FAILED %s"; failed=1; fi`,
+			repo.Package, repo.Name, repo.Name)
+		w(`  else`)
+		w(`    note "FAILED %s: could not fetch the vendor's signing key"; failed=1`, repo.Name)
+		w(`  fi`)
+		w(`fi`)
 	}
 	if len(plan.Flatpaks) > 0 {
-		w(`if ! command -v flatpak >/dev/null; then apt-get install -y -q flatpak || { note "FAILED installing flatpak"; failed=1; }; fi`)
+		w(`if ! command -v flatpak >/dev/null; then apt install -y -q flatpak || { note "FAILED installing flatpak"; failed=1; }; fi`)
 		w(`if command -v flatpak >/dev/null; then`)
 		w(`  flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || { note "FAILED adding Flathub"; failed=1; }`)
 		for _, id := range plan.Flatpaks {

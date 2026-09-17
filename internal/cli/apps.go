@@ -12,6 +12,8 @@ import (
 const appsUsage = `Manage the programs Quick Install can add.
 
   apps                            list every program
+  apps --os ubuntu                list what Ubuntu gets, and where each comes from
+  apps --os windows               list what Windows gets
   apps winget <Publisher.Package>  check winget has a package, for --apps winget:<id>
   apps add <installer> [flags]    add your own .msi or .exe
   apps set <id> [flags]           change a name, category or switches
@@ -32,7 +34,7 @@ Example:
 
 func cmdApps(ctx context.Context, env *Env, args []string) error {
 	if len(args) == 0 {
-		return listApps()
+		return listApps(appcatalog.TargetWindows, false)
 	}
 	switch args[0] {
 	case "add":
@@ -49,36 +51,99 @@ func cmdApps(ctx context.Context, env *Env, args []string) error {
 		fmt.Printf(appsUsage, appcatalog.CustomCategory)
 		return nil
 	}
-	return fmt.Errorf("unknown apps command %q\n\n"+appsUsage, args[0], appcatalog.CustomCategory)
+	target, one, err := appsOS(args)
+	if err != nil {
+		return err
+	}
+	return listApps(target, one)
 }
 
-func listApps() error {
-	fmt.Println("Programs `dsky install --apps` can add (comma-separated ids):")
+// listApps prints the program list for one operating system, or for both. The
+// distinction matters: the list is not the same on each, and a program picked
+// for a machine that cannot install it is a machine that comes up without it.
+func listApps(target appcatalog.Target, one bool) error {
+	switch {
+	case !one:
+		fmt.Println("Programs `dsky install --apps` can add (comma-separated ids).")
+		fmt.Println("A program that installs on only one operating system says so;")
+		fmt.Println("`dsky apps --os ubuntu` lists what Ubuntu gets, and where from.")
+	case target == appcatalog.TargetUbuntu:
+		fmt.Println("Programs `dsky install --apps` can add to Ubuntu, and where each")
+		fmt.Println("comes from (comma-separated ids):")
+	default:
+		fmt.Println("Programs `dsky install --apps` can add to Windows (comma-separated ids):")
+	}
 	for _, cat := range appcatalog.Categories() {
-		fmt.Printf("\n  %s\n", cat)
+		var lines []string
 		for _, a := range appcatalog.Catalog() {
-			if a.Category != cat {
+			if a.Category != cat || (one && !a.InstallsOn(target)) {
 				continue
 			}
+			line := fmt.Sprintf("    %-18s %s", a.ID, a.Name)
+			var notes []string
 			switch {
-			case a.Custom != nil:
-				fmt.Printf("    %-18s %s\n", a.ID, a.Name)
-				fmt.Printf("      %s · %s%s\n", a.Custom.Filename,
-					strings.ToUpper(a.Custom.Format), argsNote(a.Custom))
-			case a.Winget == "":
-				fmt.Printf("    %-18s %s  (no Windows package)\n", a.ID, a.Name)
-			default:
-				line := fmt.Sprintf("    %-18s %s", a.ID, a.Name)
-				if l := a.Labels(); len(l) > 0 {
-					line += "  (" + strings.Join(l, "; ") + ")"
+			case one && target == appcatalog.TargetUbuntu:
+				notes = append(notes, a.Ubuntu.Where())
+				if a.Ubuntu.Note != "" {
+					notes = append(notes, a.Ubuntu.Note)
 				}
-				fmt.Println(line)
+			case a.Custom != nil:
+				notes = append(notes, fmt.Sprintf("%s · %s%s", a.Custom.Filename,
+					strings.ToUpper(a.Custom.Format), argsNote(a.Custom)))
+			case !one && !a.InstallsOnWindows():
+				notes = append(notes, "Ubuntu only")
+			case !one && a.Ubuntu == nil:
+				notes = append(notes, "Windows only")
 			}
+			if target != appcatalog.TargetUbuntu {
+				notes = append(notes, a.Labels()...)
+			}
+			if len(notes) > 0 {
+				line += "  (" + strings.Join(notes, "; ") + ")"
+			}
+			lines = append(lines, line)
+		}
+		if len(lines) == 0 {
+			continue
+		}
+		fmt.Printf("\n  %s\n", cat)
+		for _, l := range lines {
+			fmt.Println(l)
 		}
 	}
+
 	fmt.Println("\nStarter sets (use as set:<id>):")
 	for _, s := range appcatalog.Sets {
-		fmt.Printf("    set:%-14s %s: %s\n", s.ID, s.Name, strings.Join(s.Apps, ", "))
+		// Listed as what this operating system would actually get. A set
+		// printed in full for Ubuntu promises Sysinternals and Notepad++,
+		// and the machine then arrives without them.
+		members := s.Apps
+		if one {
+			members = nil
+			for _, id := range s.Apps {
+				if a, ok := appcatalog.Get(id); ok && a.InstallsOn(target) {
+					members = append(members, id)
+				}
+			}
+		}
+		if len(members) == 0 {
+			fmt.Printf("    set:%-14s %s: nothing it lists installs here\n", s.ID, s.Name)
+			continue
+		}
+		fmt.Printf("    set:%-14s %s: %s\n", s.ID, s.Name, strings.Join(members, ", "))
+	}
+	if one && target == appcatalog.TargetUbuntu {
+		fmt.Println("\nOn Ubuntu a starter set brings the programs Ubuntu has; the rest of")
+		fmt.Println("the set is Windows software and is left out.")
+		fmt.Println("\nExample:")
+		fmt.Println("  dsky install ubuntu-26.04-server --apps set:it,vlc,chrome")
+		fmt.Println("\napt packages and snaps are installed by Ubuntu's own installer.")
+		fmt.Println("Flathub apps and a vendor's repository are added at first boot, which")
+		fmt.Println("needs the machine to be online then; everything is logged to")
+		fmt.Println("/var/log/dsky-apps.log, and anything that failed is tried again at the")
+		fmt.Println("next boot. Programs are offered for Ubuntu Server 24.04 and 26.04 and")
+		fmt.Println("Ubuntu Desktop 26.04, whose installer takes DSKY's answers.")
+		return nil
 	}
 	fmt.Println("\nAny other winget package works by its id, as winget:Publisher.Package.")
 	fmt.Println("Not in winget, so add their installers yourself (dsky apps add):")
@@ -94,6 +159,29 @@ func listApps() error {
 	fmt.Println("Your own installers ride on the stick and need no network.")
 	fmt.Println("\nAdd one:  dsky apps add <installer.msi> --id <name>")
 	return nil
+}
+
+// appsOS reads an --os flag off the front of `dsky apps`.
+func appsOS(args []string) (appcatalog.Target, bool, error) {
+	if len(args) == 0 {
+		return appcatalog.TargetWindows, false, nil
+	}
+	val := ""
+	switch {
+	case args[0] == "--os" && len(args) > 1:
+		val = args[1]
+	case strings.HasPrefix(args[0], "--os="):
+		val = strings.TrimPrefix(args[0], "--os=")
+	default:
+		return appcatalog.TargetWindows, false, fmt.Errorf("unknown apps command %q\n\n"+appsUsage, args[0], appcatalog.CustomCategory)
+	}
+	switch strings.ToLower(val) {
+	case "ubuntu", "linux":
+		return appcatalog.TargetUbuntu, true, nil
+	case "windows", "win":
+		return appcatalog.TargetWindows, true, nil
+	}
+	return appcatalog.TargetWindows, false, fmt.Errorf("apps --os takes windows or ubuntu, not %q", val)
 }
 
 // appsWinget looks a package up in winget's repository.

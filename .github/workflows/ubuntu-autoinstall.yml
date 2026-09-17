@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        case: [server-24.04, server-26.04, desktop-26.04, desktop-26.04-prompt, server-26.04-programs]
+        case: [server-24.04, server-26.04, desktop-26.04, desktop-26.04-prompt, server-26.04-programs, desktop-26.04-programs, server-26.04-drivers]
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     steps:
@@ -78,7 +78,8 @@ jobs:
             ${{ runner.temp }}/ai/shots/*.png
             ${{ runner.temp }}/ai/result.md
             ${{ runner.temp }}/ai/build.log
-            ${{ runner.temp }}/ai/lsblk.txt
+            ${{ runner.temp }}/ai/system.txt
+            ${{ runner.temp }}/ai/serial-*.log
             ${{ runner.temp }}/ai/dsky-apps.log
             ${{ runner.temp }}/ai/generated-user-data.yaml
           if-no-files-found: warn

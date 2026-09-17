@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Boot a real Ubuntu ISO, built into install media by DSKY's linux.autoinstall,
 # in a virtual machine: install onto a blank disk with nobody at the keyboard,
-# then look inside the installed disk and boot it once.
+# then boot the installed system and ask it what it got.
 #
 # DSKY's autoinstall path was only ever checked against a synthetic ISO. This
 # is the proof on the ISOs people actually download. It never touches a real
-# disk: the "stick" is the built image file and the target is a qcow2 file.
+# disk: the "stick" is the built image file and the target is a raw disk file.
 #
 #   test/autoinstall/vm.sh <case> [workdir]
 #
@@ -17,18 +17,39 @@
 #   desktop-26.04-prompt  Ubuntu Desktop 26.04 as Quick Install would make it:
 #                         GRUB left alone (Ubuntu's own prompt kept) and no
 #                         account in the answers. Observed, not pass/fail:
-#                         screenshots show what a person would see, and Enter
+#                         screenshots show what a person would see, and Install
 #                         is pressed at the review screen to see what follows.
 #   server-26.04-programs Ubuntu Server 26.04 with programs picked the way the
 #                         app picks them (dsky install --apps): an Ubuntu
 #                         package, a snap, a Flathub app and Chrome from
-#                         Google's repository, checked on the installed disk
-#                         after first boot. The generated answers get a test
-#                         account, since the real ones ask for it on screen.
+#                         Google's repository, checked on the installed system
+#                         after first boot.
+#   desktop-26.04-programs  The same programs through the Desktop installer,
+#                         which keeps Ubuntu's confirmation screen: the run
+#                         waits for the review screen and presses Install, as
+#                         a person would, then checks what landed.
+#   server-26.04-drivers  `dsky install --drivers` on Ubuntu, which asks its
+#                         installer for the proprietary drivers it finds. A VM
+#                         has none; what this proves is that the section DSKY
+#                         writes is one the installer accepts and acts on.
 #
-# Needs: go, qemu-system-x86_64 with KVM, OVMF, qemu-img, qemu-nbd, socat,
-# ImageMagick (convert), sudo for nbd mounts. Screenshots land in
-# <workdir>/shots as PNG; results in <workdir>/result.md.
+# The installed system is checked by logging into it over SSH and running the
+# checks there, so nothing here needs root on the host: no loop devices, no
+# qemu-nbd, no mounting. The answers each case writes carry a test-only SSH
+# key for that; a real DSKY build has none. Raw disk files are used rather than
+# qcow2 so qemu-img is not needed either.
+#
+# Needs: go, qemu-system-x86_64 with KVM, OVMF, socat, ssh, ImageMagick
+# (convert). Screenshots land in <workdir>/shots as PNG; results in
+# <workdir>/result.md.
+#
+# Handy environment:
+#   DSKY_ISO_DIR   a directory of already-downloaded ISOs; one matching the
+#                  case's file name is imported instead of downloaded again.
+#   UBUNTU_MIRROR  where to download from otherwise.
+#   OVMF_CODE / OVMF_VARS   firmware paths, if this distribution hides them
+#                  somewhere not on the list below.
+#   KEEP_ISO=1     do not delete the pulled ISO after the build.
 set -euo pipefail
 
 CASE=${1:?case}
@@ -66,18 +87,50 @@ server-26.04-programs)
   SHA=cc8a95cde20f6ced61a322420de00f10cc3c90ced545daa46cb9c1a117f1d927
   KIND=server PATCH=true IDENTITY=true OBSERVE=false
   PROGRAMS=vlc,brave,obsidian,chrome SRC_ID=ubuntu-26.04-server ;;
+desktop-26.04-programs)
+  URL=$MIRROR/26.04/ubuntu-26.04.1-desktop-amd64.iso
+  SHA=601e30fbf5d97759367c632e2c33630665039b7e2158fd068403da3ccf1bda1f
+  KIND=desktop PATCH=false IDENTITY=true OBSERVE=false
+  PROGRAMS=vlc,brave,obsidian,chrome SRC_ID=ubuntu-26.04-desktop
+  # Desktop keeps Ubuntu's confirmation: Enter at the review screen, as a
+  # person would press Install.
+  INSTALL_BUTTON=true ;;
+server-26.04-drivers)
+  # --drivers on Ubuntu asks its installer to put on the proprietary drivers
+  # it finds. A virtual machine has none, so what this proves is the part
+  # that can go wrong everywhere: that the section DSKY writes is one the
+  # installer accepts, and that it ran rather than refusing the answers.
+  URL=$MIRROR/26.04/ubuntu-26.04.1-live-server-amd64.iso
+  SHA=cc8a95cde20f6ced61a322420de00f10cc3c90ced545daa46cb9c1a117f1d927
+  KIND=server PATCH=true IDENTITY=true OBSERVE=false
+  PROGRAMS=vlc SRC_ID=ubuntu-26.04-server DRIVERS=true ;;
 *) echo "unknown case $CASE" >&2; exit 2 ;;
 esac
 PROGRAMS=${PROGRAMS:-}
+DRIVERS=${DRIVERS:-}
 SRC_ID=${SRC_ID:-ci-ubuntu-iso}
-# The prompt case presses Enter once the review screen has had time to appear.
-KEYS_AT=""; KEYS=""
-[ "$CASE" = desktop-26.04-prompt ] && KEYS_AT=12 KEYS="ret"
+# Ubuntu Desktop stops at "Ready to install — Review your choices" and waits,
+# which is the one confirmation before anything is erased. The cases that get
+# past it press Install the way a person does.
+INSTALL_BUTTON=${INSTALL_BUTTON:-}
+[ "$CASE" = desktop-26.04-prompt ] && INSTALL_BUTTON=true
 
 say "## $CASE"
 say ""
 say "- ISO: \`$(basename "$URL")\`"
 say "- GRUB patched for zero-touch: $PATCH · account in answers: $IDENTITY"
+
+# ── A test-only key, so the installed system can be asked what it got ──────
+KEY="$W/id_ed25519"
+[ -f "$KEY" ] || ssh-keygen -q -t ed25519 -N "" -C dsky-vm-test -f "$KEY"
+PUBKEY=$(cat "$KEY.pub")
+SSH_PORT=${SSH_PORT:-$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')}
+ssh_run() {
+  ssh -q -i "$KEY" -p "$SSH_PORT" \
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -o ConnectTimeout=10 -o LogLevel=ERROR \
+    root@127.0.0.1 "$@"
+}
 
 # ── Build the media with DSKY, as a user would ─────────────────────────────
 export DSKY_LIBRARY="$W/lib"
@@ -93,6 +146,25 @@ url: $URL
 sha256: $SHA
 EOF
 
+# The SSH scaffolding every case adds to its answers. openssh-server comes
+# from the installer's own ssh section; the key goes to root, whose sshd
+# default (prohibit-password) accepts a key and no password, so the checks
+# need no password anywhere.
+ssh_answers() { # indent
+  echo "  ssh:"
+  echo "    install-server: true"
+  echo "    allow-pw: false"
+  echo "    authorized-keys:"
+  echo "      - \"$PUBKEY\""
+}
+ssh_late_commands() { # the root key, for the cases whose ssh section may not run
+  echo "    - mkdir -p /target/root/.ssh"
+  echo "    - chmod 0700 /target/root/.ssh"
+  echo "    - echo '$PUBKEY' > /target/root/.ssh/authorized_keys"
+  echo "    - chmod 0600 /target/root/.ssh/authorized_keys"
+  echo "    - curtin in-target --target=/target -- systemctl enable ssh"
+}
+
 {
   echo '#cloud-config'
   echo 'autoinstall:'
@@ -104,6 +176,7 @@ EOF
     echo '    username: dsky'
     echo "    password: \"$(openssl passwd -6 -salt dskyci dsky)\""
   fi
+  ssh_answers
   echo '  storage:'
   echo '    layout:'
   echo '      name: direct'
@@ -113,27 +186,63 @@ EOF
   echo '    - name: hello-world'
   echo '  late-commands:'
   echo '    - echo "provisioned by DSKY ({{.Org.Name}})" > /target/etc/dsky-provisioned'
+  ssh_late_commands
   echo '  shutdown: reboot'
 } >"$W/ws/templates/ci-autoinstall.yaml.tmpl"
 
+# An ISO already on this machine is imported rather than downloaded again.
+# This happens before anything is built, so the programs case (whose source id
+# is the catalog's own) finds it in the library instead of fetching it.
+LOCAL_ISO="${DSKY_ISO_DIR:-}/$(basename "$URL")"
+if [ "${DRYRUN:-}" != 1 ] && [ -n "${DSKY_ISO_DIR:-}" ] && [ -f "$LOCAL_ISO" ]; then
+  say "- ISO taken from \`$DSKY_ISO_DIR\` rather than downloaded"
+  "$W/dsky" -w "$W/ws" sources import "$SRC_ID" "$LOCAL_ISO"
+fi
+
 if [ -n "$PROGRAMS" ]; then
   # Build exactly what the app builds for these programs, which also downloads
-  # Ubuntu the way DSKY does (fastest mirror), then take its answers and give
-  # them a test account in place of the on-screen question.
-  "$W/dsky" install ubuntu-26.04-server --apps "$PROGRAMS" --build-only
-  gen="$W/lib/quick/templates/dsky-ubuntu-ubuntu-26.04-server.yaml.tmpl"
+  # Ubuntu the way DSKY does (fastest mirror), then take its answers and add
+  # the test account and SSH key: the real ones ask for the account on screen.
+  driverflag=""
+  [ "$DRIVERS" = true ] && driverflag="--drivers"
+  "$W/dsky" install "$SRC_ID" --apps "$PROGRAMS" $driverflag --build-only
+  gen="$W/lib/quick/templates/dsky-ubuntu-$SRC_ID.yaml.tmpl"
   [ -s "$gen" ] || { say "- **FAIL** dsky install --apps wrote no answers"; exit 1; }
   cp "$gen" "$W/generated-user-data.yaml"
-  python3 - "$gen" "$W/ws/templates/ci-autoinstall.yaml.tmpl" "$(openssl passwd -6 -salt dskyci dsky)" <<'PYEOF'
+  python3 - "$gen" "$W/ws/templates/ci-autoinstall.yaml.tmpl" \
+    "$(openssl passwd -6 -salt dskyci dsky)" "$PUBKEY" <<'PYEOF'
 import sys
-src, dst, pw = sys.argv[1:]
+src, dst, pw, pubkey = sys.argv[1:]
 text = open(src).read()
-old = "  interactive-sections:\n    - identity\n"
-assert old in text, "generated answers do not ask for the account"
-ident = "  identity:\n    hostname: dsky-ci\n    username: dsky\n    password: \"%s\"\n" % pw
-open(dst, "w").write(text.replace(old, ident))
+
+ident = ('  identity:\n    hostname: dsky-ci\n'
+         '    username: dsky\n    password: "%s"\n' % pw)
+scaffold = ident + ('  ssh:\n    install-server: true\n    allow-pw: false\n'
+                    '    authorized-keys:\n      - "%s"\n' % pubkey)
+
+# Server's answers leave the account to the on-screen question; Desktop's
+# leave it to Ubuntu's own installer. Either way the test needs an account
+# it knows, so the scaffolding replaces the one or is added after version:.
+interactive = "  interactive-sections:\n    - identity\n"
+if interactive in text:
+    text = text.replace(interactive, scaffold, 1)
+else:
+    text = text.replace("  version: 1\n", "  version: 1\n" + scaffold, 1)
+
+# The root key, so the checks can read anything without a password. These go
+# with whatever late-commands DSKY generated, or start the section.
+keylines = ("    - mkdir -p /target/root/.ssh\n"
+            "    - chmod 0700 /target/root/.ssh\n"
+            "    - echo '%s' > /target/root/.ssh/authorized_keys\n"
+            "    - chmod 0600 /target/root/.ssh/authorized_keys\n"
+            "    - curtin in-target --target=/target -- systemctl enable ssh\n" % pubkey)
+if "  late-commands:\n" in text:
+    text = text.replace("  late-commands:\n", "  late-commands:\n" + keylines, 1)
+else:
+    text = text.replace("  shutdown: reboot", "  late-commands:\n" + keylines + "  shutdown: reboot", 1)
+open(dst, "w").write(text)
 PYEOF
-  say "- \`dsky install ubuntu-26.04-server --apps $PROGRAMS\` built its media; its answers are reused with a test account"
+  say "- \`dsky install $SRC_ID --apps $PROGRAMS $driverflag\` built its media; its answers are reused with a test account and SSH key"
   find "$W/lib/artifacts" -type f -size +1G -delete || true
 fi
 
@@ -162,68 +271,108 @@ if [ "${DRYRUN:-}" = 1 ]; then
   cat "$W/ws/templates/ci-autoinstall.yaml.tmpl"
   exit 0
 fi
+
 "$W/dsky" -w "$W/ws" sources pull "$SRC_ID"
 "$W/dsky" -w "$W/ws" build ci-ubuntu | tee "$W/build.log"
 IMG=$(awk '/^artifact:/ {print $2}' "$W/build.log")
 [ -f "$IMG" ] || { say "- **FAIL** build produced no image"; exit 1; }
 say "- DSKY built \`$(basename "$IMG")\` ($(( $(stat -c %s "$IMG") >> 20 )) MiB)"
 # The pulled ISO is no longer needed; runners are short of disk.
-find "$W/lib" -type f -size +1G ! -samefile "$IMG" -delete || true
+[ "${KEEP_ISO:-}" = 1 ] || find "$W/lib" -type f -size +1G ! -samefile "$IMG" -delete || true
 
 # ── VM plumbing ─────────────────────────────────────────────────────────────
-OVMF_CODE=${OVMF_CODE:-/usr/share/OVMF/OVMF_CODE_4M.fd}
-OVMF_VARS=${OVMF_VARS:-/usr/share/OVMF/OVMF_VARS_4M.fd}
+find_firmware() { # name of the variable, then candidates
+  local -n out=$1; shift
+  [ -n "${out:-}" ] && [ -f "${out:-}" ] && return 0
+  local c
+  for c in "$@"; do [ -f "$c" ] && { out=$c; return 0; }; done
+  echo "vm.sh: no OVMF firmware found (tried: $*); set OVMF_CODE and OVMF_VARS" >&2
+  return 1
+}
+OVMF_CODE=${OVMF_CODE:-}
+OVMF_VARS=${OVMF_VARS:-}
+find_firmware OVMF_CODE /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/edk2/x64/OVMF_CODE.4m.fd \
+  /usr/share/edk2-ovmf/x64/OVMF_CODE.fd /usr/share/qemu/ovmf-x86_64-code.bin
+find_firmware OVMF_VARS /usr/share/OVMF/OVMF_VARS_4M.fd /usr/share/edk2/x64/OVMF_VARS.4m.fd \
+  /usr/share/edk2-ovmf/x64/OVMF_VARS.fd /usr/share/qemu/ovmf-x86_64-vars.bin
 cp "$OVMF_VARS" "$W/vars.fd"
-rm -f "$W/target.qcow2"
-qemu-img create -q -f qcow2 "$W/target.qcow2" 40G
+# A raw sparse file rather than qcow2, so qemu-img is not needed.
+rm -f "$W/target.raw"
+truncate -s 40G "$W/target.raw"
 
-QPID=""
-run_vm() { # phase, seconds-limit, extra qemu args...
-  local phase=$1 limit=$2; shift 2
-  local mon="$W/mon-$phase.sock"
-  rm -f "$mon"
+QPID=""; MON=""
+start_vm() { # phase, extra qemu args...
+  local phase=$1; shift
+  MON="$W/mon-$phase.sock"
+  rm -f "$MON"
   qemu-system-x86_64 -enable-kvm -machine q35 -cpu host -smp 4 -m 8G \
     -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
     -drive if=pflash,format=raw,file="$W/vars.fd" \
-    -drive file="$W/target.qcow2",if=virtio,format=qcow2 \
-    -netdev user,id=net0 -device virtio-net-pci,netdev=net0 \
+    -drive file="$W/target.raw",if=virtio,format=raw \
+    -netdev user,id=net0,hostfwd=tcp:127.0.0.1:"$SSH_PORT"-:22 \
+    -device virtio-net-pci,netdev=net0 \
     -device qemu-xhci -vga std -display none \
-    -monitor unix:"$mon",server,nowait "$@" &
+    -serial file:"$W/serial-$phase.log" \
+    -monitor unix:"$MON",server,nowait "$@" &
   QPID=$!
+}
+mon() { echo "$*" | socat - UNIX-CONNECT:"$MON" >/dev/null 2>&1 || true; }
+shot() { mon "screendump $W/shots/$1-$(printf %03d "$2").ppm"; }
+
+# press_install presses Ubuntu Desktop's Install button, if its review screen
+# is what is on the screen right now.
+#
+# Two things had to be learned the hard way here. The screen is watched for the
+# button rather than the keys being sent after a fixed number of minutes,
+# because how long the review screen takes to appear depends on the machine.
+# And Enter on its own does nothing: the dialog puts the focus in the
+# scrollable list of answers, which takes the key itself, so Tab has to move it
+# to the button first. A run that pressed only Enter sat at the review screen
+# until it timed out, with screenshots that looked like the installer had hung.
+press_install() { # screendump
+  python3 "$REPO/test/autoinstall/findbutton.py" "$1" >/dev/null 2>&1 || return 1
+  mon "sendkey tab"
+  sleep 1
+  mon "sendkey ret"
+  return 0
+}
+vm_running() { [ -n "$QPID" ] && kill -0 "$QPID" 2>/dev/null; }
+stop_vm() {
+  vm_running || return 0
+  mon quit
+  local i
+  for i in $(seq 1 20); do vm_running || return 0; sleep 1; done
+  kill "$QPID" 2>/dev/null || true
+  wait "$QPID" 2>/dev/null || true
+}
+
+run_vm() { # phase, seconds-limit, extra qemu args...  (waits for the VM to end)
+  local phase=$1 limit=$2; shift 2
+  start_vm "$phase" "$@"
   local start=$SECONDS n=0
-  while kill -0 "$QPID" 2>/dev/null; do
+  local pressed=""
+  while vm_running; do
     sleep 30
     n=$((n + 1))
-    echo "screendump $W/shots/$phase-$(printf %03d $n).ppm" | socat - UNIX-CONNECT:"$mon" >/dev/null 2>&1 || true
-    if [ "$phase" = install ] && [ -n "$KEYS_AT" ] && [ "$n" = "$KEYS_AT" ]; then
-      for k in $KEYS; do echo "sendkey $k" | socat - UNIX-CONNECT:"$mon" >/dev/null 2>&1 || true; done
+    shot "$phase" "$n"
+    # Tried again every time the review screen is still the screen: one press
+    # that did not take would otherwise sit there until the run timed out,
+    # and pressing again once it has gone past costs nothing.
+    if [ "$phase" = install ] && [ "$INSTALL_BUTTON" = true ]; then
+      if press_install "$W/shots/$phase-$(printf %03d "$n").ppm"; then
+        if [ -z "$pressed" ]; then
+          pressed=1
+          say "- Ubuntu's review screen appeared after $(( (SECONDS - start) / 60 )) min; pressed Install"
+        fi
+      fi
     fi
     if [ $((SECONDS - start)) -ge "$limit" ]; then
-      echo "quit" | socat - UNIX-CONNECT:"$mon" >/dev/null 2>&1 || kill "$QPID" || true
-      wait "$QPID" 2>/dev/null || true
+      stop_vm
       return 124
     fi
   done
   wait "$QPID" 2>/dev/null || true
   return 0
-}
-
-mount_target() {
-  sudo modprobe nbd max_part=16
-  sudo qemu-nbd --disconnect /dev/nbd0 >/dev/null 2>&1 || true
-  sudo qemu-nbd --read-only --connect=/dev/nbd0 "$W/target.qcow2"
-  sleep 3
-  sudo partprobe /dev/nbd0 || true
-  sleep 1
-  lsblk -f /dev/nbd0 | tee -a "$W/lsblk.txt"
-  ROOTDEV=$(lsblk -lnpo NAME,FSTYPE,SIZE -b /dev/nbd0 | awk '$2=="ext4" {print $3, $1}' | sort -n | tail -1 | awk '{print $2}')
-  [ -n "$ROOTDEV" ] || return 1
-  sudo mkdir -p "$W/mnt"
-  sudo mount -o ro,noload "$ROOTDEV" "$W/mnt"
-}
-umount_target() {
-  sudo umount "$W/mnt" 2>/dev/null || true
-  sudo qemu-nbd --disconnect /dev/nbd0 >/dev/null 2>&1 || true
 }
 
 shots_to_png() {
@@ -232,7 +381,7 @@ shots_to_png() {
     convert "$f" "${f%.ppm}.png" && rm -f "$f"
   done
 }
-trap 'shots_to_png; umount_target' EXIT
+trap 'stop_vm; shots_to_png' EXIT
 
 # ── Install from the stick ─────────────────────────────────────────────────
 # The image is attached as a USB stick and boots first. -no-reboot turns the
@@ -249,7 +398,7 @@ set -e
 mins=$(( (SECONDS - t0) / 60 ))
 
 if [ "$OBSERVE" = true ]; then
-  say "- Observed for $mins min (exit $rc); see the install-* screenshots for what a person sees${KEYS_AT:+ (Enter pressed at screenshot $KEYS_AT)}."
+  say "- Observed for $mins min (exit $rc); see the install-* screenshots for what a person sees."
   exit 0
 fi
 if [ $rc -eq 124 ]; then
@@ -262,61 +411,126 @@ if [ $mins -lt 3 ]; then
 fi
 say "- Installer finished and rebooted after $mins min"
 
-# ── What landed on the disk ─────────────────────────────────────────────────
+# ── First boot of the installed system, and what it got ────────────────────
 fail=0
-check() { # description, command...
+check() { # description, command run inside the installed system
   local what=$1; shift
-  if "$@" >/dev/null 2>&1; then say "- ok: $what"; else say "- **FAIL**: $what"; fail=1; fi
+  if ssh_run "$@" >/dev/null 2>&1; then say "- ok: $what"; else say "- **FAIL**: $what"; fail=1; fi
 }
-if ! mount_target; then
-  say "- **FAIL** no ext4 root filesystem on the target disk"
+# Some of what the answers ask for lands after the login prompt does: snapd
+# installs the snaps from the snaps: section as an ordinary store install once
+# the system is up, so a check made the moment SSH answers is checking too
+# early. These retry until the work is done or the wait runs out.
+check_eventually() { # seconds, description, command
+  local limit=$1 what=$2; shift 2
+  local t0=$SECONDS
+  while [ $((SECONDS - t0)) -lt "$limit" ]; do
+    if ssh_run "$@" >/dev/null 2>&1; then
+      say "- ok: $what$( [ $((SECONDS - t0)) -gt 20 ] && echo " (after $((SECONDS - t0))s)")"
+      return 0
+    fi
+    sleep 15
+  done
+  say "- **FAIL**: $what (still not there after $limit s)"
+  ssh_run "snap changes" >>"$W/snap-changes.txt" 2>&1 || true
+  fail=1
+  return 1
+}
+# snapd is done when nothing is in flight: a change still "Doing" is a snap
+# still downloading.
+wait_for_snapd() { # seconds
+  local limit=$1 t0=$SECONDS
+  while [ $((SECONDS - t0)) -lt "$limit" ]; do
+    ssh_run "! snap changes 2>/dev/null | grep -qE '^[0-9]+ +(Doing|Do) '" >/dev/null 2>&1 && return 0
+    sleep 15
+  done
+  return 1
+}
+
+start_vm firstboot
+# Wait for the installed system to come up and answer.
+BOOT_WAIT=$((8 * 60))
+up=false
+t0=$SECONDS n=0
+while vm_running && [ $((SECONDS - t0)) -lt $BOOT_WAIT ]; do
+  if ssh_run true >/dev/null 2>&1; then up=true; break; fi
+  sleep 15
+  n=$((n + 1)); shot firstboot "$n"
+done
+if [ "$up" != true ]; then
+  say "- **FAIL** the installed system did not answer over SSH within $((BOOT_WAIT / 60)) min"
+  say "  (the installer may have finished without installing openssh-server; see serial-firstboot.log)"
   exit 1
 fi
-if [ -n "$PROGRAMS" ]; then
-  check "Ubuntu package installed during setup (vlc)" \
-    sudo grep -Pzq 'Package: vlc\nStatus: install ok installed' "$W/mnt/var/lib/dpkg/status"
-  check "first-boot service enabled (dsky-apps.service)" \
-    sudo test -L "$W/mnt/etc/systemd/system/multi-user.target.wants/dsky-apps.service"
-else
-  check "late-command ran (/etc/dsky-provisioned)" sudo test -s "$W/mnt/etc/dsky-provisioned"
-  check "answers were the ones DSKY wrote (autoinstall-user-data mentions hello-world)" \
-    sudo grep -rq hello-world "$W/mnt/var/log/installer/"
-  check "apt package from packages: installed (hello)" \
-    sudo grep -Pzq 'Package: hello\nStatus: install ok installed' "$W/mnt/var/lib/dpkg/status"
-fi
-# Snaps listed in the answers are seeded during install and installed by
-# snapd on first boot, so they are checked after it (below).
-if [ "$IDENTITY" = true ]; then
-  check "account from identity: exists (dsky)" sudo grep -q '^dsky:' "$W/mnt/etc/passwd"
-fi
-umount_target
+say "- The installed system booted and answered over SSH after $(( (SECONDS - t0) / 60 )) min $(( (SECONDS - t0) % 60 ))s"
 
-# ── First boot of the installed system ─────────────────────────────────────
-set +e
-FIRSTBOOT=$((6 * 60))
-# Flathub apps and Chrome download on first boot; give them time.
-[ -n "$PROGRAMS" ] && FIRSTBOOT=$((25 * 60))
-run_vm firstboot "$FIRSTBOOT"
-set -e
-if mount_target; then
-  target=multi-user
-  [ "$KIND" = desktop ] && target=graphical
-  if [ -n "$PROGRAMS" ]; then
-    check "snap installed on first boot (brave)" sudo sh -c "ls $W/mnt/var/lib/snapd/snaps/brave_*.snap"
-    check "Flathub app installed on first boot (md.obsidian.Obsidian)" sudo test -d "$W/mnt/var/lib/flatpak/app/md.obsidian.Obsidian"
-    check "Chrome installed from Google's repository" \
-      sudo grep -Pzq 'Package: google-chrome-stable\nStatus: install ok installed' "$W/mnt/var/lib/dpkg/status"
-    check "first-boot programs finished (/var/lib/dsky/apps-done)" sudo test -e "$W/mnt/var/lib/dsky/apps-done"
-    sudo cat "$W/mnt/var/log/dsky-apps.log" > "$W/dsky-apps.log" 2>/dev/null || true
-  else
-    check "snap from snaps: installed on first boot (hello-world)" \
-      sudo sh -c "ls $W/mnt/var/lib/snapd/snaps/hello-world_*.snap"
+if [ -n "$PROGRAMS" ]; then
+  # The first-boot service installs Flathub apps and Chrome, and snapd seeds
+  # the snaps. Wait for DSKY's own done marker rather than a fixed sleep.
+  APPS_WAIT=$((30 * 60))
+  t0=$SECONDS
+  while [ $((SECONDS - t0)) -lt $APPS_WAIT ]; do
+    ssh_run test -e /var/lib/dsky/apps-done >/dev/null 2>&1 && break
+    sleep 20
+    n=$((n + 1)); shot firstboot "$n"
+  done
+  ssh_run cat /var/log/dsky-apps.log >"$W/dsky-apps.log" 2>/dev/null || true
+  say "- First-boot programs took $(( (SECONDS - t0) / 60 )) min"
+
+  # Each program is checked where it was meant to come from, and only when
+  # this case picked it: the cases do not all pick the same list.
+  picked() { case ",$PROGRAMS," in *",$1,"*) return 0 ;; esac; return 1; }
+  if picked vlc; then
+    check "Ubuntu package installed during setup (vlc)" \
+      "dpkg-query -W -f='\${Status}' vlc | grep -q 'install ok installed'"
   fi
-  check "installed system booted to $target.target" \
-    sudo sh -c "journalctl -D '$W/mnt/var/log/journal' --no-pager 2>/dev/null | grep -qi 'Reached target.*$(echo ${target:0:1} | tr a-z A-Z)${target:1}'"
-  umount_target
+  if picked brave; then
+    wait_for_snapd $((15 * 60)) || true
+    check_eventually $((10 * 60)) "snap installed (brave)" "snap list brave" || true
+  fi
+  if picked obsidian; then
+    check "Flathub app installed (md.obsidian.Obsidian)" "flatpak info md.obsidian.Obsidian"
+  fi
+  if picked chrome; then
+    check "Chrome installed from Google's repository" \
+      "dpkg-query -W -f='\${Status}' google-chrome-stable | grep -q 'install ok installed'"
+  fi
+  check "first-boot programs finished (/var/lib/dsky/apps-done)" \
+    "test -e /var/lib/dsky/apps-done"
+  check "the first-boot pass ran and logged no failure" \
+    "test -s /var/log/dsky-apps.log && ! grep -q FAILED /var/log/dsky-apps.log"
+  if [ "$DRIVERS" = true ]; then
+    check "the answers asked Ubuntu for third-party drivers" \
+      "grep -A2 '^  drivers:' /var/log/installer/autoinstall-user-data | grep -q 'install: true'"
+    # What a virtual machine can prove is that the install step ran, not that
+    # anything was installed: there is no proprietary hardware here to install
+    # for. Most of what looks like proof is not. Every Ubuntu install loads a
+    # drivers controller and runs `ubuntu-drivers list` to see what is on the
+    # machine, so "drivers", "ubuntu-drivers" and the controller's own module
+    # name are all in the log of an install that was never asked for any —
+    # checked against this suite's other cases, which have 27 lines matching
+    # "drivers" and none matching this. The install step is what only happens
+    # when the answers ask for it.
+    check "the installer's drivers step ran" \
+      "grep -q 'drivers-install: installing third-party drivers' /var/log/installer/subiquity-server-debug.log"
+  fi
 else
-  say "- **FAIL** target disk unreadable after first boot"
-  fail=1
+  check "late-command ran (/etc/dsky-provisioned)" "test -s /etc/dsky-provisioned"
+  check "answers were the ones DSKY wrote (autoinstall user-data mentions hello-world)" \
+    "grep -rq hello-world /var/log/installer/"
+  check "apt package from packages: installed (hello)" \
+    "dpkg-query -W -f='\${Status}' hello | grep -q 'install ok installed'"
+  wait_for_snapd $((15 * 60)) || true
+  check_eventually $((10 * 60)) "snap from snaps: installed (hello-world)" "snap list hello-world" || true
 fi
+if [ "$IDENTITY" = true ]; then
+  check "account from identity: exists (dsky)" "id dsky"
+fi
+target=multi-user
+[ "$KIND" = desktop ] && target=graphical
+check "installed system reached $target.target" "systemctl is-active $target.target"
+
+ssh_run "systemd-analyze 2>/dev/null; uname -a; lsb_release -ds" >"$W/system.txt" 2>&1 || true
+ssh_run poweroff >/dev/null 2>&1 || true
+stop_vm
 exit $fail
