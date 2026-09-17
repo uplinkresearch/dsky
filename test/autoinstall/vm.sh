@@ -20,10 +20,11 @@
 #                         screenshots show what a person would see, and Install
 #                         is pressed at the review screen to see what follows.
 #   server-26.04-programs Ubuntu Server 26.04 with programs picked the way the
-#                         app picks them (dsky install --apps): an Ubuntu
-#                         package, a snap, a Flathub app and Chrome from
-#                         Google's repository, checked on the installed system
-#                         after first boot.
+#                         app picks them (dsky install --apps): one of each
+#                         kind of source — an Ubuntu package, a snap, a Flathub
+#                         app, Chrome from Google's repository and DSKY from
+#                         its own published release — checked on the installed
+#                         system after first boot.
 #   desktop-26.04-programs  The same programs through the Desktop installer,
 #                         which keeps Ubuntu's confirmation screen: the run
 #                         waits for the review screen and presses Install, as
@@ -86,12 +87,12 @@ server-26.04-programs)
   URL=$MIRROR/26.04/ubuntu-26.04.1-live-server-amd64.iso
   SHA=cc8a95cde20f6ced61a322420de00f10cc3c90ced545daa46cb9c1a117f1d927
   KIND=server PATCH=true IDENTITY=true OBSERVE=false
-  PROGRAMS=vlc,brave,obsidian,chrome SRC_ID=ubuntu-26.04-server ;;
+  PROGRAMS=vlc,brave,obsidian,chrome,dsky SRC_ID=ubuntu-26.04-server ;;
 desktop-26.04-programs)
   URL=$MIRROR/26.04/ubuntu-26.04.1-desktop-amd64.iso
   SHA=601e30fbf5d97759367c632e2c33630665039b7e2158fd068403da3ccf1bda1f
   KIND=desktop PATCH=false IDENTITY=true OBSERVE=false
-  PROGRAMS=vlc,brave,obsidian,chrome SRC_ID=ubuntu-26.04-desktop
+  PROGRAMS=vlc,brave,obsidian,chrome,dsky SRC_ID=ubuntu-26.04-desktop
   # Desktop keeps Ubuntu's confirmation: Enter at the review screen, as a
   # person would press Install.
   INSTALL_BUTTON=true ;;
@@ -494,6 +495,16 @@ if [ -n "$PROGRAMS" ]; then
   if picked chrome; then
     check "Chrome installed from Google's repository" \
       "dpkg-query -W -f='\${Status}' google-chrome-stable | grep -q 'install ok installed'"
+  fi
+  if picked dsky; then
+    # On every user's PATH, not root's, and the binary the checksum passed is
+    # the one that is there: it has to run.
+    check "DSKY installed from its own release, and runs" \
+      "/usr/local/bin/dsky version | grep -q '^dsky v'"
+    check "DSKY is on the PATH for an ordinary account" \
+      "su - dsky -c 'command -v dsky' | grep -q '^/usr/local/bin/dsky$'"
+    check "DSKY has an app-drawer launcher every account can see" \
+      "grep -q '^Exec=/usr/local/bin/dsky app$' /usr/local/share/applications/dsky.desktop"
   fi
   check "first-boot programs finished (/var/lib/dsky/apps-done)" \
     "test -e /var/lib/dsky/apps-done"

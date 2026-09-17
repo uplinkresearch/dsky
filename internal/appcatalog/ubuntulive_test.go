@@ -21,10 +21,10 @@ import (
 // So each name is looked up where it comes from, exactly as the table spells
 // it. catalog-health runs this weekly beside TestWingetIDsLive.
 //
-// The releases DSKY offers Ubuntu programs on. Both are checked: a package
-// that has been dropped from the newer release is a trap for the LTS that
-// most fleets will move to.
-var ubuntuReleases = []string{"noble", "resolute"} // 24.04 LTS, 26.04 LTS
+// The series DSKY offers Ubuntu programs on. Both are checked: a package that
+// has been dropped from the newer one is a trap for the LTS that most fleets
+// will move to.
+var ubuntuSeries = []string{"noble", "resolute"} // 24.04 LTS, 26.04 LTS
 
 func liveGet(ctx context.Context, url string, hdr map[string]string) (int, string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -148,7 +148,7 @@ func TestUbuntuNamesLive(t *testing.T) {
 			switch {
 			case src.Apt != "":
 				missing := []string{}
-				for _, rel := range ubuntuReleases {
+				for _, rel := range ubuntuSeries {
 					exists, err := aptExists(ctx, rel, src.Apt)
 					if err != nil {
 						bad(a.ID, "apt %s in %s: %v", src.Apt, rel, err)
@@ -194,8 +194,8 @@ func TestUbuntuNamesLive(t *testing.T) {
 					return
 				}
 				good()
-			case src.Repo != "":
-				// A vendor repository is checked by its own test below.
+			case src.Repo != "", src.Release != "":
+				// Both have their own tests below.
 				good()
 			}
 		}()
@@ -235,6 +235,62 @@ func TestUbuntuVendorReposLive(t *testing.T) {
 		}
 		if len(exists) > 0 {
 			t.Logf("%s: ok", repo.ID)
+		}
+	}
+}
+
+// A program installed from a published release depends on three things that
+// are outside DSKY: the release exists, the asset for this machine is in it,
+// and the checksum file lists that asset by name. Any of them can change with
+// a release the vendor makes on their own schedule — which, for DSKY itself,
+// is every time it ships. So the current release is checked the way the
+// first-boot script will read it, including the redirect it resolves the tag
+// from.
+func TestUbuntuReleasesLive(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network")
+	}
+	ctx := context.Background()
+	for _, rel := range ubuntuReleases {
+		base := "https://github.com/" + rel.Repo + "/releases"
+		req, err := http.NewRequestWithContext(ctx, "HEAD", base+"/latest", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := (&http.Client{Timeout: 45 * time.Second}).Do(req)
+		if err != nil {
+			t.Errorf("%s: %v", rel.ID, err)
+			continue
+		}
+		resp.Body.Close()
+		final := resp.Request.URL.String()
+		_, tag, ok := strings.Cut(final, "/tag/")
+		if !ok || tag == "" {
+			t.Errorf("%s: /releases/latest did not redirect to a tag (%s)", rel.ID, final)
+			continue
+		}
+
+		// amd64 and arm64 both, because the machine being imaged decides
+		// which, and a release missing one is a silent skip on that hardware.
+		sums := ""
+		code, body, err := liveGet(ctx, base+"/download/"+tag+"/"+rel.Sums, nil)
+		if err != nil || code != 200 {
+			t.Errorf("%s: %s %s: HTTP %d %v", rel.ID, tag, rel.Sums, code, err)
+			continue
+		}
+		sums = body
+		for _, arch := range []string{"amd64", "arm64"} {
+			asset := strings.NewReplacer("{tag}", tag, "{arch}", arch).Replace(rel.Asset)
+			if !strings.Contains(sums, asset) {
+				t.Errorf("%s: %s does not list %s", rel.ID, rel.Sums, asset)
+				continue
+			}
+			code, _, err := liveGet(ctx, base+"/download/"+tag+"/"+asset, nil)
+			if err != nil || code != 200 {
+				t.Errorf("%s: %s: HTTP %d %v", rel.ID, asset, code, err)
+				continue
+			}
+			t.Logf("%s: %s ok", rel.ID, asset)
 		}
 	}
 }

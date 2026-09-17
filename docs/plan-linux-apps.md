@@ -140,7 +140,12 @@ Ubuntu has three sources. The rule, in order:
 3. **Flathub** for the rest, preferring publisher-verified apps. Ubuntu does
    not ship Flatpak, so the first one adds `flatpak` and the Flathub remote.
 4. **The vendor's own apt repository** only where that is the vendor's
-   official channel and nothing above is: Google Chrome.
+   official channel and nothing above is: Google Chrome, AnyDesk, TeamViewer.
+5. **A published release binary**, for a program packaged nowhere at all,
+   fetched and checked against the checksum file published beside it. Last,
+   because nothing updates it with the system afterwards. DSKY is the only
+   one: it installs to `/usr/local/bin`, not to the root account's home the
+   way its own `curl … | sh` installer would at first boot.
 
 Checked on 2026-09-14 against packages.ubuntu.com (noble = 24.04,
 resolute = 26.04), the Snapcraft store API and the Flathub API, and re-checked

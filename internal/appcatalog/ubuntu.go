@@ -15,7 +15,11 @@ import (
 //  3. Flathub (Flatpak), publisher-verified apps only. Ubuntu doesn't ship
 //     Flatpak, so the first one installs it, on first boot.
 //  4. The vendor's own apt repository (Repo), only where that is the vendor's
-//     official channel and nothing above is: Google Chrome.
+//     official channel and nothing above is: Google Chrome, AnyDesk,
+//     TeamViewer.
+//  5. The vendor's published release binary (Release), for a program that is
+//     packaged nowhere at all — DSKY itself, so far. Last, because nothing
+//     updates it with the system afterwards.
 //
 // Unofficial clients are left out (Dusty's decision): Teams for Linux, the
 // Notion snap, the Zoom and Zotero snaps, and Flathub apps whose publisher
@@ -29,6 +33,9 @@ type UbuntuSource struct {
 	Classic bool   `json:"classic,omitempty"` // snap needs classic confinement
 	Flatpak string `json:"flatpak,omitempty"`
 	Repo    string `json:"repo,omitempty"` // a vendor repository DSKY knows how to add
+	// Release is a program published as a release binary on GitHub rather
+	// than packaged anywhere: rule 5, and the last resort. See UbuntuRelease.
+	Release string `json:"release,omitempty"`
 	// Note is shown beside the name when what installs isn't obviously the
 	// program asked for.
 	Note string `json:"note,omitempty"`
@@ -121,8 +128,68 @@ func (s UbuntuSource) Where() string {
 			return r.Name + "'s own apt repository"
 		}
 		return "the " + s.Repo + " repository"
+	case s.Release != "":
+		if r, ok := UbuntuReleaseByID(s.Release); ok {
+			return "its published release, from github.com/" + r.Repo
+		}
+		return "a published release"
 	}
 	return ""
+}
+
+// ReleaseDSKY is DSKY's own published release.
+const ReleaseDSKY = "dsky"
+
+// UbuntuRelease is a program with no package anywhere, published as a release
+// binary on GitHub: rule 5, and a last resort, because nothing updates it with
+// the system afterwards. It is here at all because the alternative for such a
+// program is the vendor's `curl … | sh`, and piping an unpinned script from a
+// branch into a root shell is the one thing DSKY refuses to do anywhere else.
+//
+// What makes it acceptable is the same thing that makes the OS catalog
+// acceptable: the bytes come from the vendor and are checked on arrival,
+// against the checksum file published beside them in the same release.
+type UbuntuRelease struct {
+	ID   string
+	Name string
+	Repo string // owner/repo on GitHub
+	// Asset is the file to fetch, and Sums the checksum file beside it in
+	// the same release. "{tag}" and "{arch}" are filled in — the tag from
+	// whichever release is current, the architecture from dpkg.
+	Asset string
+	Sums  string
+	// Binary is what it is installed as in /usr/local/bin, which is on every
+	// user's PATH; Aliases are other names for the same file.
+	Binary  string
+	Aliases []string
+	// A launcher, for the desktop installs. Icon is an asset in the same
+	// release, and is skipped if it cannot be fetched.
+	Icon    string
+	Exec    string
+	Comment string
+}
+
+var ubuntuReleases = []UbuntuRelease{{
+	ID:      ReleaseDSKY,
+	Name:    "DSKY",
+	Repo:    "uplinkresearch/dsky",
+	Asset:   "dsky-{tag}-linux-{arch}",
+	Sums:    "SHA256SUMS.txt",
+	Binary:  "dsky",
+	Aliases: []string{"compose"},
+	Icon:    "dsky.png",
+	Exec:    "dsky app",
+	Comment: "Build and flash bootable OS installers",
+}}
+
+// UbuntuReleaseByID returns the release a program's Release field names.
+func UbuntuReleaseByID(id string) (UbuntuRelease, bool) {
+	for _, r := range ubuntuReleases {
+		if r.ID == id {
+			return r, true
+		}
+	}
+	return UbuntuRelease{}, false
 }
 
 // UbuntuRepoByID returns the repository a program's Repo field names.
@@ -199,6 +266,8 @@ var ubuntu = map[string]UbuntuSource{
 	"postman":    {Snap: "postman"},
 	"putty":      {Apt: "putty"},
 
+	"dsky": {Release: ReleaseDSKY},
+
 	"steam":     {Apt: "steam-installer"},
 	"epicgames": {Flatpak: "com.heroicgameslauncher.hgl", Note: "installs Heroic Games Launcher"},
 	"gog":       {Flatpak: "com.heroicgameslauncher.hgl", Note: "installs Heroic Games Launcher"},
@@ -238,6 +307,7 @@ type UbuntuPlan struct {
 	Snaps    []UbuntuSnap
 	Flatpaks []string
 	Repos    []string
+	Releases []string
 }
 
 // UbuntuSnap is one snap for the installer's snaps section.
@@ -256,7 +326,8 @@ func (p UbuntuPlan) FirstBoot() bool { return !p.Empty() }
 
 // Empty reports whether nothing is to be installed.
 func (p UbuntuPlan) Empty() bool {
-	return len(p.Apt) == 0 && len(p.Snaps) == 0 && len(p.Flatpaks) == 0 && len(p.Repos) == 0
+	return len(p.Apt) == 0 && len(p.Snaps) == 0 && len(p.Flatpaks) == 0 &&
+		len(p.Repos) == 0 && len(p.Releases) == 0
 }
 
 // ResolveUbuntu turns picker ids into an Ubuntu install plan. A program with
@@ -310,6 +381,9 @@ func ResolveUbuntu(ids []string) (UbuntuPlan, error) {
 			for _, v := range sub.Repos {
 				add(&p.Repos, v)
 			}
+			for _, v := range sub.Releases {
+				add(&p.Releases, v)
+			}
 			continue
 		}
 		a, ok := Get(id)
@@ -335,8 +409,11 @@ func ResolveUbuntu(ids []string) (UbuntuPlan, error) {
 			add(&p.Flatpaks, src.Flatpak)
 		case src.Repo != "":
 			add(&p.Repos, src.Repo)
+		case src.Release != "":
+			add(&p.Releases, src.Release)
 		}
 	}
 	sort.Strings(p.Repos)
+	sort.Strings(p.Releases)
 	return p, nil
 }

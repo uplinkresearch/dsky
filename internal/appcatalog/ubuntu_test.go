@@ -16,7 +16,7 @@ func TestUbuntuTableIsConsistent(t *testing.T) {
 			t.Errorf("%s: table entry not attached", id)
 		}
 		n := 0
-		for _, v := range []string{src.Apt, src.Snap, src.Flatpak, src.Repo} {
+		for _, v := range []string{src.Apt, src.Snap, src.Flatpak, src.Repo, src.Release} {
 			if v != "" {
 				n++
 			}
@@ -50,6 +50,27 @@ func TestUbuntuTableIsConsistent(t *testing.T) {
 	for _, r := range ubuntuRepos {
 		if r.ID == "" || r.Name == "" || r.KeyURL == "" || r.URL == "" || r.Suite == "" || r.Comps == "" || r.Package == "" {
 			t.Errorf("repository %+v is missing a field the first-boot script needs", r)
+		}
+	}
+	// The same for a published release: a program offered from one and then
+	// not installable from it is a machine that comes up without it.
+	for id, src := range ubuntu {
+		if src.Release == "" {
+			continue
+		}
+		if _, ok := UbuntuReleaseByID(src.Release); !ok {
+			t.Errorf("%s names release %q, which DSKY has no recipe for", id, src.Release)
+		}
+	}
+	for _, r := range ubuntuReleases {
+		if r.ID == "" || r.Name == "" || r.Repo == "" || r.Asset == "" || r.Sums == "" || r.Binary == "" {
+			t.Errorf("release %+v is missing a field the first-boot script needs", r)
+		}
+		// Without both, the asset name cannot be built for the machine in
+		// front of it, and a checksum file listing every platform would let
+		// the wrong one through.
+		if !strings.Contains(r.Asset, "{tag}") || !strings.Contains(r.Asset, "{arch}") {
+			t.Errorf("release %s: asset %q must name both {tag} and {arch}", r.ID, r.Asset)
 		}
 	}
 }

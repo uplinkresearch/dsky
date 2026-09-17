@@ -188,6 +188,74 @@ TimeoutStartSec=0
 WantedBy=multi-user.target
 `
 
+// writeReleaseInstall installs a program published only as a release binary,
+// into /usr/local/bin, where it is on every user's PATH rather than one
+// account's. The install-to-a-home-directory that the vendor's own script does
+// is wrong here: the first boot runs as root, and root's ~/.local/bin is not
+// where the person who will use the machine is going to look.
+//
+// The bytes are checked against the checksum file published in the same
+// release before anything is run, and nothing is installed if they do not
+// match. The release to take is whichever one is current, resolved by asking
+// GitHub what /releases/latest redirects to — no JSON parsing, and no version
+// pinned in DSKY that would go stale between DSKY's own releases.
+func writeReleaseInstall(w func(string, ...any), rel appcatalog.UbuntuRelease) {
+	asset := strings.NewReplacer("{tag}", `$tag`, "{arch}", `$arch`).Replace(rel.Asset)
+	base := "https://github.com/" + rel.Repo + "/releases"
+	w(`if command -v %s >/dev/null 2>&1; then`, rel.Binary)
+	w(`  note "%s is installed"`, rel.Name)
+	w(`else`)
+	w(`  apt install -y -q curl ca-certificates >/dev/null 2>&1 || true`)
+	w(`  arch=$(dpkg --print-architecture)`)
+	w(`  tag=$(curl -fsSLI -o /dev/null -w '%%{url_effective}' %s/latest | sed 's#.*/tag/##')`, base)
+	w(`  d=$(mktemp -d)`)
+	w(`  if [ -z "$tag" ]; then`)
+	w(`    note "FAILED %s: could not find its latest release"; failed=1`, rel.Name)
+	w(`  elif ! curl -fsSL -o "$d/bin" "%s/download/$tag/%s"; then`, base, asset)
+	w(`    note "FAILED %s: no $tag build for $arch"; failed=1`, rel.Name)
+	w(`  elif ! curl -fsSL -o "$d/sums" "%s/download/$tag/%s"; then`, base, rel.Sums)
+	w(`    note "FAILED %s: could not fetch its checksums"; failed=1`, rel.Name)
+	w(`  else`)
+	// The asset name is matched exactly, so a checksum file listing every
+	// platform cannot let another platform's binary through.
+	w(`    want=$(awk -v a="%s" '$2 == a || $2 == "*" a {print $1}' "$d/sums")`, asset)
+	w(`    got=$(sha256sum "$d/bin" | awk '{print $1}')`)
+	w(`    if [ -n "$want" ] && [ "$want" = "$got" ]; then`)
+	w(`      install -m 0755 "$d/bin" /usr/local/bin/%s`, rel.Binary)
+	for _, alias := range rel.Aliases {
+		w(`      ln -sf %s /usr/local/bin/%s`, rel.Binary, alias)
+	}
+	if rel.Exec != "" {
+		// A launcher for every account, not root's. Written whether or not a
+		// desktop is installed: one that is added later finds it.
+		w(`      icon=`)
+		if rel.Icon != "" {
+			w(`      install -d -m 0755 /usr/local/share/icons`)
+			w(`      curl -fsSL -o /usr/local/share/icons/%s "%s/download/$tag/%s" && icon=/usr/local/share/icons/%s`,
+				rel.Icon, base, rel.Icon, rel.Icon)
+		}
+		w(`      install -d -m 0755 /usr/local/share/applications`)
+		w(`      cat > /usr/local/share/applications/%s.desktop <<DESKTOP`, rel.ID)
+		w(`[Desktop Entry]`)
+		w(`Type=Application`)
+		w(`Name=%s`, rel.Name)
+		w(`Comment=%s`, rel.Comment)
+		w(`Exec=/usr/local/bin/%s`, rel.Exec)
+		w(`Icon=${icon:-drive-removable-media}`)
+		w(`Terminal=false`)
+		w(`Categories=System;Utility;`)
+		w(`DESKTOP`)
+		w(`      update-desktop-database /usr/local/share/applications >/dev/null 2>&1 || true`)
+	}
+	w(`      note "installed %s $tag"`, rel.Name)
+	w(`    else`)
+	w(`      note "FAILED %s: the download did not match its published checksum"; failed=1`, rel.Name)
+	w(`    fi`)
+	w(`  fi`)
+	w(`  rm -rf "$d"`)
+	w(`fi`)
+}
+
 // ubuntuProbeHosts are the hosts this plan has to reach before it is worth
 // starting, in the order they are needed. Only what the plan actually uses:
 // waiting on a host nothing needs is fifteen minutes of a machine doing
@@ -211,6 +279,9 @@ func ubuntuProbeHosts(plan appcatalog.UbuntuPlan) []string {
 				hosts = append(hosts, h)
 			}
 		}
+	}
+	if len(plan.Releases) > 0 {
+		hosts = append(hosts, "github.com")
 	}
 	seen := map[string]bool{}
 	out := hosts[:0]
@@ -401,6 +472,14 @@ func ubuntuFirstBootScript(plan appcatalog.UbuntuPlan) string {
 			w(`  if flatpak install --system -y --noninteractive flathub %s; then note "installed %s"; else note "FAILED %s"; failed=1; fi`, id, id, id)
 		}
 		w(`fi`)
+	}
+	for _, id := range plan.Releases {
+		rel, ok := appcatalog.UbuntuReleaseByID(id)
+		if !ok {
+			w(`note "FAILED %s: DSKY does not know this release"; failed=1`, id)
+			continue
+		}
+		writeReleaseInstall(w, rel)
 	}
 	w(`if [ "$failed" = 0 ]; then`)
 	w(`  mkdir -p /var/lib/dsky && touch /var/lib/dsky/apps-done`)
