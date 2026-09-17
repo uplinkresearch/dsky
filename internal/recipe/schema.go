@@ -396,6 +396,25 @@ type FlashSpec struct {
 // LinuxSpec configures linux-iso recipes.
 type LinuxSpec struct {
 	Autoinstall *AutoinstallSpec `yaml:"autoinstall,omitempty"`
+	Kickstart   *KickstartSpec   `yaml:"kickstart,omitempty"`
+}
+
+// KickstartSpec makes an Anaconda installer -- Fedora Server, RHEL,
+// AlmaLinux, Rocky -- install itself from answers DSKY appends to the ISO.
+//
+// It needs no boot option and no rebuilt ISO, which is the whole reason this
+// is worth doing: Anaconda looks, by itself, for a filesystem labelled OEMDRV
+// holding ks.cfg, and uses it. So the ISO is written unmodified and a small
+// labelled partition is appended after it, exactly as CIDATA is for Ubuntu --
+// except that Ubuntu also needs its GRUB menu rewritten to pass `autoinstall`,
+// and this does not.
+type KickstartSpec struct {
+	File string            `yaml:"file"` // template: the kickstart
+	Vars map[string]string `yaml:"vars,omitempty"`
+	// KernelArgs are appended to the installer's kernel line. The common
+	// reasons are a serial console on a headless server (console=ttyS0,115200)
+	// and inst.text on machines whose graphics the installer cannot drive.
+	KernelArgs []string `yaml:"kernel_args,omitempty"`
 }
 
 // AutoinstallSpec makes an Ubuntu (subiquity) live-server ISO install
@@ -615,6 +634,14 @@ func (r *Recipe) Validate() error {
 		}
 		if a := r.Linux.Autoinstall; a != nil && a.UserData == "" {
 			return fail("linux.autoinstall.user_data (template path) is required")
+		}
+		if k := r.Linux.Kickstart; k != nil && k.File == "" {
+			return fail("linux.kickstart.file (template path) is required")
+		}
+		// Two sets of answers on one stick is a recipe whose author expects
+		// one of them to be read, with no way to say which.
+		if r.Linux.Autoinstall != nil && r.Linux.Kickstart != nil {
+			return fail("linux: autoinstall and kickstart answer different installers — use one")
 		}
 	}
 	if r.Target.Size != "auto" {

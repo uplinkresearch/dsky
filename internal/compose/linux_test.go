@@ -225,3 +225,129 @@ linux:
 		t.Error("sector 0 changed — the isohybrid MBR must be preserved")
 	}
 }
+
+// The Fedora Server 44 menu, as published. Two things about it decide whether
+// a kickstart stick works at all: it ships with default="1", and entry 1 is
+// the media check — which fails on any media with answers appended to it,
+// because it hashes the whole device.
+const fedoraGrubCfg = `set default="1"
+
+function load_video {
+  insmod efi_gop
+  insmod all_video
+}
+
+load_video
+set gfxpayload=keep
+insmod gzio
+insmod part_gpt
+insmod ext2
+
+set timeout=60
+### END /etc/grub.d/00_header ###
+
+search --no-floppy --set=root -l 'Fedora-S-dvd-x86_64-44'
+
+### BEGIN /etc/grub.d/10_linux ###
+menuentry 'Install Fedora 44' --class fedora --class gnu-linux --class gnu --class os {
+	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 quiet
+	initrd /images/pxeboot/initrd.img
+}
+menuentry 'Test this media & install Fedora 44' --class fedora --class gnu-linux --class gnu --class os {
+	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 rd.live.check quiet
+	initrd /images/pxeboot/initrd.img
+}
+`
+
+func TestGrubKickstartMenu(t *testing.T) {
+	out, err := grubKickstartMenu([]byte(fedoraGrubCfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same length, so it can be written back into the ISO in place.
+	if len(out) != len(fedoraGrubCfg) {
+		t.Fatalf("menu is %d bytes, the original is %d", len(out), len(fedoraGrubCfg))
+	}
+	got := string(out)
+	// The installer must start: no media check, and the entry that runs is
+	// the only one there.
+	if strings.Contains(got, "rd.live.check") {
+		t.Error("the media check survived; it fails on media with answers appended and halts the install")
+	}
+	if !strings.Contains(got, "set default=0") {
+		t.Error("the menu does not select its own only entry")
+	}
+	// Not a short countdown: Fedora's GRUB drew the menu, ignored one, and sat
+	// there with the installer unstarted. Nothing to wait for, nothing to stop.
+	if !strings.Contains(got, "set timeout=0") || !strings.Contains(got, "timeout_style=hidden") {
+		t.Errorf("the menu waits instead of booting:\n%s", got)
+	}
+	// inst.stage2 is not optional: without it Anaconda cannot find its own
+	// installer image and stops at a shell.
+	if !strings.Contains(got, "inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44") {
+		t.Errorf("the kernel line lost the arguments Anaconda needs:\n%s", got)
+	}
+	// The kickstart rides in as a second initramfs, which is the whole point:
+	// nothing is mounted, so nothing can be busy. GRUB finds it by label.
+	if !strings.Contains(got, "initrd\t/images/pxeboot/initrd.img ($ksdev)/ks.img") {
+		t.Errorf("the kickstart is not loaded as a second initramfs:\n%s", got)
+	}
+	if !strings.Contains(got, "search --no-floppy --set=ksdev -l DSKYKS") {
+		t.Errorf("nothing looks for the answers partition:\n%s", got)
+	}
+	// The kickstart is named, not left to be discovered: Fedora Server 44 came
+	// up asking for a language with a labelled partition sitting on the same
+	// stick. The label is not OEMDRV, because Anaconda's driver-disk stage
+	// claims an OEMDRV volume and holds it against the kickstart fetch.
+	if !strings.Contains(got, "inst.ks=file:/ks.cfg") {
+		t.Errorf("the kernel line does not say where the kickstart is:\n%s", got)
+	}
+	// Without the ISO's own search line, $root is not the install medium and
+	// every path in the entry misses. GRUB then drops back to the menu, which
+	// is indistinguishable on screen from a timeout that never fired.
+	if !strings.Contains(got, "search --no-floppy --set=root -l 'Fedora-S-dvd-x86_64-44'") {
+		t.Errorf("the search line that sets $root was dropped:\n%s", got)
+	}
+
+	// A config with no entries at all is a mistake worth refusing rather than
+	// writing an empty menu into somebody's media.
+	if _, err := grubKickstartMenu([]byte("set default=0\n")); err == nil {
+		t.Error("a grub.cfg with no linux line was accepted")
+	}
+}
+
+// An Anaconda ISO carries its UEFI menu twice -- in the ISO9660 tree and
+// inside the El Torito EFI boot image embedded in the same file -- so patching
+// the first copy and reading back the second is a rewrite that silently did
+// not take. Both have to be written.
+func TestFindAllBytes(t *testing.T) {
+	needle := []byte("MENUENTRY-NEEDLE")
+	var buf []byte
+	var want []int64
+	for i := 0; i < 3; i++ {
+		want = append(want, int64(len(buf)))
+		buf = append(buf, needle...)
+		buf = append(buf, bytes.Repeat([]byte{0x41}, 9<<20)...) // across chunks
+	}
+	p := filepath.Join(t.TempDir(), "img")
+	if err := os.WriteFile(p, buf, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := findAllBytes(p, needle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("found %d copies at %v, want %d at %v", len(got), got, len(want), want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("copy %d at %d, want %d", i, got[i], want[i])
+		}
+	}
+	// A needle that is not there is not an error, just no offsets.
+	none, err := findAllBytes(p, []byte("NOT-PRESENT-ANYWHERE"))
+	if err != nil || len(none) != 0 {
+		t.Errorf("absent needle: %v %v", none, err)
+	}
+}

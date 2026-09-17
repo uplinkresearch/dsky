@@ -87,6 +87,16 @@ had to say plainly what it was about to do.
   put on the proprietary drivers it finds. Server installs unattended; Desktop
   keeps Ubuntu's own "Review your choices" confirmation before it erases
   anything.
+- **Anaconda installers** — Fedora Server, and the RHEL family, installed
+  unattended from a kickstart DSKY appends to the ISO, whose own bytes are left
+  exactly as the distribution published them (`linux.kickstart`). Proven on
+  Fedora Server 44: three minutes, no questions. The answers are handed to the
+  kernel as a second initramfs rather than a partition to mount — the ISO's
+  volume label belongs to the whole disk on hybrid media, so the installer
+  mounts the disk and no partition on it can then be opened. Fedora's shipped
+  default entry also media-checks itself to a halt on any media with anything
+  appended, so DSKY rewrites the boot menu in place, same byte length, as it
+  does for Ubuntu.
 - **Appliance images** — raw `.img` (xz/zstd/gz-compressed supported),
   stream-decompressed while writing.
 

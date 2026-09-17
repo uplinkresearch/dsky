@@ -29,6 +29,12 @@
 #                         which keeps Ubuntu's confirmation screen: the run
 #                         waits for the review screen and presses Install, as
 #                         a person would, then checks what landed.
+#   fedora-44-kickstart   Fedora Server 44 installed unattended from a kickstart
+#                         DSKY appends to the ISO, which is otherwise left
+#                         exactly as Fedora published it. The answers ride in as
+#                         a second initramfs rather than a partition to mount —
+#                         see internal/compose/cpio.go for why the obvious way
+#                         cannot work on media made from a hybrid ISO.
 #   server-26.04-drivers  `dsky install --drivers` on Ubuntu, which asks its
 #                         installer for the proprietary drivers it finds. A VM
 #                         has none; what this proves is that the section DSKY
@@ -55,8 +61,21 @@ set -euo pipefail
 
 CASE=${1:?case}
 W=$(realpath -m "${2:-./autoinstall-work}")
-REPO=$(cd "$(dirname "$0")/../.." && pwd)
 mkdir -p "$W/shots"
+
+# Run from a copy in the workdir. A case takes the better part of an hour, and
+# bash reads a script as it goes rather than all at once: editing this file
+# while a run is in flight changes what the run does halfway through. That has
+# happened twice, and both times the result looked like a finding rather than
+# like the harness being edited underneath itself. REPO is worked out here and
+# carried over, since the copy cannot find the repository from where it sits.
+if [ -z "${DSKY_VM_PINNED:-}" ]; then
+  DSKY_VM_REPO=$(cd "$(dirname "$0")/../.." && pwd)
+  cp "$0" "$W/vm.sh"
+  export DSKY_VM_PINNED=1 DSKY_VM_REPO
+  exec bash "$W/vm.sh" "$@"
+fi
+REPO=$DSKY_VM_REPO
 RESULT="$W/result.md"
 : >"$RESULT"
 say() { echo "$*" | tee -a "$RESULT"; }
@@ -96,6 +115,14 @@ desktop-26.04-programs)
   # Desktop keeps Ubuntu's confirmation: Enter at the review screen, as a
   # person would press Install.
   INSTALL_BUTTON=true ;;
+fedora-44-kickstart)
+  # The basis of DSKY's kickstart path, which had never been run against a real
+  # Anaconda ISO. Several things had to be right before it worked at all; each
+  # is written down where it lives.
+  URL=https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-dvd-x86_64-44-1.7.iso
+  SHA=85837793bfa36db6bc709b4cecd2ec116951b87d9c53c3d95eb2fac8dcf7cf1f
+  KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
+  SRC_ID=fedora-44-server ;;
 server-26.04-drivers)
   # --drivers on Ubuntu asks its installer to put on the proprietary drivers
   # it finds. A virtual machine has none, so what this proves is the part
@@ -109,6 +136,9 @@ server-26.04-drivers)
 esac
 PROGRAMS=${PROGRAMS:-}
 DRIVERS=${DRIVERS:-}
+# Which installer answers the media carries: Ubuntu's cloud-init autoinstall on
+# a CIDATA partition, or Anaconda's kickstart as a second initramfs.
+FAMILY=${FAMILY:-ubuntu}
 SRC_ID=${SRC_ID:-ci-ubuntu-iso}
 # Ubuntu Desktop stops at "Ready to install — Review your choices" and waits,
 # which is the one confirmation before anything is erased. The cases that get
@@ -119,7 +149,11 @@ INSTALL_BUTTON=${INSTALL_BUTTON:-}
 say "## $CASE"
 say ""
 say "- ISO: \`$(basename "$URL")\`"
-say "- GRUB patched for zero-touch: $PATCH · account in answers: $IDENTITY"
+if [ "$FAMILY" = fedora ]; then
+  say "- Anaconda kickstart appended to the ISO; the ISO's own bytes are untouched"
+else
+  say "- GRUB patched for zero-touch: $PATCH · account in answers: $IDENTITY"
+fi
 
 # ── A test-only key, so the installed system can be asked what it got ──────
 KEY="$W/id_ed25519"
@@ -165,6 +199,64 @@ ssh_late_commands() { # the root key, for the cases whose ssh section may not ru
   echo "    - chmod 0600 /target/root/.ssh/authorized_keys"
   echo "    - curtin in-target --target=/target -- systemctl enable ssh"
 }
+
+if [ "$FAMILY" = fedora ]; then
+  # A kickstart that answers everything Anaconda would otherwise ask, so that
+  # anything left on screen is a failure rather than a question. The account
+  # and key are the test's, the way the Ubuntu cases' are.
+  cat >"$W/ws/templates/ci-kickstart.cfg.tmpl" <<KSEOF
+# Generated for DSKY's CI ({{.Org.Name}}).
+text
+lang en_US.UTF-8
+keyboard us
+timezone UTC --utc
+network --bootproto=dhcp --activate --hostname=dsky-ci
+rootpw --lock
+user --name=dsky --groups=wheel --password=dsky --plaintext
+clearpart --all --initlabel
+autopart --type=plain --nohome
+bootloader --location=mbr
+firstboot --disable
+services --enabled=sshd
+%packages
+@^server-product-environment
+# On the DVD (checked in its Packages tree) and not in the default selection,
+# so finding it afterwards means %packages was honoured. A package that is not
+# on the media fails the whole install with "No match for argument", which is
+# how this line was chosen rather than guessed.
+vim-enhanced
+%end
+%post
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+echo '$PUBKEY' > /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+echo "provisioned by DSKY" > /etc/dsky-provisioned
+%end
+reboot
+KSEOF
+  cat >"$W/ws/recipes/ci-ubuntu.yaml" <<EOF
+version: 1
+id: ci-ubuntu
+name: "CI: $CASE"
+os:
+  type: linux-iso
+  source: $SRC_ID
+target:
+  min_stick: 8GiB
+  boot: uefi-only
+linux:
+  kickstart:
+    file: templates/ci-kickstart.cfg.tmpl
+    # The installer's console on the serial port, which the run captures to
+    # serial-install.log. A headless server install has nowhere else to say
+    # why it stopped, and screenshots of a scrolling dracut log are a poor
+    # substitute for the log.
+    kernel_args: [console=ttyS0,115200, inst.text]
+flash:
+  verify: readback-sha256
+EOF
+fi
 
 {
   echo '#cloud-config'
@@ -247,6 +339,7 @@ PYEOF
   find "$W/lib/artifacts" -type f -size +1G -delete || true
 fi
 
+if [ "$FAMILY" != fedora ]; then
 cat >"$W/ws/recipes/ci-ubuntu.yaml" <<EOF
 version: 1
 id: ci-ubuntu
@@ -264,12 +357,17 @@ linux:
 flash:
   verify: readback-sha256
 EOF
+fi
 
 # DRYRUN=1 stops here, after checking the workspace, without the multi-GB pull.
 if [ "${DRYRUN:-}" = 1 ]; then
   "$W/dsky" -w "$W/ws" recipes list
   "$W/dsky" -w "$W/ws" sources list
-  cat "$W/ws/templates/ci-autoinstall.yaml.tmpl"
+  if [ "$FAMILY" = fedora ]; then
+    cat "$W/ws/templates/ci-kickstart.cfg.tmpl"
+  else
+    cat "$W/ws/templates/ci-autoinstall.yaml.tmpl"
+  fi
   exit 0
 fi
 
@@ -387,12 +485,19 @@ trap 'stop_vm; shots_to_png' EXIT
 # ── Install from the stick ─────────────────────────────────────────────────
 # The image is attached as a USB stick and boots first. -no-reboot turns the
 # installer's final reboot into QEMU exiting, which is how the end is seen.
+#
+# snapshot=on, not readonly=on: a real USB stick is writable, and an installer
+# is entitled to write to one. Anaconda mounts the answers partition read-write
+# -- it treats an OEMDRV volume as a driver disk as well as a kickstart -- and
+# against read-only media that mount fails with "Can't open blockdev", which
+# looks like a broken partition and is not. Writes go to a throwaway overlay,
+# so the built artifact is still never modified.
 LIMIT=$((60 * 60))
 [ "$OBSERVE" = true ] && LIMIT=$((30 * 60))
 set +e
 t0=$SECONDS
 run_vm install "$LIMIT" -no-reboot \
-  -drive file="$IMG",format=raw,if=none,id=stick,readonly=on \
+  -drive file="$IMG",format=raw,if=none,id=stick,snapshot=on \
   -device usb-storage,drive=stick,bootindex=0
 rc=$?
 set -e
@@ -525,6 +630,17 @@ if [ -n "$PROGRAMS" ]; then
     check "the installer's drivers step ran" \
       "grep -q 'drivers-install: installing third-party drivers' /var/log/installer/subiquity-server-debug.log"
   fi
+elif [ "$FAMILY" = fedora ]; then
+  # The claim: the installer ran start to finish on answers DSKY put on the
+  # stick, asking nothing. original-ks.cfg is Anaconda's copy of the kickstart
+  # it was handed — not anaconda-ks.cfg, which it writes out from the finished
+  # configuration and which carries none of DSKY's own text.
+  check "the kickstart's %post ran (/etc/dsky-provisioned)" "test -s /etc/dsky-provisioned"
+  check "the kickstart DSKY wrote is the one Anaconda used" \
+    "grep -q 'Generated for DSKY' /root/original-ks.cfg"
+  check "the answers came from the initramfs, not a mounted partition" \
+    "grep -q 'ks=file:/ks.cfg' /root/original-ks.cfg /var/log/anaconda/anaconda.log || grep -qr 'inst.ks=file' /var/log/anaconda/"
+  check "package from %packages installed (vim-enhanced)" "rpm -q vim-enhanced"
 else
   check "late-command ran (/etc/dsky-provisioned)" "test -s /etc/dsky-provisioned"
   check "answers were the ones DSKY wrote (autoinstall user-data mentions hello-world)" \

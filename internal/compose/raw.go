@@ -30,6 +30,9 @@ func buildRaw(ctx context.Context, req Request) (*Artifact, error) {
 	if r.Linux != nil && r.Linux.Autoinstall != nil {
 		return buildLinuxAutoinstall(ctx, req, entry, blob, comp)
 	}
+	if r.Linux != nil && r.Linux.Kickstart != nil {
+		return buildLinuxKickstart(ctx, req, entry, blob, comp)
+	}
 	st, err := os.Stat(blob)
 	if err != nil {
 		return nil, err
