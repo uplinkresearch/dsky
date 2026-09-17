@@ -22,3 +22,9 @@ internal/webui/index.html                       text eol=lf
 internal/oscatalog/templates/autounattend.xml.tmpl text eol=lf
 internal/migrate/report.html.tmpl               text eol=lf
 internal/migrate/scan.ps1                       text eol=lf
+
+# The published schema is compared byte for byte against what the Go types
+# generate, so it cannot be allowed to arrive with different line endings on
+# a different platform -- that failed CI on Windows only, which is the most
+# expensive way to find out.
+docs/migrate-manifest.schema.json               text eol=lf

@@ -20,11 +20,17 @@ func TestPublishedSchemaMatchesTheTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(committed) != string(JSONSchema()) {
+	// Compared without regard to line endings: the file is committed with
+	// LF (see .gitattributes), but a checkout on Windows may still hand it
+	// over with CRLF, and a test that fails for that reason teaches nothing
+	// except to ignore it.
+	if unix(string(committed)) != unix(string(JSONSchema())) {
 		t.Errorf("docs/migrate-manifest.schema.json is out of date — regenerate it:\n"+
 			"  go run ./cmd/dsky migrate schema > %s", path)
 	}
 }
+
+func unix(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
 
 // The schema has to describe the fixtures: same property names, same shape.
 // This is the cheap version of running a validator — every key in a fixture
