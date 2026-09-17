@@ -351,3 +351,59 @@ func TestFindAllBytes(t *testing.T) {
 		t.Errorf("absent needle: %v %v", none, err)
 	}
 }
+
+// AlmaLinux 10.2's menu, as published. The RHEL rebuilds write linuxefi and
+// initrdefi where Fedora writes linux and initrd, and a rewrite that assumes
+// Fedora's spelling finds nothing here — the build stops with "could not find
+// linux/initrd lines in the ISO's grub.cfg" before anything is written.
+const almaGrubCfg = `set default="1"
+
+load_video
+set gfxpayload=keep
+insmod gzio
+
+set timeout=60
+
+search --no-floppy --set=root -l 'AlmaLinux-10-2-x86_64-dvd'
+
+menuentry 'Install AlmaLinux 10.2' --class fedora --class gnu-linux --class gnu --class os {
+	linuxefi /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=AlmaLinux-10-2-x86_64-dvd quiet
+	initrdefi /images/pxeboot/initrd.img
+}
+menuentry 'Test this media & install AlmaLinux 10.2' --class fedora --class gnu-linux --class gnu --class os {
+	linuxefi /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=AlmaLinux-10-2-x86_64-dvd rd.live.check quiet
+	initrdefi /images/pxeboot/initrd.img
+}
+`
+
+func TestGrubKickstartMenuRHELFamily(t *testing.T) {
+	out, err := grubKickstartMenu([]byte(almaGrubCfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != len(almaGrubCfg) {
+		t.Fatalf("menu is %d bytes, the original is %d", len(out), len(almaGrubCfg))
+	}
+	got := string(out)
+	// Written back with the commands this ISO uses, not Fedora's: a GRUB that
+	// spells them linuxefi may not have plain linux at all.
+	for _, want := range []string{
+		"linuxefi\t/images/pxeboot/vmlinuz",
+		"initrdefi\t/images/pxeboot/initrd.img ($ksdev)/ks.img",
+		"inst.stage2=hd:LABEL=AlmaLinux-10-2-x86_64-dvd",
+		"search --no-floppy --set=root -l 'AlmaLinux-10-2-x86_64-dvd'",
+		"inst.ks=file:/ks.cfg",
+		"set timeout=0",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("menu lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "rd.live.check") {
+		t.Error("the media check survived; it fails on media with answers appended")
+	}
+	// Fedora's spelling must not be written onto a RHEL-family ISO.
+	if strings.Contains(got, "\tlinux\t") || strings.Contains(got, "\tinitrd\t") {
+		t.Errorf("Fedora's command names were written onto an AlmaLinux menu:\n%s", got)
+	}
+}

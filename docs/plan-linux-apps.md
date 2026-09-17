@@ -317,6 +317,43 @@ Three things worth knowing before the RHEL family is turned on:
   asset name came out `dsky-v0.7.41-linux-` and the download 404'd — reported
   as "no build for ", with nothing after "for".
 
+**The RHEL family installs too, and still does not offer programs
+(2026-09-17).** AlmaLinux 10.2 minimal installs unattended from the same
+kickstart path — 3 minutes, `%post` run, `%packages` honoured, booted
+(`almalinux-10-kickstart`). One difference in the media, and one reason the
+picker stays off:
+
+- **The rebuilds spell it `linuxefi` and `initrdefi`** where Fedora writes
+  `linux` and `initrd`. A menu rewrite that assumes Fedora's spelling finds
+  nothing and the build stops before writing anything, which is at least a
+  loud failure. The replacement now writes back whichever the ISO used.
+- **Fedora's package names are mostly not RHEL's.** Of the 25 dnf names in
+  DSKY's Fedora table, 8 exist in AlmaLinux 10's BaseOS, AppStream and CRB
+  together: firefox, thunderbird, wireguard-tools, wireshark, nmap, git,
+  python3 and nodejs24. Not there: libreoffice, calibre, keepassxc, vlc, gimp,
+  obs-studio, audacity, inkscape, blender, openvpn, remmina, bleachbit, 7zip,
+  qbittorrent, putty, tailscale and moby-engine. Sharing the table would offer
+  seventeen programs that cannot install.
+
+So `kickstartPrograms()` is still Fedora Server alone. **Decide** what the RHEL
+family should be offered, given the above:
+
+1. **Flathub for the desktop programs.** `flatpak` *is* in AlmaLinux's own
+   AppStream, and the verified-publisher rule needs no change, so this works
+   today with a third table and no third-party repository. It does mean a
+   minimal server image growing a Flatpak stack, which may be the wrong shape
+   for the machines these images are usually for.
+2. **EPEL.** The Fedora project's own companion repository for RHEL, and where
+   most of the seventeen actually live. Far less invasive than RPM Fusion and
+   near-universal in RHEL shops, but still a repository DSKY would be turning
+   on for the whole machine.
+3. **The eight, and nothing else.** Honest, tiny, and arguably right for a
+   minimal server install — the picker would simply be short.
+
+Nothing here is blocked on that decision: the kickstart path is proven for the
+family either way, and a workspace recipe with `linux.kickstart` can already
+install any of them unattended with whatever `%packages` the operator names.
+
 ## 2. Fedora Server, AlmaLinux, Rocky, RHEL: kickstart
 
 The same idea with a different answer file, reusing the picker and the
