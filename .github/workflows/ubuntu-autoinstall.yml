@@ -20,6 +20,8 @@ on:
     paths:
       - internal/compose/linux.go
       - internal/compose/cpio.go
+      - internal/oscatalog/fedora.go
+      - internal/oscatalog/ubuntu.go
       - test/autoinstall/**
       - .github/workflows/ubuntu-autoinstall.yml
 
@@ -40,6 +42,7 @@ jobs:
           - desktop-26.04-programs
           - server-26.04-drivers
           - fedora-44-kickstart
+          - fedora-44-programs
           - omarchy
     runs-on: ubuntu-24.04
     timeout-minutes: 150

@@ -206,7 +206,7 @@ func (m *model) buildOptions() {
 		// proprietary drivers the kernel does not carry. Everything else
 		// Windows asks about — edition, account, bloatware — has no Ubuntu
 		// counterpart, so the screen has one line rather than five.
-		if e.ProgramsSupported() {
+		if e.ThirdPartyDriversSupported() {
 			m.opts = append(m.opts, &choice{
 				label:  "Drivers for this computer",
 				values: []string{"no", "yes"},

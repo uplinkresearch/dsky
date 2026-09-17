@@ -20,6 +20,12 @@ type App struct {
 	// Ubuntu is where the program comes from on Ubuntu; nil = not offered
 	// there. Filled from the ubuntu table in ubuntu.go.
 	Ubuntu *UbuntuSource
+	// Fedora is the same for Fedora and the RHEL family, from fedora.go. The
+	// two are separate tables rather than one with translations, because the
+	// right answer differs often enough to be worth stating twice: Fedora
+	// ships no Steam and no codec packages, and leans on Flathub where Ubuntu
+	// leans on snaps.
+	Fedora *FedoraSource
 	Notes  string
 	// Custom is set when this is an installer the operator supplied rather
 	// than a package from winget. It carries the library blob and the silent

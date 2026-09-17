@@ -1849,7 +1849,10 @@ function driverOpt() {
 // winget does not carry, such as RustDesk, says so and offers Add installer.
 const WINGET_ID = /^[A-Za-z0-9][A-Za-z0-9+_-]*(\.[A-Za-z0-9+_-]+)+$/;
 function appsOpt(target = "windows") {
-  const ubuntu = target === "ubuntu";
+  // "linux" here means any of the Linux targets: what differs between them is
+  // which flag on the program says it installs, and which note to show.
+  const linux = target === "ubuntu" || target === "fedora";
+  const ubuntu = linux;
   // A payload runs on a machine that is already in use, whenever somebody
   // starts it -- not at a first boot, and not off a stick.
   const payload = target === "payload";
@@ -1872,7 +1875,10 @@ function appsOpt(target = "windows") {
   // (Add installer…) can be found without reopening the dialog.
   // Only what the chosen OS can install: a Windows-only program or your own
   // .msi is not offered for Ubuntu.
-  const available = () => (state.apps || []).filter(a => ubuntu ? a.ubuntu : a.windows !== false);
+  const installsHere = a => target === "fedora" ? a.fedora
+                        : target === "ubuntu" ? a.ubuntu
+                        : a.windows !== false;
+  const available = () => (state.apps || []).filter(installsHere);
   const items = () => available().map(a => {
     const name = a.name.toLowerCase();
     const nameWords = name.split(/[^a-z0-9]+/).filter(Boolean);
@@ -1885,8 +1891,9 @@ function appsOpt(target = "windows") {
   // Windows' labels (first account only, licence, large download) describe
   // winget packages; on Ubuntu the only thing worth saying is when what
   // installs is not obviously the program asked for.
-  const appLabels = a => ubuntu ? (a.ubuntu_note ? [a.ubuntu_note] : [])
-                                : (a.mine ? ["your installer"] : []).concat(a.labels || []);
+  const noteHere = a => target === "fedora" ? a.fedora_note : a.ubuntu_note;
+  const appLabels = a => linux ? (noteHere(a) ? [noteHere(a)] : [])
+                               : (a.mine ? ["your installer"] : []).concat(a.labels || []);
   const setNote = extra => {
     const anyMine = [...picked.keys()].some(k => (state.apps || []).some(a => a.id === k && a.mine));
     note.textContent = extra || (ubuntu
@@ -2262,8 +2269,8 @@ function openInstall(os, edit) {
     // Ubuntu's installer takes answers, so programs can go on with it — and
     // it can be told to put on the drivers the kernel does not carry. Nothing
     // is staged for that, unlike Windows: Ubuntu fetches them itself.
-    const ap = os.programs ? appsOpt("ubuntu") : null;
-    const dv = os.programs ? checkOpt("Drivers for this computer — the proprietary ones Ubuntu finds (NVIDIA and the like)") : null;
+    const ap = os.programs ? appsOpt(os.third_party_drivers ? "ubuntu" : "fedora") : null;
+    const dv = os.third_party_drivers ? checkOpt("Drivers for this computer — the proprietary ones Ubuntu finds (NVIDIA and the like)") : null;
     if (saved) {
       if (ap) ap.set(saved.apps);
       if (dv) dv.set(!!saved.third_party_drivers);

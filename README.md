@@ -87,11 +87,14 @@ had to say plainly what it was about to do.
   put on the proprietary drivers it finds. Server installs unattended; Desktop
   keeps Ubuntu's own "Review your choices" confirmation before it erases
   anything.
-- **Anaconda installers** — Fedora Server, and the RHEL family, installed
-  unattended from a kickstart DSKY appends to the ISO, whose own bytes are left
-  exactly as the distribution published them (`linux.kickstart`). Proven on
-  Fedora Server 44: three minutes, no questions. The answers are handed to the
-  kernel as a second initramfs rather than a partition to mount — the ISO's
+- **Anaconda installers** — Fedora Server installed from a kickstart DSKY
+  appends to the ISO, whose own bytes are left exactly as the distribution
+  published them (`linux.kickstart`). Proven on Fedora Server 44: three minutes
+  and no questions but the account. Picking **programs** writes that kickstart
+  for you, with no workspace to author, from Fedora's own repositories, Flathub,
+  a vendor's rpm repository or a published release — `dsky apps --os fedora`
+  lists what Fedora gets and where each comes from. The answers are handed to
+  the kernel as a second initramfs rather than a partition to mount: the ISO's
   volume label belongs to the whole disk on hybrid media, so the installer
   mounts the disk and no partition on it can then be opened. Fedora's shipped
   default entry also media-checks itself to a halt on any media with anything
@@ -288,6 +291,15 @@ Ubuntu Desktop 26.04 — the entries whose installer takes DSKY's answers:
 dsky apps --os ubuntu            # what Ubuntu gets, and where each comes from
 dsky install ubuntu-26.04-server --drivers --apps set:it,vlc,chrome
 ```
+
+Fedora Server takes the same picker, through its kickstart, and its list is
+not a translation of Ubuntu's: checked against Fedora's own metadata, `7zip`
+rather than `p7zip`, Node.js by major version, and no Steam, HandBrake or
+Telegram in Fedora's repositories at all — where Flathub has a
+publisher-verified app it takes over, and where nothing does, the program is
+not offered. RPM Fusion would supply the rest in one line and is deliberately
+not enabled: it changes where the whole machine gets its updates, which is the
+owner's decision rather than a side effect of ticking a box.
 
 Each program comes from the best source Ubuntu has for it, in this order:
 Ubuntu's own archive, then the Snap Store where the publisher is the vendor,

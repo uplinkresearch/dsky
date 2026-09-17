@@ -256,6 +256,67 @@ Anaconda recognises a *driver disk*; and a `%packages` entry that is not on the
 media fails the entire install with "No match for argument", so the names have
 to be checked against the ISO rather than assumed.
 
+**Step 4 built (2026-09-17).** Picking programs for Fedora Server writes a
+kickstart the same way picking them for Ubuntu writes autoinstall answers, and
+`dsky apps --os fedora` says where each one comes from. Two things about the
+Fedora table are decisions rather than omissions:
+
+- **The table is not a translation of the Ubuntu one.** Checked against Fedora
+  44's own metadata: `p7zip` is `7zip`, Node.js is packaged per major version
+  (`nodejs24`), and `telegram-desktop`, `handbrake` and `steam` are not in
+  Fedora's repositories at all. Where Flathub has a publisher-verified app it
+  takes over — Fedora is comfortable with Flatpak in a way Ubuntu is not — and
+  where it does not, the program is simply not offered.
+- **RPM Fusion is not enabled.** It would add Steam and the codec packages in
+  one line, and it changes where the whole machine gets updates from. That is
+  the owner's decision, not a side effect of ticking a box in a picker.
+
+`%packages --ignoremissing` is load-bearing and was learned the hard way:
+install media carries a subset of the archive (the Server DVD has
+`vim-enhanced` and not `vlc`), `%packages` resolves against the media, and one
+name it happens not to carry ends the whole install with "No match for
+argument" — after the disk has been erased. With it, what the medium has goes
+on during setup and the rest is left to the first-boot pass, which installs
+from Fedora's own repositories and logs which ones it had to fetch.
+
+Still only Fedora Server. AlmaLinux, Rocky and RHEL run the same Anaconda
+through the same code, and turning each on is one VM run each; until one has
+had it, offering programs there would be offering something never watched
+install.
+
+**Step 4 done (2026-09-17):** the program picker works on Fedora Server, with
+one program from each source it has, checked on the installed machine
+(`fedora-44-programs`):
+
+    installed vlc (the installer did not)      Fedora's own repositories
+    installed Google Chrome                    a vendor's rpm repository
+    installed md.obsidian.Obsidian             Flathub
+    installed DSKY v0.7.41                     a published release
+    first-boot programs done
+
+Three things worth knowing before the RHEL family is turned on:
+
+- **`%packages` needs `--ignoremissing`.** Install media carries a subset of
+  the archive — the Server DVD has `vim-enhanced` and not `vlc` — and
+  `%packages` resolves against the media, so one name it happens not to carry
+  ends the whole install with "No match for argument", after the disk has been
+  erased. With the flag, what the media has goes on during setup and the rest
+  is left to the first-boot pass, which installs from Fedora's repositories and
+  logs which ones it had to fetch. That is why `vlc` reads "the installer did
+  not" above.
+- **The tables are not translations of each other.** Fedora ships no Steam and
+  no codec packages, packages Node.js by major version, and several publishers
+  Ubuntu gets from verified snaps are unverified on Flathub. DSKY does not
+  enable RPM Fusion to paper over it: that changes what the whole machine gets
+  updates from, which is the machine owner's decision. Where a program has no
+  acceptable source it is not offered, and the picker says so by not listing
+  it — `dsky apps` now marks each program "Windows only", "Ubuntu and Fedora
+  only", and so on.
+- **Anything shared between the two has to be portable.** The release installer
+  asked `dpkg --print-architecture`, which does not exist on Fedora, so the
+  asset name came out `dsky-v0.7.41-linux-` and the download 404'd — reported
+  as "no build for ", with nothing after "for".
+
 ## 2. Fedora Server, AlmaLinux, Rocky, RHEL: kickstart
 
 The same idea with a different answer file, reusing the picker and the

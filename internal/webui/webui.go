@@ -324,11 +324,13 @@ type appEntry struct {
 	// Mine marks an installer the operator added, which behaves differently
 	// enough to say so: it rides on the stick and needs no network.
 	Mine bool `json:"mine,omitempty"`
-	// Windows and Ubuntu say where the program can be installed; the picker
-	// shows only what the chosen OS can take.
+	// Windows, Ubuntu and Fedora say where the program can be installed; the
+	// picker shows only what the chosen OS can take.
 	Windows    bool   `json:"windows,omitempty"`
 	Ubuntu     bool   `json:"ubuntu,omitempty"`
 	UbuntuNote string `json:"ubuntu_note,omitempty"`
+	Fedora     bool   `json:"fedora,omitempty"`
+	FedoraNote string `json:"fedora_note,omitempty"`
 	// Winget is the package id, searchable for someone who knows it.
 	Winget string `json:"winget,omitempty"`
 	// Labels say how the program differs from installed-for-everyone and
@@ -366,9 +368,14 @@ type catalogEntry struct {
 	ImportFrom string `json:"import_from,omitempty"`
 	// Downloaded: the OS image is already in the library.
 	Downloaded bool `json:"downloaded,omitempty"`
-	// Programs: the program picker is offered (Windows, and Ubuntu's
-	// installer, which takes autoinstall answers).
+	// Programs: the program picker is offered — Windows, Ubuntu's installer,
+	// which takes autoinstall answers, and Anaconda, which takes a kickstart.
 	Programs bool `json:"programs,omitempty"`
+	// ThirdPartyDrivers: "drivers for this computer" means something here.
+	// Ubuntu's installer can fetch the proprietary ones; Anaconda has no
+	// equivalent, so the dialog does not offer a control that does nothing.
+	// It also tells the picker which Linux program list to show.
+	ThirdPartyDrivers bool `json:"third_party_drivers,omitempty"`
 	// FoundISO: not in the library, but its ISO is sitting in Downloads, so
 	// the dialog can use it instead of asking Microsoft.
 	FoundISO string `json:"found_iso,omitempty"`
@@ -567,19 +574,23 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		WindowsFetch:        helpers.CanFetchWindows(r.Context()),
 		WindowsToolsMissing: helpers.MissingForWindowsMedia(s.Lib.HelpersDir()),
 	}
-	// Only programs with a Windows package: that is all Quick Install can do
-	// for now, and an option that cannot run is worse than no option.
+	// Only programs that install somewhere: an option that cannot run is
+	// worse than no option, and the picker filters again by the OS chosen.
 	for _, a := range appcatalog.Catalog() {
-		if !a.InstallsOnWindows() && a.Ubuntu == nil {
+		if !a.InstallsOnWindows() && a.Ubuntu == nil && a.Fedora == nil {
 			continue
 		}
 		ent := appEntry{
 			ID: a.ID, Name: a.Name, Category: a.Category,
 			Mine: a.Custom != nil, Winget: a.Winget, Labels: a.Labels(),
-			Windows: a.InstallsOnWindows(), Ubuntu: a.Ubuntu != nil,
+			Windows: a.InstallsOnWindows(),
+			Ubuntu:  a.Ubuntu != nil, Fedora: a.Fedora != nil,
 		}
 		if a.Ubuntu != nil {
 			ent.UbuntuNote = a.Ubuntu.Note
+		}
+		if a.Fedora != nil {
+			ent.FedoraNote = a.Fedora.Note
 		}
 		resp.Apps = append(resp.Apps, ent)
 	}
@@ -602,6 +613,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 			Notes: e.Notes, FirmwareNotes: e.FirmwareNotes, Editions: e.Editions,
 			ImportOnly: e.ImportOnly(), ImportFrom: e.ImportFrom,
 			Downloaded: downloaded, FoundISO: found, Programs: e.ProgramsSupported(),
+			ThirdPartyDrivers: e.ThirdPartyDriversSupported(),
 		})
 	}
 	if s.Cfg != nil {
@@ -1075,7 +1087,7 @@ func (s *Server) installOptions(ctx context.Context, req installRequest) (oscata
 	// detects this machine and stages its packs. On Ubuntu there is nothing to
 	// stage — the kernel carries all of it but the proprietary drivers — so
 	// the answers ask Ubuntu's own installer to put those on.
-	thirdParty := req.Drivers && e.Family != oscatalog.Windows && e.ProgramsSupported()
+	thirdParty := req.Drivers && e.ThirdPartyDriversSupported()
 	if req.Drivers && e.Family == oscatalog.Windows {
 		h, err := hwdetect.Detect(ctx)
 		if err != nil {

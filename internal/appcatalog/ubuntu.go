@@ -288,6 +288,7 @@ type Target string
 const (
 	TargetWindows Target = "windows"
 	TargetUbuntu  Target = "ubuntu"
+	TargetFedora  Target = "fedora"
 )
 
 // InstallsOn reports whether this program can be put on the target.
@@ -295,6 +296,8 @@ func (a App) InstallsOn(t Target) bool {
 	switch t {
 	case TargetUbuntu:
 		return a.Ubuntu != nil
+	case TargetFedora:
+		return a.Fedora != nil
 	default:
 		return a.InstallsOnWindows()
 	}
