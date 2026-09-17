@@ -220,6 +220,42 @@ what Windows' local-account option covers today:
    account on first boot (the `identity` section left interactive). The second
    keeps passwords out of DSKY but means one stop at the keyboard.
 
+**Step 4's gate passed (2026-09-17), and the mechanism is not the one below.**
+Fedora Server 44 now installs unattended from a kickstart DSKY appends to the
+ISO — 3 minutes, no questions, `%packages` honoured, `%post` run
+(`fedora-44-kickstart`). But almost nothing in the sketch below survived
+contact with a real Anaconda ISO:
+
+- **"No boot option needed" is false.** Fedora ships `set default="1"`, and
+  entry 1 is "Test this media & install". That media check hashes the whole
+  device, which now has an answers partition appended to it, so it fails —
+  "It is not recommended to use this media" — and halts before the installer
+  starts. The menu has to be rewritten, so a boot option costs nothing extra.
+- **The menu rewrite has to keep the ISO's `search --set=root` line.** Every
+  path in the entry is relative to `$root`, and on an Anaconda ISO `$root` is
+  set by searching for the volume label. Drop it and GRUB shows the menu,
+  fails to find the kernel and falls back to the menu — which on screen is
+  indistinguishable from a timeout that never fired. Two runs to tell apart.
+- **OEMDRV cannot work here, and not because of the label.** The ISO9660
+  volume descriptor sits at offset 0 of the image, so the ISO's volume label
+  belongs to the *whole disk* as well as to the partition holding it.
+  `inst.stage2=hd:LABEL=<iso label>` therefore resolves to `/dev/sda` and
+  mounts it; with the whole disk mounted, no partition on that disk can be
+  opened exclusively, and the kickstart fetch fails with "Can't open blockdev"
+  over a partition that is present, correctly labelled and perfectly good.
+
+So the answers ride in as a **second initramfs** instead. The kernel
+concatenates every initramfs it is given, GRUB can load one from the appended
+partition, and `inst.ks=file:/ks.cfg` reads it from the initramfs root before
+any disk is touched. Nothing is mounted, so nothing can be busy.
+`internal/compose/cpio.go` carries the whole account.
+
+Two smaller things, for whoever does the RHEL family next: the answers
+partition is labelled `DSKYKS`, not `OEMDRV`, because OEMDRV is also how
+Anaconda recognises a *driver disk*; and a `%packages` entry that is not on the
+media fails the entire install with "No match for argument", so the names have
+to be checked against the ISO rather than assumed.
+
 ## 2. Fedora Server, AlmaLinux, Rocky, RHEL: kickstart
 
 The same idea with a different answer file, reusing the picker and the
