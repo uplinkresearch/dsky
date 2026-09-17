@@ -196,7 +196,8 @@ dsky install windows-11 --drivers
 ```
 
 Dell, Lenovo, HP and Framework machines get their per-model driver pack;
-everything else resolves per device through the Microsoft Update Catalog. Devices the catalogs
+everything else resolves per device through the Microsoft Update Catalog. (For
+a machine you are sitting at, that is; the vendors below are picked by model.) Devices the catalogs
 do not carry are reported and skipped rather than failing the build — Windows
 Update covers most of them. GPU packages are large (easily a gigabyte each),
 so driver media wants a 16 GB stick.
@@ -209,10 +210,31 @@ dsky install windows-11 --drivers-for "dell:OptiPlex 7010 Micro"
 dsky drivers models dell        # every model Dell has a pack for
 ```
 
-In the app, the Install dialog has a searchable list of every model Dell, HP,
-Lenovo and Framework publish Windows drivers for. It is repeatable and combines
-with `--drivers`: pnputil installs only what matches the hardware it finds, so
-one stick can carry packs for several models.
+In the app, the Install dialog and the Payload screen have a searchable list of
+every model these vendors publish Windows drivers for: Dell, HP, Lenovo,
+Framework, Alienware, Microsoft Surface, ASUS, Intel NUC and Samsung Galaxy
+Book. It is repeatable and combines with `--drivers`: pnputil installs only what
+matches the hardware it finds, so one stick can carry packs for several models.
+
+How each vendor's drivers go on differs, because each publishes them differently:
+
+| Vendor | What a model gets | How it installs |
+| --- | --- | --- |
+| Dell, HP, Lenovo | the vendor's driver pack | unpacked, then pnputil |
+| Intel NUC | Intel's INF driver pack, now hosted by ASUS | pnputil |
+| Samsung | the Windows 11 DriverPack, or the driver zips for models without one | pnputil |
+| Microsoft Surface | the model's driver MSI | unpacked with `msiexec /a`, then pnputil |
+| Alienware | the newest release of each Dell Update Package for the model | unpacked with `/s /e=`, then pnputil |
+| ASUS | the newest release of each driver installer for the model | ASUS's own silent switches, on that model only |
+| Framework | Framework's driver bundle | run unattended, on that model only |
+
+Dell, HP, Lenovo, Alienware and ASUS publish a hash for every download, and it
+is checked. Microsoft and Samsung publish none, so each download is pinned by
+its SHA-256 the first time it is fetched. Acer, MSI, LG and Razer are not
+listed: Acer's and MSI's driver lists sit behind bot protection DSKY will not
+pose as a browser to get past, LG publishes only network drivers per model,
+and Razer's are firmware updaters with drivers left to Windows Update. Their
+machines still get drivers per device through the Microsoft Update Catalog.
 
 Framework is different in one way. It publishes a driver *bundle* per model
 rather than a pack of drivers, and the bundle is Framework's own installer. It

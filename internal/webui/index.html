@@ -1722,7 +1722,7 @@ function modelPickerOpt(os, carrier = "stick") {
             all.push({ spec: v.vendor + ":" + model, model: shownName, vendorName: v.name, hay, words, flat: words.join(" ") });
           }
       }
-      note.textContent = `${all.length} models with ${r.os === "win10" ? "Windows 10" : "Windows 11"} driver packs. One ${carrier} can carry packs for several.` +
+      note.textContent = `${all.length} computer models listed for ${r.os === "win10" ? "Windows 10" : "Windows 11"}. One ${carrier} can carry drivers for several.` +
         (missing.length ? ` ${missing.join(" and ")} could not be loaded (${r.vendors.find(v => v.error).error}); type vendor:model to add one anyway.` : "");
       draw();
     } catch (e) {

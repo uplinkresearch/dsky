@@ -35,7 +35,7 @@ const (
 // VendorNames are the model feeds as a person would write them.
 var VendorNames = map[Vendor]string{
 	Dell: "Dell", HP: "HP", Lenovo: "Lenovo", Framework: "Framework", Alienware: "Alienware",
-	Surface: "Microsoft Surface", ASUS: "ASUS", NUC: "Intel NUC", Samsung: "Samsung",
+	Surface: "Surface", ASUS: "ASUS", NUC: "Intel NUC", Samsung: "Samsung",
 }
 
 // Pack is one downloadable driver package.
