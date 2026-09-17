@@ -374,8 +374,12 @@ type catalogEntry struct {
 	// ThirdPartyDrivers: "drivers for this computer" means something here.
 	// Ubuntu's installer can fetch the proprietary ones; Anaconda has no
 	// equivalent, so the dialog does not offer a control that does nothing.
-	// It also tells the picker which Linux program list to show.
 	ThirdPartyDrivers bool `json:"third_party_drivers,omitempty"`
+	// AppTarget is which program list this entry takes — windows, ubuntu or
+	// fedora. Sent rather than inferred: the dialog used to work it out from
+	// whether third-party drivers were offered, which is true of Ubuntu today
+	// and would quietly show the wrong list for the next entry that is neither.
+	AppTarget string `json:"app_target,omitempty"`
 	// FoundISO: not in the library, but its ISO is sitting in Downloads, so
 	// the dialog can use it instead of asking Microsoft.
 	FoundISO string `json:"found_iso,omitempty"`
@@ -614,6 +618,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 			ImportOnly: e.ImportOnly(), ImportFrom: e.ImportFrom,
 			Downloaded: downloaded, FoundISO: found, Programs: e.ProgramsSupported(),
 			ThirdPartyDrivers: e.ThirdPartyDriversSupported(),
+			AppTarget:         string(e.AppTarget()),
 		})
 	}
 	if s.Cfg != nil {

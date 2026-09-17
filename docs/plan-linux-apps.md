@@ -318,10 +318,12 @@ Three things worth knowing before the RHEL family is turned on:
   as "no build for ", with nothing after "for".
 
 **The RHEL family installs too, and still does not offer programs
-(2026-09-17).** AlmaLinux 10.2 minimal installs unattended from the same
-kickstart path — 3 minutes, `%post` run, `%packages` honoured, booted
-(`almalinux-10-kickstart`). One difference in the media, and one reason the
-picker stays off:
+(2026-09-17).** AlmaLinux 10.2 and Rocky 10.2, both minimal images, install
+unattended from the same kickstart path — 3 and 4 minutes, `%post` run,
+`%packages` honoured, booted (`almalinux-10-kickstart`, `rocky-10-kickstart`).
+With Fedora Server that is every Anaconda entry in the catalog but RHEL itself,
+which is import-only and needs a Red Hat account to get at. One difference in
+the media, and one reason the picker stays off:
 
 - **The rebuilds spell it `linuxefi` and `initrdefi`** where Fedora writes
   `linux` and `initrd`. A menu rewrite that assumes Fedora's spelling finds
