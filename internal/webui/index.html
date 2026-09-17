@@ -2209,7 +2209,7 @@ function openInstall(os, edit) {
     // Ubuntu's installer takes answers, so programs can go on with it — and
     // it can be told to put on the drivers the kernel does not carry. Nothing
     // is staged for that, unlike Windows: Ubuntu fetches them itself.
-    const ap = os.programs ? appsOpt(os.third_party_drivers ? "ubuntu" : "fedora") : null;
+    const ap = os.programs ? appsOpt(os.app_target || "ubuntu") : null;
     const dv = os.third_party_drivers ? checkOpt("Drivers for this computer — the proprietary ones Ubuntu finds (NVIDIA and the like)") : null;
     if (saved) {
       if (ap) ap.set(saved.apps);

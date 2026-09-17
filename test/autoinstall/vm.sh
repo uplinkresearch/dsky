@@ -38,6 +38,7 @@
 #   almalinux-10-kickstart  The same kickstart path on a RHEL rebuild, from a
 #                         minimal image rather than a DVD: does what was proven
 #                         on Fedora hold for the family it was written for?
+#   rocky-10-kickstart    The other RHEL 10 rebuild, same path again.
 #   fedora-44-programs    The Fedora program picker end to end: one program
 #                         from each source Fedora has — its own repositories,
 #                         Flathub, a vendor's rpm repository and a published
@@ -143,6 +144,14 @@ almalinux-10-kickstart)
   SHA=1b532f534231da0d1cd0ccae622bea6cd588d8a0d7b259f1f131501a6eed41a4
   KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
   SRC_ID=almalinux-10 ENVGROUP=minimal-environment KSPKG=nano ;;
+rocky-10-kickstart)
+  # The other RHEL 10 rebuild. Almost certainly the same Anaconda and the same
+  # linuxefi spelling as AlmaLinux — and "almost certainly" is what every other
+  # assumption in this file turned out to be.
+  URL=https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.2-x86_64-minimal.iso
+  SHA=aac6ac3ce781b91a91ce78463405f66c611a5dca4b3840c79e5e01d97302f6c8
+  KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
+  SRC_ID=rocky-10 ENVGROUP=minimal-environment KSPKG=nano ;;
 fedora-44-programs)
   # The Fedora program picker, end to end: one program from each kind of
   # source Fedora has — its own repositories, Flathub, a vendor's rpm

@@ -89,8 +89,9 @@ had to say plainly what it was about to do.
   anything.
 - **Anaconda installers** — Fedora Server and the RHEL family installed from a
   kickstart DSKY appends to the ISO, whose own bytes are left exactly as the
-  distribution published them (`linux.kickstart`). Proven on Fedora Server 44
-  and AlmaLinux 10.2: three minutes and no questions but the account. Picking
+  distribution published them (`linux.kickstart`). Proven on Fedora Server 44,
+  AlmaLinux 10.2 and Rocky 10.2: three to four minutes, and no questions but
+  the account. Picking
   **programs** writes that kickstart for you, with no workspace to author, from
   Fedora's own repositories, Flathub, a vendor's rpm repository or a published
   release — `dsky apps --os fedora` lists what Fedora gets and where each comes
