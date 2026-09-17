@@ -135,6 +135,11 @@ var builtin = []App{
 	{ID: "hwinfo", Name: "HWiNFO", Category: "IT tools", Winget: "REALiX.HWiNFO"},
 	{ID: "crystaldiskinfo", Name: "CrystalDiskInfo", Category: "IT tools", Winget: "CrystalDewWorld.CrystalDiskInfo"},
 	{ID: "bleachbit", Name: "BleachBit", Category: "IT tools", Winget: "BleachBit.BleachBit"},
+	// DSKY installs itself, which is less strange than it sounds: a bench
+	// machine being imaged is usually the machine that images the next one.
+	// Linux only for now — the Windows first boot installs through winget and
+	// the operator's own installers, and DSKY is in neither.
+	{ID: "dsky", Name: "DSKY", Category: "IT tools"},
 	{ID: "winmerge", Name: "WinMerge", Category: "IT tools", Winget: "WinMerge.WinMerge"},
 
 	{ID: "7zip", Name: "7-Zip", Category: "Utilities", Winget: "7zip.7zip"},

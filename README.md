@@ -279,9 +279,13 @@ dsky install ubuntu-26.04-server --drivers --apps set:it,vlc,chrome
 
 Each program comes from the best source Ubuntu has for it, in this order:
 Ubuntu's own archive, then the Snap Store where the publisher is the vendor,
-then Flathub for publisher-verified apps, and last a vendor's own apt
-repository where that is the only official channel — Google Chrome, AnyDesk
-and TeamViewer. `dsky apps --os ubuntu` names the source beside every program,
+then Flathub for publisher-verified apps, then a vendor's own apt repository
+where that is the only official channel — Google Chrome, AnyDesk and
+TeamViewer — and last a published release binary, for a program packaged
+nowhere at all. DSKY itself is the one of those: `--apps dsky` puts it in
+`/usr/local/bin` on the machine being imaged, verified against the checksum
+file published beside it, because the bench machine being imaged is usually
+the machine that images the next one. `dsky apps --os ubuntu` names the source beside every program,
 because what installs is often not spelled the way the program is. The picker
 only offers what the chosen OS can install, so nothing Windows-only appears
 for Ubuntu and nothing Ubuntu-only for Windows.
