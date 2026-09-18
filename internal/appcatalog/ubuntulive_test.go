@@ -1,6 +1,7 @@
 package appcatalog
 
 import (
+	"errors"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -48,15 +49,44 @@ func liveGet(ctx context.Context, url string, hdr map[string]string) (int, strin
 // The site answers 200 for a package it does not have, with an error page, so
 // the title is what decides.
 func aptExists(ctx context.Context, release, pkg string) (bool, error) {
-	code, body, err := liveGet(ctx, "https://packages.ubuntu.com/"+release+"/"+pkg, nil)
-	if err != nil {
-		return false, err
+	// Retried like Fedora's mdapi lookup, and for the same reason: the
+	// archive refusing a connection for a minute is not a catalog problem,
+	// and reporting it as one is how a check gets ignored.
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return false, ctx.Err()
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			}
+		}
+		code, body, err := liveGet(ctx, "https://packages.ubuntu.com/"+release+"/"+pkg, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if code == 404 {
+			// An answer: the archive looked and has no such package.
+			return false, nil
+		}
+		if code != 200 {
+			lastErr = fmt.Errorf("HTTP %d", code)
+			continue
+		}
+		return strings.Contains(body, "Details of package "+pkg+" in "+release), nil
 	}
-	if code != 200 {
-		return false, fmt.Errorf("HTTP %d", code)
-	}
-	return strings.Contains(body, "Details of package "+pkg+" in "+release), nil
+	return false, unreachableErr{lastErr}
 }
+
+// unreachableErr marks "I could not ask" so it is not counted as "the answer
+// was no". packages.ubuntu.com went unreachable from a GitHub runner for one
+// run and every one of the 26 names failed with the same i/o timeout to the
+// same IP, which opened an issue saying the catalog had rotted. Nothing had.
+type unreachableErr struct{ err error }
+
+func (e unreachableErr) Error() string { return fmt.Sprintf("could not reach the archive: %v", e.err) }
+func (e unreachableErr) Unwrap() error { return e.err }
 
 // snapExists asks the Snap Store. The series header is required.
 func snapExists(ctx context.Context, name string) (bool, error) {
@@ -123,10 +153,20 @@ func TestUbuntuNamesLive(t *testing.T) {
 		problems []problem
 		ok       int
 	)
+	var unchecked []problem
 	bad := func(id, format string, args ...any) {
 		mu.Lock()
 		defer mu.Unlock()
 		problems = append(problems, problem{id, fmt.Sprintf(format, args...)})
+	}
+	// cannotAsk is not a finding about the catalog. Keeping the two apart is
+	// the difference between "libreoffice has left the archive" and "the
+	// archive did not answer the phone", which are read by a person deciding
+	// whether to trust this check next week.
+	cannotAsk := func(id, format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		unchecked = append(unchecked, problem{id, fmt.Sprintf(format, args...)})
 	}
 	good := func() { mu.Lock(); ok++; mu.Unlock() }
 
@@ -150,6 +190,11 @@ func TestUbuntuNamesLive(t *testing.T) {
 				missing := []string{}
 				for _, rel := range ubuntuSeries {
 					exists, err := aptExists(ctx, rel, src.Apt)
+					var ue unreachableErr
+					if errors.As(err, &ue) {
+						cannotAsk(a.ID, "apt %s in %s: %v", src.Apt, rel, err)
+						return
+					}
 					if err != nil {
 						bad(a.ID, "apt %s in %s: %v", src.Apt, rel, err)
 						return
@@ -203,8 +248,17 @@ func TestUbuntuNamesLive(t *testing.T) {
 	wg.Wait()
 
 	t.Logf("%d Ubuntu program names checked and found", ok)
+	for _, p := range unchecked {
+		t.Logf("not checked — %s: %s", p.id, p.msg)
+	}
 	for _, p := range problems {
 		t.Errorf("%s: %s", p.id, p.msg)
+	}
+	// Nothing answered, so this run proved nothing either way. Skipping says
+	// so; failing would file it as link rot, which is what happened once and
+	// cost an issue that read as the catalog falling apart.
+	if ok == 0 && len(problems) == 0 && len(unchecked) > 0 {
+		t.Skipf("packages.ubuntu.com answered none of %d lookups; the catalog was not checked", len(unchecked))
 	}
 }
 
