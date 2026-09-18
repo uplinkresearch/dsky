@@ -62,7 +62,23 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 		if r.Windows != nil {
 			return notEditable("it has Windows settings on a Linux OS")
 		}
-		if r.Linux == nil || r.Linux.Autoinstall == nil {
+		if r.Linux == nil || (r.Linux.Autoinstall == nil && r.Linux.Kickstart == nil) {
+			return f, sameAsDialog(r, f, e)
+		}
+		// A kickstart recipe is the same round trip with a different answer
+		// file. Without this branch every Fedora recipe the dialog saved came
+		// back "not editable", so the only way to change its program list was
+		// to delete it and build another -- and the marker fedora.go writes so
+		// the picks can be read back had no reader anywhere.
+		if k := r.Linux.Kickstart; k != nil {
+			if len(k.Vars) > 0 || len(k.KernelArgs) > 0 || k.File != fedoraKickstartFile(r.ID) {
+				return notEditable("its kickstart was written by hand")
+			}
+			apps, err := kickstartProgramsIn(filepath.Join(wsDir, filepath.FromSlash(k.File)))
+			if err != nil {
+				return notEditable(err.Error())
+			}
+			f.Apps = apps
 			return f, sameAsDialog(r, f, e)
 		}
 		if len(r.Linux.Autoinstall.Vars) > 0 || r.Linux.Autoinstall.UserData != ubuntuUserDataFile(r.ID) {
@@ -145,8 +161,18 @@ func sameAsDialog(r *recipe.Recipe, f RecipeForm, e Entry) error {
 		opts.defaults(e)
 	}
 	meta := recipeMeta{ID: r.ID, Name: r.Name, Template: savedTemplate}
-	if r.Linux != nil && r.Linux.Autoinstall != nil {
-		meta.UserData = r.Linux.Autoinstall.UserData
+	if r.Linux != nil {
+		// One field, two answer files: recipeYAML turns UserData into
+		// linux.kickstart.file for an Anaconda entry and linux.autoinstall
+		// for the rest. Reading only the Autoinstall one meant a kickstart
+		// recipe was compared against a recipe with no linux: block at all,
+		// so it never matched and was always "not editable".
+		switch {
+		case r.Linux.Autoinstall != nil:
+			meta.UserData = r.Linux.Autoinstall.UserData
+		case r.Linux.Kickstart != nil:
+			meta.UserData = r.Linux.Kickstart.File
+		}
 	}
 	onDisk, err := os.ReadFile(r.Path)
 	if err != nil {
@@ -178,6 +204,29 @@ func customBySource(ref string) (appcatalog.Custom, bool) {
 // the answers themselves only say what Ubuntu installs: one package can come
 // from several programs, and a set expands.
 const programsMarker = "# DSKY programs: "
+
+// kickstartProgramsIn reads which picker programs a DSKY-written kickstart
+// installs. Only the marker is consulted: unlike the Ubuntu answers there is
+// no older format to reconstruct from, because kickstart recipes have carried
+// the marker since the day they existed.
+func kickstartProgramsIn(path string) ([]string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("its kickstart could not be read: %v", err)
+	}
+	text := string(b)
+	for _, line := range strings.Split(text, "\n") {
+		if rest, ok := strings.CutPrefix(line, programsMarker); ok {
+			return strings.Fields(rest), nil
+		}
+	}
+	// No marker means this file is not one DSKY wrote: a kickstart is only
+	// written when programs were picked, and it is written with the marker in
+	// the same call. Reconstructing the list from %packages is what the marker
+	// exists to avoid -- a set expands, and one package can come from several
+	// programs -- so an unmarked file is refused rather than guessed at.
+	return nil, errors.New("its kickstart was written by hand")
+}
 
 var flatpakInstall = regexp.MustCompile(`flatpak install [^\n]*?([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){2,})`)
 
@@ -288,24 +337,44 @@ func ReplaceRecipe(ctx context.Context, lib *library.Library, wsDir, id, name st
 	return path, nil
 }
 
-// DeleteRecipe removes a recipe's file and the Ubuntu answers DSKY wrote for
-// it. Manifests and templates stay: other recipes may use them.
+// DeleteRecipe removes a recipe's file and the answers DSKY wrote for it —
+// Ubuntu's or Anaconda's. Manifests and templates stay: other recipes may use
+// them.
 func DeleteRecipe(wsDir string, r *recipe.Recipe) error {
 	if err := os.Remove(r.Path); err != nil {
 		return err
 	}
-	if r.Linux != nil && r.Linux.Autoinstall != nil && r.Linux.Autoinstall.UserData == ubuntuUserDataFile(r.ID) {
-		if err := os.Remove(filepath.Join(wsDir, filepath.FromSlash(ubuntuUserDataFile(r.ID)))); err != nil && !os.IsNotExist(err) {
-			return err
-		}
+	if r.Linux == nil {
+		return nil
+	}
+	// Deleting a Fedora recipe used to leave its kickstart in the workspace
+	// forever, because only the Ubuntu file was known here.
+	var written string
+	switch {
+	case r.Linux.Autoinstall != nil && r.Linux.Autoinstall.UserData == ubuntuUserDataFile(r.ID):
+		written = ubuntuUserDataFile(r.ID)
+	case r.Linux.Kickstart != nil && r.Linux.Kickstart.File == fedoraKickstartFile(r.ID):
+		written = fedoraKickstartFile(r.ID)
+	}
+	if written == "" {
+		return nil
+	}
+	if err := os.Remove(filepath.Join(wsDir, filepath.FromSlash(written))); err != nil && !os.IsNotExist(err) {
+		return err
 	}
 	return nil
 }
 
+// recipeFiles is what ReplaceRecipe moves aside so a failed save can be rolled
+// back. Both answer files are listed because only one of them exists for any
+// given recipe, and leaving the kickstart out meant a Fedora save that failed
+// half way restored the old recipe beside the new program list -- media that
+// then installed what the abandoned edit asked for, with nothing saying so.
 func recipeFiles(wsDir, id string) []string {
 	return []string{
 		filepath.Join(wsDir, "recipes", id+".yaml"),
 		filepath.Join(wsDir, filepath.FromSlash(ubuntuUserDataFile(id))),
+		filepath.Join(wsDir, filepath.FromSlash(fedoraKickstartFile(id))),
 	}
 }
 

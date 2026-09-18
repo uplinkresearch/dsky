@@ -1852,7 +1852,10 @@ function appsOpt(target = "windows") {
   // "linux" here means any of the Linux targets: what differs between them is
   // which flag on the program says it installs, and which note to show.
   const linux = target === "ubuntu" || target === "fedora";
-  const ubuntu = linux;
+  // Whose installer is being described. `ubuntu` used to mean "any Linux",
+  // so the Fedora picker announced that the stick would install Ubuntu.
+  const ubuntu = target === "ubuntu";
+  const osName = installOS && installOS.name ? installOS.name : (target === "fedora" ? "Fedora" : "Ubuntu");
   // A payload runs on a machine that is already in use, whenever somebody
   // starts it -- not at a first boot, and not off a stick.
   const payload = target === "payload";
@@ -1861,7 +1864,7 @@ function appsOpt(target = "windows") {
   const sets = el("div", "sets");
   const chips = el("div", "chips");
   const box = el("input"); box.type = "search"; box.autocomplete = "off";
-  box.placeholder = ubuntu ? "Search programs, e.g. Brave or VLC" : "Search programs, e.g. Brave, or type a winget id such as Brave.Brave";
+  box.placeholder = linux ? "Search programs, e.g. Brave or VLC" : "Search programs, e.g. Brave, or type a winget id such as Brave.Brave";
   box.setAttribute("role", "combobox"); box.setAttribute("aria-expanded", "false");
   const results = el("div", "modelresults"); results.hidden = true;
   results.setAttribute("role", "listbox");
@@ -1896,9 +1899,9 @@ function appsOpt(target = "windows") {
                                : (a.mine ? ["your installer"] : []).concat(a.labels || []);
   const setNote = extra => {
     const anyMine = [...picked.keys()].some(k => (state.apps || []).some(a => a.id === k && a.mine));
-    note.textContent = extra || (ubuntu
-      ? "Picking programs makes the stick install Ubuntu by itself and erase the computer's disk. The programs install during setup and on first boot, so the computer needs to be online. " +
-        (installOS && installOS.category === "server"
+    note.textContent = extra || (linux
+      ? "Picking programs makes the stick install " + osName + " by itself and erase the computer's disk. The programs install during setup and on first boot, so the computer needs to be online. " +
+        (!ubuntu || (installOS && installOS.category === "server")
           ? "The installer asks only for the account."
           : "Ubuntu shows its review screen and waits for Install before erasing anything.")
       : payload

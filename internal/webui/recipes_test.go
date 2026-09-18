@@ -131,3 +131,41 @@ func TestDownloadsListAndDelete(t *testing.T) {
 		t.Errorf("deleting again: %d", w.Code)
 	}
 }
+
+// A kickstart recipe is as automatic as an autoinstall one. The detail view
+// knew only the autoinstall shape, so a saved Fedora recipe said "Boots the
+// installer — nothing set in advance" — of the one recipe shape that clears
+// the disk without asking — and left its program list off the page entirely.
+func TestFedoraRecipeDetailSaysWhatItDoes(t *testing.T) {
+	s := testServer(t)
+	h := s.handler()
+	w := post(t, h, "/api/recipes/save", `{"os_id":"fedora-44-server","name":"Lab","apps":["vlc","brave"]}`)
+	if w.Code != 202 {
+		t.Fatalf("save: %d %s", w.Code, w.Body)
+	}
+	if ev := waitJob(t, s.Reg, w.Body.Bytes()); ev.Err != "" {
+		t.Fatal(ev.Err)
+	}
+
+	var d recipeDetail
+	if code := getJSON(t, s, "/api/recipes/get?id=lab", &d); code != 200 {
+		t.Fatalf("get: %d %+v", code, d)
+	}
+	lines := map[string]string{}
+	for _, l := range d.Lines {
+		lines[l[0]] = l[1]
+	}
+	if got := lines["Installer"]; got != "Installs by itself and erases the computer's disk" {
+		t.Errorf("Installer line: %q", got)
+	}
+	if got := lines["Install programs"]; !strings.Contains(got, "VLC") || !strings.Contains(got, "Brave") {
+		t.Errorf("Install programs line: %q", got)
+	}
+	// And it can be reopened in the dialog that made it.
+	if d.Form == nil {
+		t.Fatalf("not editable: %+v", d)
+	}
+	if strings.Join(d.Form.Apps, ",") != "vlc,brave" {
+		t.Errorf("form apps %v", d.Form.Apps)
+	}
+}
