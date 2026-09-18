@@ -536,13 +536,23 @@
      happen would be worse than no lamp at all. */
   .activity-wrap { padding: 12px 30px 0; background: transparent; }
   #jobsSec { background: none; border: none; box-shadow: none; }
-  #jobsSec > h2 { display: none; }
+  /* The legend strip over the instrument: what the panel is, how many runs are
+     going, and the way to clear the finished ones out. It sits on the chassis
+     rather than on the faceplate, so it stays put while the face below it
+     changes between idle and running. */
+  .activity-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 0 3px 8px; }
+  .activity-top .spacer { flex: 1; }
+  .activity-top .cap { font: 11px/1.5 var(--mono); letter-spacing: 1.6px;
+    text-transform: uppercase; color: var(--dim); }
+  .activity-top .count { font: 11px/1.5 var(--mono); letter-spacing: 1px;
+    text-transform: uppercase; color: var(--accent); }
+  .activity-top button { font-size: 11px; padding: 5px 10px; }
   #jobs { padding: 0; max-height: 46vh; }
   #jobs .row { display: block; padding: 0 0 12px; }
   #jobs .row:hover { background: none; }
   /* The instrument itself: a faceplate bolted down at four corners. */
   .instrument { position: relative; isolation: isolate;
-    display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 17px;
     padding: 23px 24px 15px; border-radius: 7px;
     background-color: var(--panel);
     background-image: var(--grain), radial-gradient(ellipse at 25% 10%, #fff3d519, transparent 60%), linear-gradient(175deg, transparent 75%, #77684816);
@@ -551,7 +561,11 @@
     border-right-color: var(--metal-dark); border-bottom-color: var(--metal-dark);
     box-shadow: 0 1px 0 #a6b79d22, 0 4px 0 #0c1611, 0 5px 10px #06120949,
       inset 0 0 0 1px #d8e7c614, inset 0 0 12px #00000010; }
-  @media (max-width: 720px) { .instrument { grid-template-columns: minmax(0, 1fr); } }
+  /* Lamps to the left of the register, both stretched to the same height so
+     the faceplate reads as one instrument rather than two things side by side. */
+  .face { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 17px;
+    align-items: stretch; }
+  @media (max-width: 720px) { .face { grid-template-columns: minmax(0, 1fr); } }
   /* The screws. Each one is turned to its own angle, because a panel that has
      been off the bench a few times does not have four aligned slots. */
   .fastener { position: absolute; z-index: 2; width: 11px; height: 11px;
@@ -567,19 +581,15 @@
   .fastener.sw { left: 6px; bottom: 6px; --slot: 65deg; }
   .fastener.se { right: 6px; bottom: 6px; --slot: 41deg; }
 
-  /* The lamp box. Sunk into the faceplate, so the lamps sit below the surface
-     and the box shades them — legible with a bench light overhead. */
-  .annunbox { display: flex; flex-direction: column; gap: 9px; padding: 10px;
-    border-radius: 3px;
-    background-color: #353e2e;
-    background-image: var(--grain), linear-gradient(110deg, #afbf8722, transparent 23%, #091b0b18);
-    background-blend-mode: multiply, normal;
-    border: 4px solid #657056; border-top-color: #9fa78a; border-left-color: #8d997b;
-    border-bottom-color: #46583e; border-right-color: #485b3f;
-    box-shadow: 0 1px 0 #e8dfbb73, 0 0 0 1px #3c4a3080, inset 0 2px 7px #10250daa,
-      inset 1px 0 4px #13220f77; }
+  /* The lamps sit straight on the faceplate. There is no box drawn around
+     them: the instrument is the box, and a second one inside it made the
+     metal look like it had a window cut in it. STATUS is printed on the metal
+     above the lamps, the way the legend on an annunciator panel is — engraved
+     rather than set, which is the light catching the bottom of the cut. */
+  .annunbox { display: flex; flex-direction: column; gap: 9px; }
   .annunbox > .cap { font: 11px/1.4 var(--mono); letter-spacing: 2px;
-    text-transform: uppercase; color: #d9e0cf; text-align: center; }
+    text-transform: uppercase; color: var(--dim); text-align: center;
+    padding-bottom: 2px; text-shadow: 0 1px 0 #ffffff14; }
   .annunciators { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; flex: 1; }
   /* Unlit: a grey lens with a filament behind it, not an empty hole. */
   .lamp { position: relative; display: flex; align-items: center;
@@ -804,8 +814,38 @@
   <button id="updBtn" onclick="checkUpdate(true)" title="Ask GitHub for the newest release now">Check for updates</button>
   <button id="quitBtn" title="Stop the app" onclick="quitApp()">Quit</button>
 </div>
+<!-- Activity is a permanent instrument, not a panel that appears when
+     something happens. Half of what it has to say is true when nothing is
+     running: whether a stick is connected, whether there is an image to write
+     to it. A panel that is only on screen mid-write cannot say any of that,
+     and an instrument you have to start a job to read is not an instrument.
+     So the idle face below is what the machine looks like at rest, and a run
+     takes its place. -->
 <div class="activity-wrap">
-  <section id="jobsSec" hidden><h2>Activity<span class="count" id="jobsCount"></span><span class="spacer"></span><button id="jobsClear" onclick="clearFinishedJobs()" hidden>Clear finished</button></h2><div class="rows" id="jobs"></div></section>
+  <section id="jobsSec">
+    <div class="activity-top">
+      <span class="cap">Write &amp; verify / Activity display</span>
+      <span class="spacer"></span>
+      <span class="count" id="jobsCount"></span>
+      <button id="jobsClear" onclick="clearFinishedJobs()" hidden>Clear finished</button>
+    </div>
+    <div class="instrument" id="idleConsole">
+      <div class="face">
+        <div class="annunbox"><div class="cap">Status</div><div class="annunciators" id="idleLamps"></div></div>
+        <div class="screen">
+          <div class="jobline">
+            <span class="title">No operation in progress</span>
+            <span class="stage">Standing by</span>
+            <span class="pct word">—</span>
+          </div>
+          <div class="bar"><i></i></div>
+          <div class="ticks"></div>
+          <div class="jobflair">The lamps read the machine, not a job.</div>
+        </div>
+      </div>
+    </div>
+    <div class="rows" id="jobs"></div>
+  </section>
 </div>
 <main>
   <!-- The start screen. The things this tool does, in the words someone
@@ -3071,7 +3111,10 @@ function setPatter(j, ev) {
 function renderActivity() {
   const running = [...jobEls.values()].filter(j => !j.final).length;
   const finished = jobEls.size - running;
-  $("jobsSec").hidden = jobEls.size === 0;
+  // The idle face stands in for the machine at rest. A run replaces it rather
+  // than appearing under it, so there is one instrument on screen, not two
+  // saying different things.
+  $("idleConsole").hidden = jobEls.size > 0;
   $("jobsCount").textContent = running ? `${running} running` : "";
   $("jobsClear").hidden = finished === 0;
 }
@@ -3148,10 +3191,7 @@ const LAMPS = [
   ["fault", "Fault"],
 ];
 
-function lampBox() {
-  const box = el("div", "annunbox");
-  box.append(el("div", "cap", "Status"));
-  const grid = el("div", "annunciators");
+function buildLampsInto(grid) {
   const set = {};
   for (const [key, label] of LAMPS) {
     // Amber for work in progress and red for a fault are carried on the lamp
@@ -3161,22 +3201,63 @@ function lampBox() {
     set[key] = lamp;
     grid.append(lamp);
   }
+  return set;
+}
+
+function lampBox() {
+  const box = el("div", "annunbox");
+  box.append(el("div", "cap", "Status"));
+  const grid = el("div", "annunciators");
+  const set = buildLampsInto(grid);
   box.append(grid);
   return { box, set };
+}
+
+// The lamps on the idle face, which is the one on screen when nothing is
+// running. Its four job lamps never light; its two machine lamps do.
+const idleLamps = buildLampsInto($("idleLamps"));
+
+// media and usb are facts about the machine rather than about a run, so they
+// are just as true with nothing running -- which is the whole reason the
+// instrument stays on screen.
+//
+// media is "there is something here to write", not "a job has a size": an
+// image in the library, downloaded or built. usb is a drive this tool would
+// be willing to write to, which is not the same as a drive being plugged in
+// -- the disk the machine booted from is plugged in too.
+function machineLamps() {
+  return {
+    media: (state.artifacts || []).length > 0 || (state.downloads || []).length > 0,
+    usb: (state.devices || []).some(d => d.flashable),
+  };
+}
+
+function lampSets() {
+  return [idleLamps, ...[...jobEls.values()].map(j => j.lamps)];
+}
+
+function refreshMachineLamps() {
+  const lit = machineLamps();
+  for (const set of lampSets()) {
+    set.media.classList.toggle("on", lit.media);
+    set.usb.classList.toggle("on", lit.usb);
+  }
 }
 
 function setLamps(j, ev) {
   const verifying = j.bar.classList.contains("verify");
   const done = !!ev.final;
   const failed = done && !!ev.error;
-  const lit = {
-    media: ev.total > 0,
-    usb: (state.devices || []).some(d => d.flashable),
+  const lit = Object.assign(machineLamps(), {
+    // A run with a size is an image loaded, whatever the library holds: a
+    // write straight from somebody's own ISO never puts anything in it, and
+    // "media loaded" dark while that image is being written would be wrong.
+    media: machineLamps().media || ev.total > 0,
     write: !done && !failed && !verifying,
     read: !done && !failed && verifying,
     verify: done && !failed,
     fault: failed,
-  };
+  });
   for (const [key, lamp] of Object.entries(j.lamps)) lamp.classList.toggle("on", !!lit[key]);
 }
 
@@ -3221,7 +3302,8 @@ function upsertJob(ev) {
   let j = jobEls.get(ev.job_id);
   if (!j) {
     const row = el("div", "row");
-    const face = el("div", "instrument");
+    const panel = el("div", "instrument");
+    const face = el("div", "face");
     const lamps = lampBox();
     const screen = el("div", "screen");
     const line = el("div", "jobline");
@@ -3234,7 +3316,8 @@ function upsertJob(ev) {
     const flair = el("div", "jobflair");
     screen.append(line, bar, el("div", "ticks"), stats, flair);
     face.append(lamps.box, screen);
-    row.append(face);
+    panel.append(face);
+    row.append(panel);
     jobs.prepend(row);
     // rate is sampled over a short window rather than averaged from the start:
     // a flash that stalls on a bad sector should say so while it is stalled,
@@ -3417,7 +3500,9 @@ async function quitApp() {
 }
 
 async function loadState() {
-  try { state = await api("/api/state"); render(); maybeStartGuide(); }
+  // refreshMachineLamps because "there is an image to write" is read from the
+  // library, and this is the call that learns the library changed.
+  try { state = await api("/api/state"); render(); refreshMachineLamps(); maybeStartGuide(); }
   catch (e) { showErr(e.message); }
 }
 
@@ -3733,7 +3818,7 @@ function maybeStartGuide() {
 //
 // This is the only part of the page that is purely appearance. If the canvas
 // context is unavailable it simply does not run, and the page is flat.
-const SURFACES = "header, .toolbar, .updbar, main, section, .door, .nameplate, .instrument, .screen, .annunbox, dialog, button.primary";
+const SURFACES = "header, .toolbar, .updbar, main, section, .door, .nameplate, .instrument, .screen, dialog, button.primary";
 const surfaces = [];
 let paintFrame = 0;
 let paintWatcher = null;
@@ -3936,10 +4021,44 @@ function paint(surface) {
   }
 }
 
+// ── Watching the bench ──────────────────────────────────────────────────────
+// A lamp that says a stick is connected is only worth having if it goes out
+// when the stick is pulled. Nothing pushes that: the event stream carries
+// jobs, and /api/state -- which also carries the drives -- walks both
+// catalogs, stats the library and can reach the network, so it is far too
+// heavy to ask on a timer.
+//
+// So the cheap list is polled, and the expensive refresh happens only when
+// the set of drives actually changed. Plugging something in is a rare event
+// and worth a full redraw when it happens; the other 99 ticks cost one
+// loopback call that lists block devices and nothing else.
+let deviceMark = null;
+
+async function pollDevices() {
+  // A background tab is not watching the lamps, and a machine left on this
+  // page overnight should not scan its disks ten thousand times.
+  if (document.visibilityState !== "visible") return;
+  let devices;
+  try { ({ devices } = await api("/api/devices")); } catch (e) { return; }
+  if (!Array.isArray(devices)) return;
+  const mark = devices.map(d => `${d.id}:${d.size_gib}:${d.flashable}`).join("|");
+  if (mark === deviceMark) return;
+  const first = deviceMark === null;
+  deviceMark = mark;
+  state.devices = devices;
+  refreshMachineLamps();
+  // Everything else that lists drives -- Devices, Disks, the copy
+  // destinations -- would otherwise sit there disagreeing with the lamp.
+  // Skipped on the first tick, which is only learning what was already there.
+  if (!first) { loadState(); loadDisks(); }
+}
+
 grain();
 dressAll(document);
 restoreDoor();
 loadState();
+pollDevices();
+setInterval(pollDevices, 5000);
 loadDisks();
 loadMyApps();
 loadWorkspaceDefaults();
