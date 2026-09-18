@@ -76,10 +76,11 @@ M0 is built. The rest keep the spec's order, with the reuse above folded in.
 - **M1 — scanner. Built** (see "What M1 built" below).
 - **M2 — resolver. Built** (see "What M2 built" below).
 - **M3 — review. Built** (see "What M3 built" below).
-- **M4 — build. Mostly built, and it found two Windows defects that block
-  unattended first boot on any domain-joined DSKY media** (see "What M4 built
-  and what it found" below). Still to do there: pre-downloaded winget packages
-  and the App Installer bundle for machines with no internet at first boot.
+- **M4 — build. Done, including the defect it walked into**: a domain-joined
+  machine could not finish OOBE unattended at all, which turned out to be one
+  defect rather than two and is fixed by joining after OOBE instead of during
+  it (see below). Still to do: pre-downloaded winget packages and the App
+  Installer bundle for machines with no internet at first boot.
 - **M5 — runner.** New agent steps: settings, per-app config drop, printers,
   per-user logon script, result JSON and HTML.
 - **M6 — data and verify.** USMT hooks (`--usmt`, never bundled), `dsky
@@ -200,21 +201,52 @@ The single cause is **being domain-joined while OOBE runs**.
 wrong way: a profile directory is only made at first sign-in. The account was
 there all along, in the SAM. Check the SAM hive, not `C:\Users`.)
 
-**The fix has a precedent in this repository.** A by-serial batch already goes
-through OOBE *not yet joined* and applies its blob at first boot with
-`djoin /requestodj /loadfile <file> /windowspath %SystemRoot% /localos`
-(`internal/recipe/domainserial.go`), which is why that path does not hit any
-of this. A migration should join the same way: stage the blob, leave
-`AccountData` out of the answer file, and apply it once the machine is up.
+**The fix: join after OOBE, not during it.** The answer file gets no join
+element at all. Setup installs Windows into a workgroup, OOBE takes the path
+DSKY has always shipped and signs itself in, and the agent applies the blob as
+its first step with `djoin /requestodj /loadfile <file> /windowspath
+%SystemRoot% /localos`, then asks for the restart it needs. The agent's own
+restart machinery carries that out between steps and resumes afterwards, so
+the rest of the build happens on a machine that is by then a domain member.
+First rather than last, because a machine that has to restart should do it
+before an hour of installing programs.
 
-That also settles who does it. The generated first-boot script cannot, because
-a migration needs the agent and its manifest; so the agent grows the step, and
-`agentCovers` stops needing an exception for offline joins at all. M5 already
-had "move the domain-join check into the agent" on it — this is that work,
-arriving earlier and for a better reason. `SetupComplete.cmd` is not a
-candidate and never was: `internal/recipe/lint.go` already refuses it, because
-Windows skips it under a firmware OEM key, which is exactly the hardware a
-practice's replacement PC has.
+The generated first-boot script could not have done this: a migration is the
+case that needs the agent and its manifest. So `agentCovers` stops needing an
+exception for offline joins at all, and M5's "move the domain-join check into
+the agent" arrives here instead, for a better reason.
+
+Not `SetupComplete.cmd`, which is where the previous attempt was heading:
+`internal/recipe/lint.go` already refuses it, because Windows skips it under a
+firmware OEM key — exactly the hardware a practice's replacement PC has. It
+would have passed in this lab and failed at a customer.
+
+**Proven, on media built by this code and booted in the lab:**
+
+```
+RESULT Name=NEWDESK01  Domain=lab.dsky.local  Joined=True  User=newdesk01\user
+```
+
+with the finish screen reading OK domain, OK Drivers, OK Removing preinstalled
+extras, "Set up in 8 minutes". No restart loop, no page to click. The second
+sign-in — the one after the join, as a local account on what is by then a
+domain member — is Winlogon's rather than OOBE's, which is the premise the
+whole fix rests on, and it holds.
+
+That `RESULT` line settled one more thing. The machine was built with **no
+name of its own** (the answer file's default is `*`, meaning random) and came
+back named `NEWDESK01`: **djoin renames the machine from the blob even when
+applied to a running OS.** The build had been changed to send the target
+hostname as belt and braces, on the theory that something has to rename a
+machine that is already up; that is the configuration nobody tested, so it
+came back out.
+
+**A by-serial batch is not immune, and an earlier note here said it was.**
+`internal/recipe/domainserial.go` runs `djoin` in the specialize pass too, so
+those machines are domain members before OOBE exactly as this one was, and are
+exposed to the same loop whenever they also sign themselves in. Nothing here
+changes that path. It is worth a lab run of its own before anyone images a
+batch with it.
 
 A separate finding, independent of both: this build was making a **passwordless
 local administrator that signs itself in automatically on a domain member** —
