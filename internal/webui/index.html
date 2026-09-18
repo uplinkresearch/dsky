@@ -3387,6 +3387,10 @@ function upsertJob(ev) {
     j.stats.replaceChildren();
   }
   if (ev.final && ev.error) { j.bar.classList.remove("indet"); loadState(); }
+  // Which disk this run was about, and whether it ended badly. Both are read
+  // when a disk is unplugged, to decide whether the record goes with it.
+  if (ev.device) j.device = ev.device;
+  if (ev.final) j.failed = !!ev.error;
   setLamps(j, ev);
   if (ev.final && !j.final) {
     j.final = true;
@@ -4081,10 +4085,30 @@ async function pollDevices() {
   deviceMark = mark;
   state.devices = devices;
   refreshMachineLamps();
+  if (!first) clearJobsForRemovedDisks();
   // Everything else that lists drives -- Devices, Disks, the copy
   // destinations -- would otherwise sit there disagreeing with the lamp.
   // Skipped on the first tick, which is only learning what was already there.
   if (!first) { loadState(); loadDisks(); }
+}
+
+// A finished run is a note about a stick. Take the stick out and the note has
+// nothing left to be about: the write is done, the machine it was for has the
+// media, and the panel is holding a sentence about a disk that is not here.
+// So it goes when the disk goes, exactly as if it had been dismissed.
+//
+// Two are kept. A run still going is not cleared, because pulling the disk out
+// from under a write is an event in its own right and the error it causes is
+// the thing worth reading. A run that failed is not cleared either: the fault
+// is the whole reason that record exists, and having it vanish as the stick
+// comes out is how somebody never finds out why it went wrong.
+function clearJobsForRemovedDisks() {
+  const connected = new Set((state.devices || []).map(d => d.id));
+  for (const [id, j] of [...jobEls]) {
+    if (!j.final || j.failed || !j.device) continue;
+    if (connected.has(j.device)) continue;
+    dismissJob(id);
+  }
 }
 
 grain();
