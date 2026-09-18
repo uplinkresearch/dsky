@@ -29,6 +29,33 @@ func TestAlternates(t *testing.T) {
 	}
 }
 
+// The VM harness downloads the same ISOs a user would, and for a while it
+// named the kernel.org mirror directly -- which made it fast and also made it
+// a single source, because Alternates only knows the origin. One i/o timeout
+// there failed desktop-26.04 twice with five working mirrors untried. The
+// harness must name a URL this package can widen, or CI is one flaky host away
+// from red for a reason that has nothing to do with the change under test.
+func TestVMHarnessDownloadsFromAURLWithMirrors(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "test", "autoinstall", "vm.sh"))
+	if err != nil {
+		t.Skipf("harness not present: %v", err)
+	}
+	const key = "MIRROR=${UBUNTU_MIRROR:-"
+	i := bytes.Index(b, []byte(key))
+	if i < 0 {
+		t.Fatalf("vm.sh no longer sets %s -- find where it gets its Ubuntu URL and check that here", key)
+	}
+	rest := b[i+len(key):]
+	root := string(rest[:bytes.IndexByte(rest, '}')])
+
+	// The default must be a root Alternates widens, and widen to more than one
+	// place -- a fallback list of length one is not a fallback.
+	got := Alternates(root + "/26.04/ubuntu-26.04.1-desktop-amd64.iso")
+	if len(got) < 2 {
+		t.Fatalf("vm.sh downloads from %s, which yields %d alternates; DSKY will use it as a single source", root, len(got))
+	}
+}
+
 func testFile(n int) ([]byte, string) {
 	b := make([]byte, n)
 	for i := range b {

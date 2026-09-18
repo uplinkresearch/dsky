@@ -93,10 +93,20 @@ RESULT="$W/result.md"
 : >"$RESULT"
 say() { echo "$*" | tee -a "$RESULT"; }
 
-# releases.ubuntu.com sent GitHub's runners 0.2-1.4 MiB/s, and every case
-# but one ran out of time still downloading. The kernel.org mirror carries the
-# same files; the pinned sha256 below is what makes any mirror safe to use.
-MIRROR=${UBUNTU_MIRROR:-https://mirrors.edge.kernel.org/ubuntu-releases}
+# releases.ubuntu.com sent GitHub's runners 0.2-1.4 MiB/s, and every case but
+# one ran out of time still downloading. The first fix was to name the
+# kernel.org mirror here instead -- which was fast, and also the reason
+# desktop-26.04 failed twice: a hardcoded mirror is a single source, and
+# DSKY only offers alternates for URLs it recognises as releases.ubuntu.com
+# (internal/library/library.go, pullURLs). One i/o timeout at kernel.org and
+# the case died with five working mirrors untried.
+#
+# So name the origin and let DSKY do what it does for a real user: probe every
+# mirror at once, take the fastest, and continue from another if one stalls.
+# That is as quick as pinning kernel.org -- it wins the probe -- and it puts
+# the fallback under test rather than around it. The pinned sha256 below is
+# what makes any mirror safe to use.
+MIRROR=${UBUNTU_MIRROR:-https://releases.ubuntu.com}
 
 case "$CASE" in
 server-24.04)
