@@ -8,6 +8,7 @@
 # The first-boot agent: compiled by ./build-agent.sh and embedded, never
 # committed. Its directory keeps a README so the embed always has a file.
 internal/agentbin/bin/*.gz
+internal/agentbin/bin/sources.sha256
 
 # Test artifacts (S1 media images are multi-hundred-MB)
 *.img

@@ -36,3 +36,9 @@ for arch in amd64 arm64; do
   rm -f "$out"
   printf 'agent %s: %s bytes\n' "$arch" "$(wc -c < "internal/agentbin/bin/dsky-agent-${arch}.exe.gz")"
 done
+
+# What the agent was built from, so a stale embedded agent is caught before it
+# reaches media rather than on a machine. See internal/agentbin/staleness_test.go.
+find internal/agent cmd/dsky-agent -name '*.go' ! -name '*_test.go' | sort | xargs cat |
+  sha256sum | cut -d' ' -f1 > internal/agentbin/bin/sources.sha256
+printf 'agent sources: %s\n' "$(cut -c1-12 internal/agentbin/bin/sources.sha256)"
