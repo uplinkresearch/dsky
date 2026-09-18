@@ -124,3 +124,33 @@ func TestFedoraProgramsReachTheRecipe(t *testing.T) {
 		t.Error("steam accepted for Fedora, which has no acceptable source for it")
 	}
 }
+
+// "Drivers for this computer" must be gated on the same question everywhere.
+// The CLI asked ProgramsSupported() while the wizard and the portal asked
+// ThirdPartyDriversSupported(), so `dsky install fedora-44-server --drivers`
+// announced that Ubuntu would fetch proprietary drivers and set a flag the
+// Fedora path ignores — a promise nothing kept.
+func TestThirdPartyDriversIsOneQuestion(t *testing.T) {
+	cases := map[string]bool{
+		"ubuntu-26.04-server":  true,
+		"ubuntu-26.04-desktop": true,
+		"fedora-44-server":     false,
+		"almalinux-10":         false,
+		"omarchy":              false,
+	}
+	for id, want := range cases {
+		e, ok := Get(id)
+		if !ok {
+			t.Errorf("%s missing from the catalog", id)
+			continue
+		}
+		if got := e.ThirdPartyDriversSupported(); got != want {
+			t.Errorf("%s: ThirdPartyDriversSupported = %v, want %v", id, got, want)
+		}
+		// Whatever the answer, it may never be true where the option cannot
+		// reach the answers at all.
+		if e.ThirdPartyDriversSupported() && e.AppTarget() != appcatalog.TargetUbuntu {
+			t.Errorf("%s: offers third-party drivers but its answers are %s's", id, e.AppTarget())
+		}
+	}
+}

@@ -71,8 +71,8 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 	var driversFor stringList
 	fs.Var(&driversFor, "drivers-for", "Windows: stage drivers for another machine, e.g.\n"+
 		"\"dell:OptiPlex 7010\" (repeatable; one stick can carry several models)")
-	apps := fs.String("apps", "", "programs to install with the operating system, on Windows and on\n"+
-		"Ubuntu (see `dsky apps`, and `dsky apps --os ubuntu`)")
+	apps := fs.String("apps", "", "programs to install with the operating system, on Windows, Ubuntu and\n"+
+		"Fedora Server (see `dsky apps`, and `dsky apps --os ubuntu|fedora`)")
 	domainBlob := fs.String("domain-blob", "", "Windows: join a domain using a blob from\n"+
 		"`djoin /provision` (one machine per blob). A credentialed join belongs\n"+
 		"in a workspace recipe, so its password is not left in shell history.")
@@ -126,7 +126,7 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 	thirdParty := false
 	var hw []recipe.HardwareSpec
 	switch {
-	case *withDrivers && e.Family != oscatalog.Windows && e.ProgramsSupported():
+	case *withDrivers && e.ThirdPartyDriversSupported():
 		thirdParty = true
 		fmt.Println("Ubuntu will install the proprietary drivers it finds for this machine (NVIDIA and the like).")
 	case *withDrivers:
