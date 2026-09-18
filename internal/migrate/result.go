@@ -111,6 +111,12 @@ func RecordReport(w io.Writer, r *Record, plan *Manifest, version string) error 
 			return g[i].Name < g[j].Name
 		})
 	}
+	return renderRecord(w, d)
+}
+
+// renderRecord paints the page both the machine's record and the verify
+// comparison use, because they answer the same question in the same order.
+func renderRecord(w io.Writer, d RecordData) error {
 	t, err := template.New("result.html.tmpl").Funcs(template.FuncMap{
 		"humanTime": humanTime,
 	}).ParseFS(resultTemplate, "result.html.tmpl")

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -23,7 +24,7 @@ import (
 // says so rather than pretending.
 func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("migrate: need scan, resolve, review, build, result, validate, report or schema (see docs/plan-migrate.md)")
+		return fmt.Errorf("migrate: need scan, resolve, review, build, result, verify, validate, report or schema (see docs/plan-migrate.md)")
 	}
 	switch args[0] {
 	case "scan":
@@ -47,9 +48,9 @@ func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 	case "result":
 		return migrateResult(args[1:])
 	case "verify":
-		return fmt.Errorf("migrate verify is not built yet — scan, resolve, review, build, validate, report and schema are; see docs/plan-migrate.md")
+		return migrateVerify(ctx, args[1:])
 	default:
-		return fmt.Errorf("migrate: no such thing as %q (scan, resolve, review, build, result, validate, report, schema)", args[0])
+		return fmt.Errorf("migrate: no such thing as %q (scan, resolve, review, build, result, verify, validate, report, schema)", args[0])
 	}
 }
 
@@ -397,4 +398,146 @@ type errQuiet struct{ n int }
 
 func (e errQuiet) Error() string {
 	return fmt.Sprintf("%d thing(s) on this machine need a hand", e.n)
+}
+
+// migrateVerify reads the new machine back and asks whether it is the machine
+// the plan described.
+//
+// Everything else in this feature reports on its own work, and all of it can
+// be right while the machine is still wrong: a program installs and does not
+// run, a setting is applied and then overwritten by the program installed
+// after it, a queue is added to an account nobody uses. This is the one
+// reading taken from the finished machine by something that had no part in
+// building it.
+func migrateVerify(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("migrate verify", flag.ContinueOnError)
+	plan := fs.String("plan", "", "the approved manifest this machine was built from (required)")
+	scan := fs.String("scan", "", "a scan of the new machine; omit to scan the machine this runs on")
+	site := fs.String("mappings", "", "the site's mapping table, to offer aliases for programs found under another name")
+	out := fs.String("out", "", "also write the comparison as a page here")
+	yes := fs.Bool("yes", false, "accept every offered alias without asking")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	if *plan == "" || fs.NArg() != 0 {
+		return fmt.Errorf("migrate verify --plan manifest.json [--scan newscan.json] [--mappings site.json] [--out page.html]")
+	}
+	approved, err := migrate.Load(*plan)
+	if err != nil {
+		return err
+	}
+	// A plan nobody approved describes nothing, so there is nothing to
+	// compare against. Said here rather than after a scan that takes a minute.
+	if err := approved.CheckApproved(); err != nil {
+		return fmt.Errorf("this plan cannot be verified against: %w", err)
+	}
+
+	after, err := scanOrLoad(ctx, *scan)
+	if err != nil {
+		return err
+	}
+	v := migrate.Verify(approved, after)
+
+	fmt.Printf("%s — %s\n", after.Source.Hostname, v.Summary())
+	for _, m := range v.Missing {
+		if m.Nearest != nil {
+			fmt.Printf("  missing: %s — but %s is here (%.0f%% alike)\n",
+				m.Wanted.DisplayName, m.Nearest.DisplayName, m.Confidence*100)
+			continue
+		}
+		fmt.Printf("  missing: %s\n", m.Wanted.DisplayName)
+	}
+	for _, d := range v.Settings {
+		fmt.Printf("  %s: the plan asked for %s, this machine has %s\n", d.Key, d.Wanted, d.Found)
+	}
+	for _, line := range v.Identity {
+		fmt.Println("  " + line)
+	}
+
+	if *site != "" {
+		if err := offerAliases(v, *site, *yes); err != nil {
+			return err
+		}
+	}
+	if *out != "" {
+		f, err := os.Create(*out)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if err := migrate.VerifyReport(f, v, buildinfo.Version); err != nil {
+			return err
+		}
+		fmt.Println("wrote", *out)
+	}
+	if !v.OK() {
+		return errQuiet{n: len(v.Missing) + len(v.Settings) + len(v.Identity)}
+	}
+	return nil
+}
+
+// scanOrLoad reads the machine, or a scan of it somebody already took.
+func scanOrLoad(ctx context.Context, path string) (*migrate.Manifest, error) {
+	if path != "" {
+		return migrate.Load(path)
+	}
+	dir, err := os.MkdirTemp("", "dsky-verify-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	res, err := migrate.ScanToFiles(ctx, dir, migrate.ScanOptions{}, "", buildinfo.Version, os.Stderr)
+	if err != nil {
+		return nil, err
+	}
+	return res.Manifest, nil
+}
+
+// offerAliases writes the near misses into the site's table, so that the next
+// machine resolves them without anybody noticing.
+//
+// This is the quiet payoff of the whole mapping table: a program installed
+// under a name nobody expected looks exactly like a program that failed to
+// install, and telling the two apart by hand is what nobody has time for on
+// the twentieth machine.
+func offerAliases(v *migrate.Verification, path string, all bool) error {
+	near := v.Aliases()
+	if len(near) == 0 {
+		return nil
+	}
+	t, err := migrate.LoadTable(path)
+	if err != nil {
+		return err
+	}
+	in := bufio.NewReader(os.Stdin)
+	added := 0
+	for _, m := range near {
+		if !all {
+			fmt.Printf("\n%s was not found, but %s is here (%.0f%% alike).\n",
+				m.Wanted.DisplayName, m.Nearest.DisplayName, m.Confidence*100)
+			fmt.Printf("Remember %q as the same program, so the next machine resolves it? [y/N] ",
+				m.Nearest.DisplayName)
+			line, _ := in.ReadString('\n')
+			if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "y") {
+				continue
+			}
+		}
+		// Matched on the name the program has NOW, resolved the way the plan
+		// resolved it. That is the direction that helps: the next machine to
+		// be scanned will show the new name, and what it needs is the known
+		// way to install it. The other way round -- the old name with
+		// whatever a fresh scan happened to say -- writes an entry that
+		// matches something already resolved and carries a resolution nobody
+		// decided.
+		t.Remember(*m.Nearest, m.Wanted.Resolution, m.Wanted.ConfigCapture, "verify")
+		added++
+	}
+	if added == 0 {
+		return nil
+	}
+	if err := t.Save(path); err != nil {
+		return err
+	}
+	fmt.Printf("remembered %d program(s) in %s\n", added, path)
+	return nil
 }
