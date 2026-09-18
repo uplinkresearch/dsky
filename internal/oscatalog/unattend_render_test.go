@@ -110,8 +110,13 @@ func TestAnAdminPasswordReachesTheAnswerFileAndNotTheRecipe(t *testing.T) {
 	if !strings.Contains(yaml, `admin_password: "${var:admin_password}"`) {
 		t.Errorf("the recipe does not say where to find the password:\n%s", yaml)
 	}
-	if v := quickVars(opts); v["admin_password"] != pass {
-		t.Errorf("the build does not carry the password in memory: %v", v)
+	v, err := quickVars(opts)
+	if err != nil || v["admin_password"] != pass {
+		t.Errorf("the build does not carry the password in memory: %v %v", v, err)
+	}
+	// Linux answers take a hash of the same password, never the password.
+	if h := v["admin_password_hash"]; !strings.HasPrefix(h, "$6$") || strings.Contains(h, pass) {
+		t.Errorf("the hash for Linux answers is wrong: %q", h)
 	}
 	// And with no password the recipe is exactly what it has always been, so
 	// a standalone quick install is unchanged.
@@ -120,8 +125,8 @@ func TestAnAdminPasswordReachesTheAnswerFileAndNotTheRecipe(t *testing.T) {
 	if !strings.Contains(plain, `admin_password: ""`) {
 		t.Errorf("a build with no password changed shape:\n%s", plain)
 	}
-	if quickVars(Options{}) != nil {
-		t.Error("a build with no password carries a password var")
+	if v, err := quickVars(Options{}); v != nil || err != nil {
+		t.Errorf("a build with no password carries a password var: %v %v", v, err)
 	}
 
 	// Rendered: the account gets it, the automatic sign-in gets it, and so

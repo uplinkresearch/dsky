@@ -76,6 +76,9 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 	domainBlob := fs.String("domain-blob", "", "Windows: join a domain using a blob from\n"+
 		"`djoin /provision` (one machine per blob). A credentialed join belongs\n"+
 		"in a workspace recipe, so its password is not left in shell history.")
+	adminUser := fs.String("admin-user", "", "Linux: the account an unattended install creates (default \"user\")")
+	adminPassStdin := fs.Bool("admin-password-stdin", false, "read that account's password from stdin, so the install asks nothing at all.\n"+
+		"Without it the installer stops once for an account, which is the default.")
 	iso := fs.String("iso", "", "use an ISO you downloaded instead of fetching it")
 	yes := fs.Bool("yes", false, "skip the typed size confirmation")
 	buildOnly := fs.Bool("build-only", false, "stop after building; do not flash")
@@ -141,13 +144,20 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 		hw = append(hw, h)
 	}
 
+	// Read before anything is built, so a stick is never half-made when the
+	// answer is "you did not pipe anything in".
+	adminPass, err := readAdminPassword(*adminPassStdin, e)
+	if err != nil {
+		return err
+	}
+
 	var appIDs []string
 	if strings.TrimSpace(*apps) != "" && e.Family != oscatalog.Windows {
 		appIDs = strings.Split(*apps, ",")
 		if err := oscatalog.CheckPrograms(e, appIDs); err != nil {
 			return err
 		}
-		if err := printLinuxProgramPlan(os.Stdout, e, appIDs); err != nil {
+		if err := printLinuxProgramPlan(os.Stdout, e, appIDs, adminPass); err != nil {
 			return err
 		}
 	} else if strings.TrimSpace(*apps) != "" {
@@ -197,6 +207,7 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 		Edition: *edition, AccountMode: *account, Debloat: *debloat, BypassRequirement: *bypass,
 		Hardware: hw, Apps: appIDs, ThirdPartyDrivers: thirdParty,
 		DomainBlob: *domainBlob,
+		AdminUser:  *adminUser, AdminPassword: adminPass,
 	}, prog.report)
 	prog.finish()
 	if err != nil {
@@ -279,8 +290,8 @@ func detectedHardware(ctx context.Context, e oscatalog.Entry) ([]recipe.Hardware
 // printLinuxProgramPlan says what --apps will put on the machine, in the last
 // thing shown before the disk is erased. The facts come from the entry's own
 // plan so this cannot drift from what the portal and the picker say.
-func printLinuxProgramPlan(w io.Writer, e oscatalog.Entry, appIDs []string) error {
-	p := e.InstallPlan(oscatalog.Options{Apps: appIDs})
+func printLinuxProgramPlan(w io.Writer, e oscatalog.Entry, appIDs []string, adminPass string) error {
+	p := e.InstallPlan(oscatalog.Options{Apps: appIDs, AdminPassword: adminPass})
 	fmt.Fprintf(w, "The stick will install %s with these programs, and erase the computer's disk:\n", p.OSName)
 	for _, g := range p.Programs {
 		fmt.Fprintf(w, "  %s: %s\n", g.Where, strings.Join(g.Names, ", "))
@@ -289,4 +300,28 @@ func printLinuxProgramPlan(w io.Writer, e oscatalog.Entry, appIDs []string) erro
 		fmt.Fprintf(w, "  %s\n", line)
 	}
 	return nil
+}
+
+// readAdminPassword takes the account password off stdin, the way `dsky
+// migrate build` does: not off the command line, where it would be in the
+// shell's history and in every `ps` on the machine.
+func readAdminPassword(fromStdin bool, e oscatalog.Entry) (string, error) {
+	if !fromStdin {
+		return "", nil
+	}
+	if e.Family == oscatalog.Windows {
+		// Windows has its own route for this, and its answer file stores the
+		// password in clear text -- a different conversation from the one
+		// this flag is having.
+		return "", fmt.Errorf("--admin-password-stdin is a Linux option here; for Windows use `dsky migrate build`")
+	}
+	b, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return "", fmt.Errorf("reading the account password from stdin: %w", err)
+	}
+	p := strings.Trim(string(b), "\r\n")
+	if p == "" {
+		return "", fmt.Errorf("--admin-password-stdin was given but stdin was empty")
+	}
+	return p, nil
 }

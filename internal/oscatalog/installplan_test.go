@@ -105,8 +105,12 @@ func TestTheSentencesMatchTheAutomation(t *testing.T) {
 	cases := []struct {
 		id, opts, installer, stops string
 	}{
-		{"fedora-44-server", "vlc", "Installs by itself and erases the computer's disk", "No questions except the account"},
+		// Measured, not assumed: fedora-44-two-disks found a second disk's
+		// partition table overwritten, server-26.04-two-disks found the same
+		// disk untouched.
+		{"fedora-44-server", "vlc", "erases every disk in the computer", "No questions except the account"},
 		{"ubuntu-26.04-server", "vlc", "Installs by itself and erases the computer's disk", "No questions except the account"},
+		// and not "every disk": Ubuntu picks one.
 		{"ubuntu-26.04-desktop", "vlc", "Waits for Install on the review screen", "The installer shows its review screen"},
 		{"fedora-44-server", "", "Boots the installer", ""},
 	}
@@ -134,6 +138,55 @@ func TestTheSentencesMatchTheAutomation(t *testing.T) {
 		}
 		if note := p.PickerNote(); !strings.Contains(note, e.Name) || !strings.Contains(note, c.stops) {
 			t.Errorf("%s(%q): picker note %q", c.id, c.opts, note)
+		}
+	}
+}
+
+// What the two-disk cases found, kept where somebody reading the catalog will
+// see it. An installer that clears every disk in the machine must not describe
+// itself with the singular, and one that clears a single disk must not borrow
+// the alarm of the other.
+func TestOnlyTheKickstartClaimsEveryDisk(t *testing.T) {
+	for _, e := range Builtin() {
+		p := e.InstallPlan(Options{Apps: []string{"vlc"}})
+		if p.ErasesEveryDisk != (p.ErasesDisk && e.kickstartPrograms()) {
+			t.Errorf("%s: ErasesEveryDisk=%v for a %s installer", e.ID, p.ErasesEveryDisk, e.AppTarget())
+		}
+		if p.ErasesEveryDisk && !strings.Contains(p.InstallerLine(), "every disk") {
+			t.Errorf("%s: clears every disk and says %q", e.ID, p.InstallerLine())
+		}
+		if p.ErasesDisk && !p.ErasesEveryDisk && strings.Contains(p.InstallerLine(), "every disk") {
+			t.Errorf("%s: clears one disk and says %q", e.ID, p.InstallerLine())
+		}
+	}
+}
+
+// A stick that carries an account carries its password, and says so instead of
+// claiming the installer will ask for one.
+func TestAnAccountInTheAnswersIsSaidOutLoud(t *testing.T) {
+	for _, id := range []string{"ubuntu-26.04-server", "fedora-44-server"} {
+		e, ok := Get(id)
+		if !ok {
+			t.Fatalf("%s missing", id)
+		}
+		asks := e.InstallPlan(Options{Apps: []string{"vlc"}})
+		if !asks.AsksForAccount || asks.CarriesCredential {
+			t.Errorf("%s with no password: asks=%v carries=%v", id, asks.AsksForAccount, asks.CarriesCredential)
+		}
+		if !strings.Contains(asks.StopsForLine(), "asks for on screen") {
+			t.Errorf("%s: %q", id, asks.StopsForLine())
+		}
+
+		carries := e.InstallPlan(Options{Apps: []string{"vlc"}, AdminPassword: "hunter2"})
+		if carries.AsksForAccount || !carries.CarriesCredential {
+			t.Errorf("%s with a password: asks=%v carries=%v", id, carries.AsksForAccount, carries.CarriesCredential)
+		}
+		line := carries.StopsForLine()
+		if !strings.Contains(line, "No questions at all") || !strings.Contains(line, "worth looking after") {
+			t.Errorf("%s: %q", id, line)
+		}
+		if strings.Contains(line, "hunter2") {
+			t.Errorf("%s: the password is in the sentence: %q", id, line)
 		}
 	}
 }
