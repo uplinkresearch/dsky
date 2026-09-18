@@ -74,7 +74,7 @@ func TestWithOEMCopy(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "u.tmpl")
 	os.WriteFile(p, tmpl, 0o644)
 	base := map[string]string{"locale": "en-US", "account_mode": "local", "admin_user": "user", "admin_display_name": "User", "admin_password": "", "computer_name": "*", "edition_key": "X", "bypass_requirements": "1", "domain_account_domain": "", "domain_join": "", "domain_ou": "", "domain_password": "", "domain_user": ""}
-	for _, mode := range []string{"", "offline", "by_serial"} {
+	for _, mode := range []string{"", "offline", "agent"} {
 		vars := map[string]string{}
 		for k, v := range base {
 			vars[k] = v
@@ -93,12 +93,11 @@ func TestWithOEMCopy(t *testing.T) {
 		if len(cmds) == 0 || cmds[0] != "# "+oemCopyDescription {
 			t.Errorf("%q: specialize commands %v, want the copy first", mode, cmds)
 		}
-		// by_serial also carries the automatic-sign-in registry writes that a
-		// domain-joined machine needs (OOBE refuses to set them), so what
-		// matters here is that the copy is first and the join is second, and
-		// that everything after them was renumbered in order.
-		if mode == "by_serial" && (len(cmds) < 2 || cmds[1] != "## DSKY domain join by serial number") {
-			t.Errorf("by_serial: %v", cmds)
+		// An agent-applied join puts nothing in the answer file at all, so the
+		// copy is the only specialize command and there is nothing after it to
+		// renumber.
+		if mode == "agent" && len(cmds) != 1 {
+			t.Errorf("agent: the answer file should carry no join: %v", cmds)
 		}
 		if mode == "offline" && len(cmds) < 2 {
 			t.Errorf("an offline join should still sign the machine in automatically: %v", cmds)

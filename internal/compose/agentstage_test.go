@@ -43,18 +43,13 @@ func TestAgentCoversOnlyWhatItCanDo(t *testing.T) {
 	if covered, why := agentCovers(&recipe.Recipe{ID: "d", Windows: &withDomain}); !covered {
 		t.Errorf("an offline join kept the agent away: %s", why)
 	}
-	// A credentialed join stays with the generated scripts, and so does a
-	// by-serial batch: the generated first boot is what reports a join that
-	// failed, and losing that would make it silent.
+	// A credentialed join stays with the generated scripts: it is proven as
+	// it stands, and its password handling is the part least worth
+	// disturbing.
 	withCreds := base
 	withCreds.Domain = &recipe.DomainSpec{Join: "corp.example.com", Username: "svc", Password: "x"}
 	if covered, _ := agentCovers(&recipe.Recipe{ID: "e", Windows: &withCreds}); covered {
 		t.Error("a credentialed join was handed to the agent")
-	}
-	withSerials := base
-	withSerials.Domain = &recipe.DomainSpec{BlobsBySerial: "blobs"}
-	if covered, _ := agentCovers(&recipe.Recipe{ID: "f", Windows: &withSerials}); covered {
-		t.Error("a by-serial batch was handed to the agent, which does not report a failed join")
 	}
 }
 

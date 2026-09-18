@@ -140,9 +140,6 @@ func GenerateFirstboot(r *Recipe, drivers ResolvedDrivers, resolveRef func(ref s
 		line(`  copy /y C:\Windows\debug\netsetup.log C:\DOMAIN-JOIN-FAILED-netsetup.log >nul 2>&1`)
 		line(`  copy /y C:\Windows\Panther\UnattendGC\setuperr.log C:\DOMAIN-JOIN-FAILED-setuperr.log >nul 2>&1`)
 		line(`  copy /y C:\Windows\Panther\UnattendGC\setupact.log C:\DOMAIN-JOIN-FAILED-setupact.log >nul 2>&1`)
-		if w.Domain.BySerial() {
-			line(`  copy /y "%%SCRIPTS%%\%s" C:\DOMAIN-JOIN-FAILED-serial-number.log >nul 2>&1`, DomainSerialLog)
-		}
 		line(`)`)
 	}
 

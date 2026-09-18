@@ -32,9 +32,9 @@ func TestProgramPlanNamesTheRightOSAndPackages(t *testing.T) {
 	}, {
 		// A release-installed program was resolved and never printed, so this
 		// listed no programs at all and then installed one.
-		id:      "ubuntu-26.04-server",
-		apps:    []string{"dsky"},
-		want:    []string{"published release, on first boot: dsky"},
+		id:   "ubuntu-26.04-server",
+		apps: []string{"dsky"},
+		want: []string{"published release, on first boot: dsky"},
 	}, {
 		id:      "fedora-44-server",
 		apps:    []string{"dsky"},
@@ -43,9 +43,9 @@ func TestProgramPlanNamesTheRightOSAndPackages(t *testing.T) {
 	}, {
 		// Only Ubuntu's desktop installer stops at a review screen; the
 		// kickstart asks nothing but the account.
-		id:      "ubuntu-26.04-desktop",
-		apps:    []string{"vlc"},
-		want:    []string{"review screen"},
+		id:   "ubuntu-26.04-desktop",
+		apps: []string{"vlc"},
+		want: []string{"review screen"},
 	}}
 
 	for _, c := range cases {

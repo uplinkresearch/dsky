@@ -94,13 +94,7 @@ func (r *Recipe) Lint() []Finding {
 	// one: Setup carries on into a workgroup, the machine looks perfectly
 	// installed, and nobody notices until someone tries a domain login.
 	if d := w.Domain; d.Enabled() {
-		if d.BySerial() {
-			warnf("windows.domain.blobs_by_serial puts every computer's join file on the stick, and " +
-				"each holds that computer account's password — treat the stick as carrying all of " +
-				"those credentials. Each PC deletes the files from its own disk during Setup; " +
-				"nothing deletes them from the stick, so wipe it when the batch is done. A PC whose " +
-				"serial number has no file installs into a workgroup and says so in domain-join.log")
-		} else if !d.Offline() {
+		if !d.Offline() {
 			// Cleartext is not a choice here. The PlainText/base64 obfuscation
 			// that local-account passwords can use does not exist for this
 			// element — Microsoft documents that only local account passwords

@@ -48,7 +48,7 @@
   <settings pass="specialize">
     <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64"
                publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      {{if or (eq .Vars.domain_mode "offline") (eq .Vars.domain_mode "by_serial")}}
+      {{if eq .Vars.domain_mode "offline"}}
       <!-- No ComputerName on an offline join, deliberately.
            `djoin /provision` creates the computer account for ONE named
            machine and the blob carries that name. Setting a name here too -
@@ -127,85 +127,8 @@
              it by hand when you are debugging a join and know the machine. -->
       </Identification>
     </component>
-    {{else if eq .Vars.domain_mode "by_serial"}}
-    <!-- Domain join by serial number: one stick for a batch of computers.
-         The stick carries a `djoin /provision` file per computer, named after
-         that computer's serial number. This script reads this PC's serial
-         number, applies its file with `djoin /requestodj`, and deletes every
-         join file from the PC, since each one is another computer's domain
-         password. The join completes at the restart after this pass, as an
-         AccountData join would, and the script logs to
-         C:\Windows\Setup\Scripts\domain-join.log. No ComputerName is set
-         above, for the same reason as the offline join: the file names the
-         computer. -->
-    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64"
-               publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <RunSynchronous>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>1</Order>
-          <Description>DSKY domain join by serial number</Description>
-          <Path>powershell -NoProfile -ExecutionPolicy Bypass -File C:\Windows\Setup\Scripts\dsky-domain-join.ps1</Path>
-        </RunSynchronousCommand>
-      {{if eq .Vars.account_mode "local"}}
-        <!-- Signing in automatically on a machine that has just joined a
-             domain. OOBE refuses to apply the AutoLogon element below on a
-             domain-joined machine, and says so in its own log: "Not setting
-             autologon for new local user. e.g. upgrade, domain-joined, or
-             system-managed user". A machine that joins a domain therefore
-             reaches a logon screen and stops there with none of the first
-             boot run. Found on a lab machine that had joined perfectly and
-             then sat waiting for somebody to type a password.
-
-             Winlogon reads these values regardless, so the same intent is
-             written straight to the registry here. These commands do run and
-             do succeed - the lab log shows all of them returning 0x0.
-
-             They are NOT SUFFICIENT ON THEIR OWN, and the lab log says why:
-             a few minutes after this pass, OOBE logs its refusal above and
-             then "Transferring unattend.xml autologon values", which is OOBE
-             writing these same values itself. Anything specialize put there
-             is behind OOBE in the queue. To make an automatic sign-in stick
-             on a domain member it has to be re-established after OOBE has
-             finished with it - SetupComplete.cmd is the hook for that - and
-             that is not wired up yet, because on this path OOBE does not
-             currently reach the end unattended at all (see the plan doc).
-
-             Kept, rather than removed, because the values are right and
-             harmless, and because the next change needs them here to see
-             what OOBE does to them. The agent clears all of them as its last
-             act, exactly as it does for the ones OOBE sets. -->
-        <RunSynchronousCommand wcm:action="add">
-          <Order>2</Order>
-          <Description>DSKY automatic sign-in (domain-joined)</Description>
-          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d 1 /f</Path>
-        </RunSynchronousCommand>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>3</Order>
-          <Description>DSKY automatic sign-in: which account</Description>
-          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName /t REG_SZ /d "{{.Vars.admin_user}}" /f</Path>
-        </RunSynchronousCommand>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>4</Order>
-          <Description>DSKY automatic sign-in: the local machine, not the domain</Description>
-          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultDomainName /t REG_SZ /d "." /f</Path>
-        </RunSynchronousCommand>
-        <RunSynchronousCommand wcm:action="add">
-          <Order>5</Order>
-          <Description>DSKY automatic sign-in: how many times</Description>
-          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoLogonCount /t REG_DWORD /d 3 /f</Path>
-        </RunSynchronousCommand>
-        {{if .Vars.admin_password}}
-        <RunSynchronousCommand wcm:action="add">
-          <Order>6</Order>
-          <Description>DSKY automatic sign-in: the password it signs in with</Description>
-          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "{{.Vars.admin_password}}" /f</Path>
-        </RunSynchronousCommand>
-        {{end}}
-      {{end}}
-      </RunSynchronous>
-    </component>
     {{end}}
-    {{if and (and (ne .Vars.domain_mode "") (ne .Vars.domain_mode "by_serial")) (ne .Vars.domain_mode "agent")}}
+    {{if and (ne .Vars.domain_mode "") (ne .Vars.domain_mode "agent")}}
     <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64"
                publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <RunSynchronous>

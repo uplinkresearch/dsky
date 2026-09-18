@@ -82,15 +82,12 @@ func agentCovers(r *recipe.Recipe) (bool, string) {
 		}
 	}
 	if w.Domain != nil && !w.Domain.Offline() {
-		// Two joins still belong to the generated scripts, for different
-		// reasons. A credentialed join is proven as it stands and its
-		// password handling is the part least worth disturbing. A by-serial
-		// join is reported by the generated first boot, which looks for the
-		// log that dsky-domain-join.ps1 leaves when it fails; handing that
-		// boot to the agent would make a failed join silent, which is worse
-		// than not using the agent. The agent grows its own domain check
-		// with the migration runner, and this can be revisited then.
-		return false, "it joins a domain without a single join file"
+		// A credentialed join keeps the generated scripts: it is proven as it
+		// stands, and its password handling is the part least worth
+		// disturbing. (Joining a batch by serial number used to be the other
+		// case here; it is withdrawn, and refused in recipe.DomainSpec before
+		// a build gets this far.)
+		return false, "it joins a domain with a username and password"
 	}
 	// A single offline join file is no obstacle, because with the agent in
 	// charge the join no longer happens during Setup at all: the agent

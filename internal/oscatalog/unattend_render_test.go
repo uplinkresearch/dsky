@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/uplinkresearch/dsky/internal/agent"
-	"github.com/uplinkresearch/dsky/internal/library"
 	"github.com/uplinkresearch/dsky/internal/recipe"
 )
 
@@ -30,7 +29,7 @@ func TestQuickTemplateIsValidXMLInEveryMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, bypass := range []string{"0", "1"} {
-		for _, mode := range []string{"", "offline", "credentialed", "by_serial"} {
+		for _, mode := range []string{"", "offline", "credentialed", "agent"} {
 			for _, account := range []string{"local", "oobe"} {
 				vars := map[string]string{
 					"locale": "en-US", "computer_name": "*", "edition_key": "KEY",
@@ -45,9 +44,6 @@ func TestQuickTemplateIsValidXMLInEveryMode(t *testing.T) {
 				}
 				if p := undeclaredPrefix(t, out); p != "" {
 					t.Errorf("bypass=%s mode=%q account=%s: undeclared namespace prefix on %s", bypass, mode, account, p)
-				}
-				if mode == "by_serial" && (!strings.Contains(out, recipe.DomainSerialScriptName) || strings.Contains(out, "<ComputerName>")) {
-					t.Errorf("by_serial: join script missing or a computer name set")
 				}
 			}
 		}
@@ -76,26 +72,6 @@ func undeclaredPrefix(t *testing.T, doc string) string {
 				}
 			}
 		}
-	}
-}
-
-// TestBatchDomainJoinReachesTheRecipe: the Install dialog's folder of join
-// files becomes windows.domain.blobs_by_serial in the recipe it builds from.
-func TestBatchDomainJoinReachesTheRecipe(t *testing.T) {
-	lib, err := library.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	e, _ := Get("windows-11")
-	dir := filepath.Join(t.TempDir(), "Join files")
-	dir = filepath.ToSlash(dir)
-	ws, err := scaffoldQuickWorkspace(lib, e, Options{Edition: "Pro", DomainBlobsDir: dir}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := assertLoads(t, ws, e.ID)
-	if r.Windows.Domain == nil || r.Windows.Domain.BlobsBySerial != dir || !r.Windows.Domain.BySerial() {
-		t.Fatalf("domain = %+v", r.Windows.Domain)
 	}
 }
 

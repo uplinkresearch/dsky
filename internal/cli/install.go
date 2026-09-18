@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/uplinkresearch/dsky/internal/appcatalog"
-	"github.com/uplinkresearch/dsky/internal/compose"
 	"github.com/uplinkresearch/dsky/internal/driverresolve"
 	"github.com/uplinkresearch/dsky/internal/drivers/catalog"
 	"github.com/uplinkresearch/dsky/internal/hwdetect"
@@ -77,8 +76,6 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 	domainBlob := fs.String("domain-blob", "", "Windows: join a domain using a blob from\n"+
 		"`djoin /provision` (one machine per blob). A credentialed join belongs\n"+
 		"in a workspace recipe, so its password is not left in shell history.")
-	domainBlobs := fs.String("domain-blobs", "", "Windows: join a batch of computers from one stick — a folder of\n"+
-		"`djoin /provision` files, each named <serial number>.txt")
 	iso := fs.String("iso", "", "use an ISO you downloaded instead of fetching it")
 	yes := fs.Bool("yes", false, "skip the typed size confirmation")
 	buildOnly := fs.Bool("build-only", false, "stop after building; do not flash")
@@ -194,27 +191,12 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 		fmt.Println("  This blob is for one machine and holds its computer-account password —")
 		fmt.Println("  treat the stick as carrying a credential, and build one stick per machine.")
 	}
-	if *domainBlobs != "" {
-		if e.Family != oscatalog.Windows {
-			return fmt.Errorf("--domain-blobs is a Windows option")
-		}
-		if *domainBlob != "" {
-			return fmt.Errorf("use --domain-blob for one computer or --domain-blobs for a batch, not both")
-		}
-		blobs, err := compose.SerialBlobs(*domainBlobs)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Domain join by serial number: %d computers\n", len(blobs))
-		fmt.Println("  Each PC joins with the file named after its serial number and deletes all of")
-		fmt.Println("  them from its own disk. The stick keeps every file — wipe it after the batch.")
-	}
 	fmt.Printf("Building %s installer media...\n", e.Name)
 	prog := &stageProgress{}
 	art, err := oscatalog.BuildQuick(ctx, lib, e, oscatalog.Options{
 		Edition: *edition, AccountMode: *account, Debloat: *debloat, BypassRequirement: *bypass,
 		Hardware: hw, Apps: appIDs, ThirdPartyDrivers: thirdParty,
-		DomainBlob: *domainBlob, DomainBlobsDir: *domainBlobs,
+		DomainBlob: *domainBlob,
 	}, prog.report)
 	prog.finish()
 	if err != nil {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/uplinkresearch/dsky/internal/recipe"
@@ -47,12 +46,6 @@ func domainVars(uvars map[string]string, wsDir string, d *recipe.DomainSpec, bas
 	// want nothing to do with domains.
 	uvars["domain_mode"] = ""
 	if !d.Enabled() {
-		return nil
-	}
-	if d.BySerial() {
-		// The files themselves are staged by stageSerialBlobs; the template
-		// only needs to run the script.
-		uvars["domain_mode"] = "by_serial"
 		return nil
 	}
 	if d.Offline() {
@@ -203,10 +196,7 @@ func checkDomainRendered(rendered string, d *recipe.DomainSpec, templatePath str
 		return nil
 	}
 	marker, how := markerCredentialed, "a domain join"
-	switch {
-	case d.BySerial():
-		marker, how = recipe.DomainSerialScriptName, "a domain join by serial number"
-	case d.Offline():
+	if d.Offline() {
 		marker, how = markerOffline, "an offline domain join"
 	}
 	if strings.Contains(rendered, marker) {
@@ -216,77 +206,6 @@ func checkDomainRendered(rendered string, d *recipe.DomainSpec, templatePath str
 		"the template predates this feature, so the machine would install into a workgroup "+
 		"and look fine. Add the domain block to the template (a freshly scaffolded workspace "+
 		"has it), or remove windows.domain", how, templatePath, marker)
-}
-
-// SerialBlob is one computer's join file from a blobs_by_serial folder.
-type SerialBlob struct {
-	Serial string // normalised, as the Setup script looks it up
-	File   string // path of the source file
-	Base64 string // the provisioning data, decoded from whatever djoin wrote
-}
-
-// SerialBlobs reads a blobs_by_serial folder: every .txt file is one
-// computer's join file, named after its serial number.
-//
-// Everything that would make a PC silently not join is refused here, where
-// the person building the stick can fix it, rather than logged on a PC in
-// someone else's office: a file that isn't a join file, a name that isn't a
-// serial number or is a placeholder many boards share, two files for the same
-// serial number, another kind of file mixed in, an empty folder.
-func SerialBlobs(dir string) ([]SerialBlob, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, fmt.Errorf("domain join folder: %w", err)
-	}
-	var out []SerialBlob
-	seen := map[string]string{}
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || strings.HasPrefix(name, ".") {
-			continue
-		}
-		if !strings.EqualFold(filepath.Ext(name), ".txt") {
-			return nil, fmt.Errorf("%s in the domain join folder is not a .txt join file — rename it to <serial number>.txt or move it out", name)
-		}
-		stem := strings.TrimSuffix(name, filepath.Ext(name))
-		key, kerr := recipe.SerialKey(stem)
-		if kerr != nil {
-			return nil, fmt.Errorf("%s: %w — name each file after its computer's serial number", name, kerr)
-		}
-		if prev, dup := seen[key]; dup {
-			return nil, fmt.Errorf("%s and %s are both for serial number %s — one computer can only have one join file", prev, name, key)
-		}
-		path := filepath.Join(dir, name)
-		raw, rerr := os.ReadFile(path)
-		if rerr != nil {
-			return nil, rerr
-		}
-		if len(raw) > 1<<20 {
-			return nil, fmt.Errorf("%s is far larger than a djoin provisioning file", name)
-		}
-		text, derr := decodeODJ(raw)
-		if derr != nil {
-			return nil, fmt.Errorf("%s: %w", name, derr)
-		}
-		seen[key] = name
-		out = append(out, SerialBlob{Serial: key, File: path, Base64: text})
-	}
-	// By serial number, so the stick's contents don't depend on how the
-	// files happen to be spelled or listed.
-	sort.Slice(out, func(i, j int) bool { return out[i].Serial < out[j].Serial })
-	if len(out) == 0 {
-		return nil, fmt.Errorf("the domain join folder %s has no join files — make one per computer with `djoin /provision ... /savefile <serial number>.txt`", dir)
-	}
-	return out, nil
-}
-
-// serialBlobDir resolves a blobs_by_serial folder like a blob path:
-// absolute as given, otherwise relative to the workspace.
-func serialBlobDir(wsDir string, d *recipe.DomainSpec) string {
-	if p := filepath.FromSlash(d.BlobsBySerial); filepath.IsAbs(p) {
-		return p
-	}
-	return filepath.Join(wsDir, filepath.FromSlash(d.BlobsBySerial))
 }
 
 // odjFileBytes writes provisioning data the way `djoin /savefile` does —

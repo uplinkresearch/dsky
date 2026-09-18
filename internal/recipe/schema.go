@@ -156,10 +156,11 @@ type DomainSpec struct {
 	Blob    string `yaml:"blob,omitempty"`
 	BlobRef string `yaml:"blob_ref,omitempty"`
 
-	// BlobsBySerial is a folder of offline-join files, one per computer, each
-	// named after that computer's serial number (5CG1234ABC.txt). One stick
-	// then joins a whole batch: each PC applies its own file during Setup.
-	// Workspace-relative or absolute.
+	// BlobsBySerial was a folder of offline-join files, one per computer,
+	// named after each computer's serial number: one stick for a whole batch.
+	// It is withdrawn, and the field is kept only so that a recipe still
+	// holding one is refused by name instead of parsing into silence. See
+	// validate.
 	BlobsBySerial string `yaml:"blobs_by_serial,omitempty"`
 }
 
@@ -170,15 +171,23 @@ type DomainSpec struct {
 func (d *DomainSpec) validate(fail func(string, ...any) error) error {
 	credentialed := d.Join != "" || d.Username != "" || d.Password != ""
 	if d.BlobsBySerial != "" {
-		switch {
-		case credentialed || d.Blob != "" || d.BlobRef != "":
-			return fail("windows.domain.blobs_by_serial joins each computer from its own file — " +
-				"it cannot be combined with blob, blob_ref or join credentials")
-		case d.OU != "":
-			return fail("windows.domain.ou has no effect with blobs_by_serial — each file's OU is fixed " +
-				"when `djoin /provision /machineou` creates it")
-		}
-		return nil
+		// Withdrawn, and refused rather than ignored: a recipe that quietly
+		// lost its domain join would erase a batch of disks and hand back
+		// workgroup machines that look finished.
+		//
+		// It joined each computer during Windows Setup, which is the thing a
+		// lab machine proved a machine cannot come back from. Windows will
+		// not sign a local account in automatically on a PC that has just
+		// joined a domain, so the first boot never runs, and Windows resets
+		// itself into setup again waiting for somebody to type. A single
+		// offline join was fixed by joining after Setup instead; the same
+		// change has not been made here, and nothing has run this path since,
+		// so it is not offered rather than offered untested.
+		return fail("windows.domain.blobs_by_serial has been withdrawn: it joined each computer " +
+			"during Windows Setup, and a PC that joins a domain during Setup does not finish " +
+			"setting itself up — it waits at a sign-in screen with no drivers and no programs. " +
+			"Build one stick per computer with windows.domain.blob (`dsky install --domain-blob`), " +
+			"which joins after Setup and is tested")
 	}
 	switch {
 	case d.Offline() && credentialed:
@@ -210,13 +219,11 @@ func (d *DomainSpec) Offline() bool {
 	return d != nil && (d.Blob != "" || d.BlobRef != "")
 }
 
-// BySerial reports whether each computer joins from its own file, matched by
-// serial number.
-func (d *DomainSpec) BySerial() bool { return d != nil && d.BlobsBySerial != "" }
-
-// Enabled reports whether any domain join is configured.
+// Enabled reports whether any domain join is configured. A withdrawn
+// blobs_by_serial counts, so that a recipe carrying one reaches validate and
+// is refused by name rather than treated as having no join at all.
 func (d *DomainSpec) Enabled() bool {
-	return d != nil && (d.Join != "" || d.Offline() || d.BySerial())
+	return d != nil && (d.Join != "" || d.Offline() || d.BlobsBySerial != "")
 }
 
 // AppsSpec installs programs at first boot with winget, Windows' own package

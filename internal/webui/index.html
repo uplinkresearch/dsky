@@ -2118,90 +2118,49 @@ function isoOpt(os) {
   return opt;
 }
 
-// domainOpt joins computers to a domain during Setup, offline, from files made
-// with `djoin /provision`. That is the only kind of join offered here: the
-// other kind puts a domain account's password in plain text on the stick.
+// domainOpt joins this computer to a domain, offline, from a file made with
+// `djoin /provision`. That is the only kind of join offered here: the other
+// kind puts a domain account's password in plain text on the stick.
 //
-// A join file is one computer's account, so it can join one PC. For a batch,
-// a folder of files named after each computer's serial number goes on one
-// stick, and each PC picks its own during Setup.
+// One file, one computer. Joining a batch from a folder of files named by
+// serial number used to be offered here and has been withdrawn: it joined each
+// PC during Windows Setup, and a PC that joins a domain during Setup never
+// finishes setting itself up -- it waits at a sign-in screen with no drivers
+// and no programs. A single join is applied after Setup instead, by the
+// first-boot agent, which is why this one works.
 function domainOpt() {
   const wrap = el("div", "opt");
   const on = checkOpt("Join a domain");
   on.wrap.style.margin = "0";
   const body = el("div"); body.hidden = true; body.style.marginTop = "6px";
 
-  const kind = selectOpt("Computers", [
-    ["one", "One computer — one join file"],
-    ["batch", "Several computers — a folder of join files named by serial number"]]);
-  kind.wrap.style.margin = "0 0 6px";
-
   const row = el("div"); row.style.cssText = "display:flex;gap:6px;align-items:center";
   const inp = el("input"); inp.type = "text"; inp.style.flex = "1";
-  const choose = el("button", null, "Choose…"); choose.type = "button";
+  inp.placeholder = state.host_os === "windows" ? "C:\\Users\\you\\PC-042.txt" : "/path/to/PC-042.txt";
+  const choose = el("button", null, "Choose\u2026"); choose.type = "button";
   row.append(inp, choose);
-  const found = el("div", "sub"); found.style.marginTop = "4px";
   const note = el("div", "sub");
   note.style.cssText = "color:var(--dim);margin-top:4px;line-height:1.5";
-
   const cmd = t => Object.assign(el("code"), { textContent: t });
-  const showKind = () => {
-    const batch = kind.get() === "batch";
-    const win = state.host_os === "windows";
-    inp.value = ""; found.textContent = "";
-    inp.placeholder = batch ? (win ? "C:\\Users\\you\\Join files" : "/path/to/join-files")
-                            : (win ? "C:\\Users\\you\\PC-042.txt" : "/path/to/PC-042.txt");
-    note.replaceChildren();
-    if (batch) {
-      note.append(
-        "For each computer, on a PC already in the domain, run ",
-        cmd("djoin /provision /domain corp.example.com /machine PC-042 /savefile 5CG1234ABC.txt"),
-        ", naming the file after that computer's serial number (on its sticker, or in PowerShell on it: ",
-        cmd("(Get-CimInstance Win32_BIOS).SerialNumber"),
-        "). Put the files in one folder. During Setup each PC joins with its own file and deletes all of them from its disk; " +
-        "a PC with no file stays out of the domain and says so. The stick carries every computer's domain password, so wipe it when the batch is done.");
-    } else {
-      note.append(
-        "Make the file on a computer already in the domain, signed in as someone allowed to add computers: ",
-        cmd("djoin /provision /domain corp.example.com /machine PC-042 /savefile PC-042.txt"),
-        ". Setup joins with no network needed. The file is for one computer, which gets that name — for several, choose the folder option. " +
-        "It holds that computer's domain password, so treat the stick as carrying a credential.");
-    }
-  };
-  const showFound = r => {
-    const n = r.serials.length;
-    found.style.color = "var(--ok)";
-    found.textContent = `${n} computer${n === 1 ? "" : "s"}: ${r.serials.slice(0, 6).join(", ")}${n > 6 ? ", …" : ""}`;
-  };
-  const checkFolder = async () => {
-    if (kind.get() !== "batch" || !inp.value.trim()) { found.textContent = ""; return; }
-    try { showFound(await api("/api/domain/serials?dir=" + encodeURIComponent(inp.value.trim()))); }
-    catch (e) { found.style.color = "var(--err)"; found.textContent = e.message; }
-  };
-  inp.onchange = checkFolder;
+  note.append(
+    "Make the file on a computer already in the domain, signed in as someone allowed to add computers: ",
+    cmd("djoin /provision /domain corp.example.com /machine PC-042 /savefile PC-042.txt"),
+    ". No network is needed while the PC installs. The file is for one computer, which gets that name, " +
+    "and it holds that computer's domain password \u2014 so treat the stick as carrying a credential, " +
+    "and build one stick per computer.");
+
   choose.onclick = async () => {
     try {
-      if (kind.get() === "batch") {
-        const r = await api("/api/browse/djoin-folder", {});
-        if (r.path) { inp.value = r.path; showFound(r); }
-      } else {
-        const r = await api("/api/browse/djoin", {});
-        if (r.path) inp.value = r.path;
-      }
+      const r = await api("/api/browse/djoin", {});
+      if (r.path) inp.value = r.path;
     } catch (e) { showErr(e.message); }
   };
-  kind.wrap.querySelector("select").onchange = showKind;
-  showKind();
 
-  body.append(kind.wrap, row, found, note);
+  body.append(row, note);
   const cb = on.wrap.querySelector("input");
   cb.onchange = () => { body.hidden = !cb.checked; if (cb.checked) inp.focus(); };
   wrap.append(on.wrap, body);
-  return {
-    wrap,
-    get: () => (cb.checked && kind.get() === "one" ? inp.value.trim() : ""),
-    getDir: () => (cb.checked && kind.get() === "batch" ? inp.value.trim() : ""),
-  };
+  return { wrap, get: () => (cb.checked ? inp.value.trim() : "") };
 }
 
 let installOS = null;
@@ -2264,7 +2223,7 @@ function openInstall(os, edit) {
     if (iso) opts.append(iso.wrap);
     getOpts = () => ({
       edition: ed.get(), account_mode: am.get(), debloat: db.get(),
-      drivers: dv.get(), drivers_for: df.get(), apps: ap.get(), domain_blob: dj.get(), domain_blobs_dir: dj.getDir(),
+      drivers: dv.get(), drivers_for: df.get(), apps: ap.get(), domain_blob: dj.get(),
       bypass_requirement: bp.get(), iso: iso ? iso.get() : "", keep_drivers: keep ? keep.get() : false,
     });
   } else {

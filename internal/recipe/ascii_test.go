@@ -61,7 +61,6 @@ func generatedScripts(t *testing.T) map[string]string {
 		"debloat.ps1":             GenerateDebloatPS(r),
 		"verify.ps1":              GenerateVerifyPS(r, drv, func(ref string) (string, error) { return ref, nil }),
 		"clear-status-screen.cmd": GenerateClearStatusScreen(),
-		DomainSerialScriptName:    DomainSerialScriptFile(),
 		ModelInstallerScriptName:  ModelInstallerScriptFile(),
 	}
 }

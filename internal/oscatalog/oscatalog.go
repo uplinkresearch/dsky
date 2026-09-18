@@ -143,9 +143,6 @@ type Options struct {
 	// A workspace recipe keeps it in vars.local.yaml, which is gitignored, so
 	// that is where credentialed joins belong.
 	DomainBlob string
-	// DomainBlobsDir is a folder of join files named by serial number, so one
-	// stick joins a batch of computers (windows.domain.blobs_by_serial).
-	DomainBlobsDir string
 	// Hostname, Locale and Timezone are what the new machine should be. They
 	// exist because a migration knows them: it read them off the machine
 	// being replaced, and a replacement PC in the installer's time zone is
@@ -956,8 +953,6 @@ target:
 	switch {
 	case opts.DomainBlob != "":
 		domainBlock = fmt.Sprintf("  domain:\n    blob: %q\n", filepath.ToSlash(opts.DomainBlob))
-	case opts.DomainBlobsDir != "":
-		domainBlock = fmt.Sprintf("  domain:\n    blobs_by_serial: %q\n", filepath.ToSlash(opts.DomainBlobsDir))
 	}
 	// Staged GPU driver packages run past a gigabyte each, so driver media
 	// outgrows the 8 GiB stick a bare Windows ISO fits on.

@@ -375,17 +375,25 @@ README.txt — which is what to use where a program with a window cannot run.
 
 ### Joining a domain
 
-Windows sticks can join a domain during Setup without a network, from files
-made with `djoin /provision` on a computer already in the domain, so no domain
-password goes on the stick. A join file is one computer's account:
+Windows sticks can join a domain without a network, from a file made with
+`djoin /provision` on a computer already in the domain, so no domain password
+goes on the stick. A join file is one computer's account, so it is one stick
+per computer: `--domain-blob PC-042.txt`, or "Join a domain" in the Install
+dialog. The PC gets the name in the file.
 
-- **One computer:** `--domain-blob PC-042.txt`, or "Join a domain" in the
-  Install dialog. The PC gets the name in the file.
-- **A batch from one stick:** `--domain-blobs <folder>`, a folder of join files
-  each named after its computer's serial number (`5CG1234ABC.txt`). During
-  Setup each PC joins with its own file and deletes all of them from its disk;
-  a PC with no file stays out of the domain and logs why. The stick keeps every
-  file, so wipe it when the batch is done.
+The join is applied at first boot, by the agent, rather than during Windows
+Setup — and that is not an implementation detail. Windows will not sign a
+local account in automatically on a PC that has just joined a domain, so a PC
+joined during Setup never runs its first boot: it waits at a sign-in screen
+with no drivers and no programs, and resets itself back into Setup when nobody
+sits down at it. Joining afterwards avoids all of that. The PC installs, signs
+itself in, applies the join, restarts, and carries on.
+
+Joining a batch of computers from one stick (a folder of join files named by
+serial number) has been **withdrawn** for now: it joined each PC during Setup
+and so had exactly that problem, and there is no way to test a batch here yet.
+A recipe that still asks for it is refused by name rather than quietly built
+without a join.
 
 ### Three ways in, one pipeline
 
