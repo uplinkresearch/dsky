@@ -799,7 +799,20 @@ if [ "$IDENTITY" = true ]; then
 fi
 target=multi-user
 [ "$KIND" = desktop ] && target=graphical
-check "installed system reached $target.target" "systemctl is-active $target.target"
+if [ "$target" = graphical ]; then
+  # sshd answers well before the desktop is up: gdm, gnome-shell and the user
+  # session are all still starting, and systemd reports graphical.target as
+  # "activating" until they finish. Asked the instant SSH replied, this check
+  # failed a desktop that was perfectly healthy -- once, on a slow runner,
+  # having passed everywhere else. The install was not wrong; the question was
+  # early. So wait for it, the way the snap check waits for snapd.
+  check_eventually $((5 * 60)) "installed system reached graphical.target" \
+    "systemctl is-active graphical.target" ||
+    ssh_run "systemctl status graphical.target; systemd-analyze critical-chain graphical.target" \
+      >"$W/graphical-target.txt" 2>&1 || true
+else
+  check "installed system reached $target.target" "systemctl is-active $target.target"
+fi
 
 ssh_run "systemd-analyze 2>/dev/null; uname -a; lsb_release -ds" >"$W/system.txt" 2>&1 || true
 ssh_run poweroff >/dev/null 2>&1 || true
