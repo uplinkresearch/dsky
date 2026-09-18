@@ -76,9 +76,10 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 	domainBlob := fs.String("domain-blob", "", "Windows: join a domain using a blob from\n"+
 		"`djoin /provision` (one machine per blob). A credentialed join belongs\n"+
 		"in a workspace recipe, so its password is not left in shell history.")
-	adminUser := fs.String("admin-user", "", "Linux: the account an unattended install creates (default \"user\")")
+	adminUser := fs.String("admin-user", "", "the local account an unattended install creates (default \"user\")")
 	adminPassStdin := fs.Bool("admin-password-stdin", false, "read that account's password from stdin, so the install asks nothing at all.\n"+
-		"Without it the installer stops once for an account, which is the default.")
+		"Without it Linux stops once for an account, and Windows makes a local\n"+
+		"administrator with no password at all.")
 	iso := fs.String("iso", "", "use an ISO you downloaded instead of fetching it")
 	yes := fs.Bool("yes", false, "skip the typed size confirmation")
 	buildOnly := fs.Bool("build-only", false, "stop after building; do not flash")
@@ -146,7 +147,7 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 
 	// Read before anything is built, so a stick is never half-made when the
 	// answer is "you did not pipe anything in".
-	adminPass, err := readAdminPassword(*adminPassStdin, e)
+	adminPass, err := readAdminPassword(os.Stdin, os.Stdout, *adminPassStdin, e)
 	if err != nil {
 		return err
 	}
@@ -305,23 +306,29 @@ func printLinuxProgramPlan(w io.Writer, e oscatalog.Entry, appIDs []string, admi
 // readAdminPassword takes the account password off stdin, the way `dsky
 // migrate build` does: not off the command line, where it would be in the
 // shell's history and in every `ps` on the machine.
-func readAdminPassword(fromStdin bool, e oscatalog.Entry) (string, error) {
+func readAdminPassword(in io.Reader, out io.Writer, fromStdin bool, e oscatalog.Entry) (string, error) {
 	if !fromStdin {
 		return "", nil
 	}
-	if e.Family == oscatalog.Windows {
-		// Windows has its own route for this, and its answer file stores the
-		// password in clear text -- a different conversation from the one
-		// this flag is having.
-		return "", fmt.Errorf("--admin-password-stdin is a Linux option here; for Windows use `dsky migrate build`")
-	}
-	b, err := io.ReadAll(os.Stdin)
+	b, err := io.ReadAll(in)
 	if err != nil {
 		return "", fmt.Errorf("reading the account password from stdin: %w", err)
 	}
 	p := strings.Trim(string(b), "\r\n")
 	if p == "" {
 		return "", fmt.Errorf("--admin-password-stdin was given but stdin was empty")
+	}
+	// Said, not refused. There is no version of a Windows answer file that
+	// holds a password any other way -- <PlainText>true</PlainText> is the
+	// format -- so refusing would leave nothing to do differently, and a
+	// refusal nobody can act on is just a tool declining to work. Linux takes
+	// a SHA-512 hash instead, which is why only one of these needs saying.
+	if e.Family == oscatalog.Windows {
+		fmt.Fprintln(out, "This stick will hold that password in clear text.")
+		fmt.Fprintln(out, "  Windows' answer file has no other form for it, so anybody who reads the")
+		fmt.Fprintln(out, "  stick can read the password. Windows itself is left tidy — the agent")
+		fmt.Fprintln(out, "  clears the automatic sign-in and the stored password when it finishes —")
+		fmt.Fprintln(out, "  but the stick keeps it until it is written over.")
 	}
 	return p, nil
 }
