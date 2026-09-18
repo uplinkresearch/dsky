@@ -38,7 +38,7 @@ func TestPortalLoadsTheOperatorsInstallers(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if _, _, err := startServer(ctx, lib, nil, 8971, ".", false, false, time.Minute, nil); err != nil {
+	if _, _, err := startServer(ctx, lib, nil, 8971, ".", false, false, true, time.Minute, nil); err != nil {
 		t.Fatal(err)
 	}
 

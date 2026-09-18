@@ -64,7 +64,16 @@ func cmdServe(ctx context.Context, env *Env, args []string) error {
 	if *stay {
 		idle = 0
 	}
-	url, done, err := startServer(ctx, lib, env.Vars, *port, env.WorkspaceDir, *open, true, idle, nil)
+	// A portal started with --new is an extra, not a replacement, so it does
+	// not take the record. The record is how the next launch finds the one
+	// portal to raise, and a second instance claiming it means the app hands
+	// its window to whatever was started alongside — a development build in a
+	// terminal, say, which then answers for the installed one: its Update
+	// button replaces that build's binary rather than the one on disk, and it
+	// has no window to restart. The symptom is an update that reports success
+	// and changes nothing.
+	claim := !*newInst
+	url, done, err := startServer(ctx, lib, env.Vars, *port, env.WorkspaceDir, *open, true, claim, idle, nil)
 	if err != nil {
 		return err
 	}
@@ -115,7 +124,7 @@ func AppMain() error {
 	}
 	// open=false: the window below is the way in. Only the browser fallback
 	// needs one opened for it.
-	url, done, err := startServer(ctx, lib, map[string]string{}, 8931, ".", false, false, idleGrace,
+	url, done, err := startServer(ctx, lib, map[string]string{}, 8931, ".", false, false, true, idleGrace,
 		func() { restartAfterUpdate(stop) })
 	if err != nil {
 		return err
@@ -251,7 +260,10 @@ func restartAfterUpdate(stop func()) {
 // (explicit -w if present, else the last-opened one), optionally opens the
 // browser, and runs the server in the background. It returns the tokened URL
 // and a channel that closes when the server stops.
-func startServer(ctx context.Context, lib *library.Library, vars map[string]string, base int, wsDir string, open, announce bool, idle time.Duration, onUpdated func()) (string, <-chan struct{}, error) {
+//
+// claim says whether this portal is the one a later launch should be sent to.
+// Only a deliberate second instance (`serve --new`) says no.
+func startServer(ctx context.Context, lib *library.Library, vars map[string]string, base int, wsDir string, open, announce, claim bool, idle time.Duration, onUpdated func()) (string, <-chan struct{}, error) {
 	var tok [16]byte
 	if _, err := rand.Read(tok[:]); err != nil {
 		return "", nil, err
@@ -292,11 +304,15 @@ func startServer(ctx context.Context, lib *library.Library, vars map[string]stri
 	// Recorded before serving, so a second launch a moment later finds it.
 	inst := instance{Port: port, Token: s.Token, PID: os.Getpid(),
 		Started: time.Now().Format(time.RFC3339)}
-	writeInstance(lib.Root, inst)
+	if claim {
+		writeInstance(lib.Root, inst)
+	}
 
 	done := make(chan struct{})
 	go func() {
 		_ = webui.Serve(ctx, ln, s)
+		// Safe either way: clearInstance only removes a record that is ours,
+		// so an unclaimed instance cannot take the real portal's down with it.
 		clearInstance(lib.Root, inst)
 		close(done)
 	}()
