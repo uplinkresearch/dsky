@@ -7,6 +7,14 @@
 # wrapped with @() because 5.1 turns a one-element array into a scalar and a
 # zero-element array into $null.
 #
+# That applies to the SECTIONS too, not only to the lists inside them, and it
+# was missed here at first. A section that returns one item -- one printer, one
+# profile, one mapped drive -- came back as an object rather than an array of
+# one, and the scan failed to parse with "cannot unmarshal object into Go
+# struct field". It survived testing because the machine it was written against
+# had several of everything; the first machine with a single user profile broke
+# it, which is every freshly built PC and plenty of real ones.
+#
 # Win32_Product is never used. Enumerating it makes every installed MSI
 # product reconfigure itself, which takes minutes and writes to a machine we
 # promised not to touch. The uninstall registry keys hold the same list.
@@ -199,7 +207,7 @@ function Read-Uninstall($root, $arch, $who) {
   return $apps
 }
 
-$out.apps = Try-Read "apps" {
+$out.apps = @(Try-Read "apps" {
   $apps = @()
   $apps += Read-Uninstall "HKEY_LOCAL_MACHINE" "x64" ""
   # Loaded user hives: everybody signed in right now.
@@ -272,10 +280,10 @@ $out.apps = Try-Read "apps" {
     }
   }
   return $apps
-}
+})
 
 # ---- printers, drives, network ---------------------------------------------
-$out.printers = Try-Read "printers" {
+$out.printers = @(Try-Read "printers" {
   $ports = @{}
   foreach ($p in @(Get-PrinterPort -ErrorAction SilentlyContinue)) {
     if ($p.PrinterHostAddress) { $ports[[string]$p.Name] = [string]$p.PrinterHostAddress }
@@ -295,9 +303,9 @@ $out.printers = Try-Read "printers" {
     }
   }
   return $list
-}
+})
 
-$out.mapped_drives = Try-Read "mapped_drives" {
+$out.mapped_drives = @(Try-Read "mapped_drives" {
   $list = @()
   foreach ($sid in @(Get-ChildItem "Registry::HKEY_USERS" -ErrorAction SilentlyContinue)) {
     $name = $sid.PSChildName
@@ -316,7 +324,7 @@ $out.mapped_drives = Try-Read "mapped_drives" {
     }
   }
   return $list
-}
+})
 
 $out.network = Try-Read "network" {
   $ssids = @()
@@ -365,7 +373,7 @@ function Reg-Value($path, $name) {
   return $p.$name
 }
 
-$out.settings = Try-Read "settings" {
+$out.settings = @(Try-Read "settings" {
   $list = @()
   $add = { param($key, $value, $from) if ($null -ne $value) { $script:sList += [ordered]@{ key = $key; value = $value; from = $from } } }
   $script:sList = @()
@@ -412,10 +420,10 @@ $out.settings = Try-Read "settings" {
   $browser = Reg-Value "HKCU:\SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice" "ProgId"
   if ($browser) { & $add "defaults.browser" ([string]$browser) "HKCU\...\UrlAssociations\http\UserChoice" }
   return $script:sList
-}
+})
 
 # ---- profiles, and where their files are -----------------------------------
-$out.profiles = Try-Read "profiles" {
+$out.profiles = @(Try-Read "profiles" {
   $list = @()
   foreach ($p in @(Get-WmiObject Win32_UserProfile | Where-Object { -not $_.Special })) {
     $account = [string]$p.SID
@@ -440,7 +448,7 @@ $out.profiles = Try-Read "profiles" {
     }
   }
   return $list
-}
+})
 
 $out.hints = Try-Read "hints" {
   $kfm = $false
@@ -478,7 +486,7 @@ $out.hints = Try-Read "hints" {
 # a second and prints the signer, and what matters for a rebuild is a
 # third-party driver with no signer at all -- that is the one Windows 11 may
 # refuse to load and nobody can re-download.
-$out.unsigned_drivers = Try-Read "unsigned_drivers" {
+$out.unsigned_drivers = @(Try-Read "unsigned_drivers" {
   $list = @()
   $published = ""
   $original = ""
@@ -502,7 +510,7 @@ $out.unsigned_drivers = Try-Read "unsigned_drivers" {
   }
   & $flush
   return $script:driverList
-}
+})
 
 $out.hostname = $env:COMPUTERNAME
 $out.scanner_user = "$env:USERDOMAIN\$env:USERNAME"

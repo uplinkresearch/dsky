@@ -503,3 +503,33 @@ func TestBaseNameStripsVersionsAndArchitectures(t *testing.T) {
 		}
 	}
 }
+
+// Every section that returns a list has to be wrapped in @(), not just the
+// lists inside it.
+//
+// PowerShell 5.1 turns a one-element array into a scalar, so a machine with
+// exactly one printer — or one user profile, which every freshly built PC has
+// — produced an object where the parser wanted an array, and the whole scan
+// failed with "cannot unmarshal object into Go struct field". It was missed
+// because the machine it was written against had several of everything.
+func TestEveryListSectionIsWrappedSoOneItemIsStillAList(t *testing.T) {
+	b, err := os.ReadFile("scan.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(b)
+	for _, section := range []string{"apps", "printers", "mapped_drives", "settings", "profiles", "unsigned_drivers"} {
+		want := "$out." + section + " = @(Try-Read"
+		if !strings.Contains(script, want) {
+			t.Errorf("%s is a list section but is not wrapped: a machine with exactly one of them "+
+				"would fail the whole scan. Expected %q", section, want)
+		}
+	}
+	// The sections that are one object rather than a list must NOT be wrapped,
+	// or they would arrive as an array of one and fail the same way.
+	for _, section := range []string{"os", "hardware", "identity", "network", "hints"} {
+		if strings.Contains(script, "$out."+section+" = @(Try-Read") {
+			t.Errorf("%s is a single object and must not be wrapped in @()", section)
+		}
+	}
+}
