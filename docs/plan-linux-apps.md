@@ -388,6 +388,39 @@ Nothing here is blocked on that decision: the kickstart path is proven for the
 family either way, and a workspace recipe with `linux.kickstart` can already
 install any of them unattended with whatever `%packages` the operator names.
 
+### The decision is not only about programs (2026-09-18)
+
+It decides whether AlmaLinux and Rocky can be installed unattended from Quick
+Install *at all*, which is worth more than the programs are.
+
+`SaveRecipe` writes answers only when the entry offers programs — the condition
+is `e.ProgramsSupported() && (len(opts.Apps) > 0 || opts.ThirdPartyDrivers)`
+(`internal/oscatalog/oscatalog.go`). So with the picker off, no kickstart is
+ever written for a RHEL rebuild, and
+
+    dsky install almalinux-10 --apps vlc
+    error: installing programs alongside AlmaLinux 10.2 is not supported …
+
+is the *only* thing Quick Install will do with it: write the ISO and boot the
+installer, exactly as if DSKY were not involved. Meanwhile the media itself is
+proven — `almalinux-10-kickstart` and `rocky-10-kickstart` both install with
+nobody at the keyboard and have been green in CI all day. The capability is
+built and tested and unreachable, and the only way to it is to hand-write a
+workspace recipe, which is not what somebody who opened Quick Install came to
+do.
+
+Which means **even option 3 — "the eight, and nothing else" — buys unattended
+installs for the whole family**, and the eight programs are almost a footnote
+beside that. It also means the do-nothing option is not neutral: it leaves two
+of the catalog's server entries as ISO-writers, with the automation sitting
+finished behind a flag about something else.
+
+If the programs are the part that gives pause, they are separable. The gate
+could ask whether the entry takes answers rather than whether it offers
+programs — the plan already distinguishes them — and then AlmaLinux and Rocky
+would install themselves, ask for an account, and offer whichever short program
+list is settled on later, or none.
+
 ## 2. Fedora Server, AlmaLinux, Rocky, RHEL: kickstart
 
 The same idea with a different answer file, reusing the picker and the
