@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/uplinkresearch/dsky/internal/agent"
 	"github.com/uplinkresearch/dsky/internal/appcatalog"
 	"github.com/uplinkresearch/dsky/internal/compose"
 	"github.com/uplinkresearch/dsky/internal/migrate"
@@ -106,11 +107,23 @@ func migrateBuild(ctx context.Context, env *Env, args []string) error {
 	if !ok {
 		return fmt.Errorf("the catalog has no windows-11 entry")
 	}
+	// The plan's settings, split into what the machine gets now and what
+	// waits for the person who signs in. The split is migrate's to make; the
+	// agent only carries it out.
+	machineSet, perUserSet := migrate.SettingActions(m, "win11")
+	var settings *agent.Settings
+	if len(machineSet) > 0 || len(perUserSet) > 0 {
+		settings = &agent.Settings{
+			Machine: agentActions(machineSet),
+			PerUser: agentActions(perUserSet),
+		}
+	}
 	opts := oscatalog.Options{
 		Edition: plan.Edition, AccountMode: plan.AccountMode, Debloat: plan.Debloat,
 		Locale: plan.Locale, Timezone: plan.Timezone, AdminUser: plan.AdminUser,
 		AdminPassword: adminPass,
 		Hostname:      plan.Hostname, DomainBlob: plan.DomainBlob, Apps: plan.Apps,
+		Settings:          settings,
 		BypassRequirement: true, // a replacement PC is new hardware; this costs nothing and saves a rebuild
 	}
 	if *iso != "" {
@@ -242,4 +255,15 @@ func describeTarget(m *migrate.Manifest) string {
 		bits = append(bits, m.Target.Timezone)
 	}
 	return strings.Join(bits, ", ")
+}
+
+// agentActions is the same list, in the type the agent reads. Two types for
+// one idea, and deliberately: internal/migrate must not import the agent,
+// because the agent is what reads a manifest on the machine.
+func agentActions(in []migrate.SettingAction) []agent.Action {
+	var out []agent.Action
+	for _, a := range in {
+		out = append(out, agent.Action{Key: a.Key, Method: a.Method, Ref: a.Ref})
+	}
+	return out
 }

@@ -54,9 +54,13 @@ type Manifest struct {
 	Debloat *Debloat `json:"debloat,omitempty"`
 	Apps    *Apps    `json:"apps,omitempty"`
 	Domain  *Domain  `json:"domain,omitempty"`
+	// Settings is what a migration asks the machine to be set to. Nothing
+	// else writes it: a plain install has no opinion about somebody's power
+	// plan or taskbar.
+	Settings *Settings `json:"settings,omitempty"`
 
 	// Steps is the order to run in, using the recipe's own step names
-	// ("domain", "drivers", "debloat", "apps"). Unknown steps are logged and skipped
+	// ("domain", "drivers", "debloat", "apps", "settings"). Unknown steps are logged and skipped
 	// rather than failing the run.
 	Steps []string `json:"steps"`
 

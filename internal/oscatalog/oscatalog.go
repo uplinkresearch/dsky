@@ -8,6 +8,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"github.com/uplinkresearch/dsky/internal/agent"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,6 +171,11 @@ type Options struct {
 	// gets an administrator's desktop on a domain member. A migration
 	// therefore asks for one.
 	AdminPassword string
+	// Settings are what a migration asks the machine to be set to. Nothing
+	// else sets them: a plain install has no opinion about somebody's power
+	// plan, and they are not saved into a recipe, because they belong to one
+	// machine's approved plan.
+	Settings *agent.Settings
 }
 
 // adminPasswordVar is what the recipe says about the administrator's password.
@@ -482,6 +488,7 @@ func BuildQuick(ctx context.Context, lib *library.Library, e Entry, opts Options
 	return compose.Build(ctx, compose.Request{
 		Workspace: ws, Library: lib, Recipe: r,
 		CLIVars:  quickVars(opts),
+		Settings: opts.Settings,
 		Progress: progress,
 	})
 }
@@ -531,6 +538,7 @@ func BuildQuickPayload(ctx context.Context, lib *library.Library, e Entry, opts 
 	return compose.BuildPayload(ctx, compose.Request{
 		Workspace: ws, Library: lib, Recipe: r,
 		CLIVars:  quickVars(opts),
+		Settings: opts.Settings,
 		Progress: progress,
 	})
 }

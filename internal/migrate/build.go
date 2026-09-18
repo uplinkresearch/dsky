@@ -148,8 +148,13 @@ func PlanBuild(m *Manifest, odjBlob string) (*BuildPlan, error) {
 		p.Warnings = append(p.Warnings, fmt.Sprintf("%d printer(s) are in the plan; the first-boot agent does not add printers yet",
 			len(m.Peripherals.Printers)))
 	}
-	if n := appliableSettings(m); n > 0 {
-		p.Warnings = append(p.Warnings, fmt.Sprintf("%d setting(s) are in the plan; the first-boot agent does not apply settings yet", n))
+	// Settings that belong to a person rather than the machine are worth
+	// saying out loud: they do not appear until that person signs in, so an
+	// operator checking the machine at the bench will not see them.
+	if _, perUser := SettingActions(m, "win11"); len(perUser) > 0 {
+		p.Warnings = append(p.Warnings, fmt.Sprintf(
+			"%d setting(s) belong to whoever signs in, so they are applied at each person's first sign-in and not before",
+			len(perUser)))
 	}
 	sort.Strings(p.Warnings)
 	return p, nil
@@ -250,4 +255,45 @@ func BlobName(m *Manifest) string {
 		name = m.Source.Hostname
 	}
 	return filepath.Base(name) + "-odj.txt"
+}
+
+// SettingActions splits the plan's settings into what the agent applies to the
+// machine and what waits for whoever signs in.
+//
+// The split is by hive, and it decides whether a migration is any good. Half
+// of what somebody notices about their PC lives in HKCU -- file extensions,
+// hidden files, the taskbar search box -- and the agent runs as a local
+// administrator nobody will ever use. Applying those there would set them for
+// the wrong person and leave the real user with a machine that looks nothing
+// like the one they had. Those are staged to run at each person's own first
+// sign-in instead; a migrated machine is a domain machine, so the people who
+// use it are accounts the agent never sees.
+//
+// Settings with no way to apply them (the default browser, which cannot be
+// set on Windows 11 without forging a hash) are not here at all. They stay in
+// the manifest and in the report, which is how "set this again by hand"
+// reaches a person.
+func SettingActions(m *Manifest, osName string) (machine, perUser []SettingAction) {
+	for _, s := range m.Settings {
+		how, ok := s.Apply[osName]
+		if !ok || how.Method == "" {
+			continue
+		}
+		a := SettingAction{Key: s.Key, Method: how.Method, Ref: how.Ref}
+		if how.Method == ApplyRegistry && strings.HasPrefix(how.Ref, `HKCU\`) {
+			perUser = append(perUser, a)
+			continue
+		}
+		machine = append(machine, a)
+	}
+	return machine, perUser
+}
+
+// SettingAction is one setting, already turned into the thing that sets it.
+// Plain data, for the same reason BuildPlan is: this package must not import
+// the agent, because the agent reads manifests.
+type SettingAction struct {
+	Key    string
+	Method string
+	Ref    string
 }

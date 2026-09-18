@@ -101,7 +101,7 @@ func BuildPayload(ctx context.Context, req Request) (*Artifact, error) {
 	// mode, named by this build so a machine can tell a re-run of the same
 	// payload from a newer one. No verify script -- its paths assume first
 	// boot -- and the agent's own `verify` is the check instead.
-	m := buildManifest(r, drivers, agentInstallers(r.Windows, refFiles), "")
+	m := buildManifest(r, drivers, agentInstallers(r.Windows, refFiles), "", req.Settings)
 	m.Mode = agent.ModeStandalone
 	m.Build = key
 	if err := stageAgent(stage, buildTmp, m); err != nil {

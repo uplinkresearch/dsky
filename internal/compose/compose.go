@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/uplinkresearch/dsky/internal/agent"
 	"io"
 	"os"
 	"path/filepath"
@@ -38,6 +39,10 @@ type Request struct {
 	Library   *library.Library
 	Recipe    *recipe.Recipe
 	CLIVars   map[string]string
+	// Settings are what a migration asks the machine to be set to. They are
+	// handed in rather than read from the recipe on purpose: they belong to
+	// one machine's approved plan, not to a recipe somebody reuses.
+	Settings *agent.Settings
 	// Rebuild forces composing even when a cached artifact matches.
 	Rebuild bool
 	// Progress receives coarse stage updates; total may be -1.

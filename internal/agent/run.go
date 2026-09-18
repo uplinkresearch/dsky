@@ -160,6 +160,8 @@ func Apply(dir string, opts RunOptions) (int, error) {
 			a.debloatStep()
 		case stepApps:
 			a.appsStep()
+		case stepSettings:
+			a.settingsStep()
 		default:
 			a.J.Info(step, "no such step in this agent, skipping")
 			continue

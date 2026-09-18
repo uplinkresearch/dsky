@@ -101,7 +101,7 @@ func agentCovers(r *recipe.Recipe) (bool, string) {
 
 // buildManifest turns what compose already resolved into the agent's
 // instructions. Nothing is decided here that was not decided by the recipe.
-func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []agent.Installer, verifyScript string) *agent.Manifest {
+func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []agent.Installer, verifyScript string, settings *agent.Settings) *agent.Manifest {
 	w := r.Windows
 	m := &agent.Manifest{
 		Version:      agent.ManifestVersion,
@@ -124,6 +124,14 @@ func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []a
 			OnlyVendor: e.OnlyVendor, OnlyModel: e.OnlyModel,
 			TimeoutMinutes: recipe.ModelInstallerTimeoutMinutes,
 		})
+	}
+	// Settings a migration asked for. The step goes last: a machine that is
+	// still installing programs has not finished changing, and a setting
+	// applied before a program that overwrites it is not a setting anybody
+	// kept.
+	if settings != nil && (len(settings.Machine) > 0 || len(settings.PerUser) > 0) {
+		m.Settings = settings
+		m.Steps = append(m.Steps, agent.StepSettings)
 	}
 	if w.Domain.Offline() {
 		m.Domain = &agent.Domain{File: agentODJName}

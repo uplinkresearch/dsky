@@ -193,3 +193,40 @@ func TestEditionFollowsTheOldMachine(t *testing.T) {
 		}
 	}
 }
+
+// Which settings the machine gets and which wait for a person is the decision
+// that makes a migration feel like the old PC or not. Half of what somebody
+// notices lives in HKCU, and the agent runs as an administrator nobody uses.
+func TestSettingsThatBelongToAPersonWaitForThatPerson(t *testing.T) {
+	m := approved(t, "customized")
+	machine, perUser := SettingActions(m, "win11")
+	if len(machine) == 0 || len(perUser) == 0 {
+		t.Fatalf("machine=%+v perUser=%+v", machine, perUser)
+	}
+	for _, a := range perUser {
+		if a.Method != ApplyRegistry || !strings.HasPrefix(a.Ref, `HKCU\`) {
+			t.Errorf("%s waits for a person but is not theirs to set: %+v", a.Key, a)
+		}
+	}
+	for _, a := range machine {
+		if a.Method == ApplyRegistry && strings.HasPrefix(a.Ref, `HKCU\`) {
+			t.Errorf("%s would be set for an administrator nobody signs in as: %+v", a.Key, a)
+		}
+	}
+	// A setting nobody can apply is in neither list — it stays in the plan and
+	// in the report, which is how "do this by hand" reaches a person.
+	for _, a := range append(machine, perUser...) {
+		if a.Ref == "" || a.Method == "" {
+			t.Errorf("a setting with no way to apply it was handed to the agent: %+v", a)
+		}
+	}
+	// And the operator is told, because a setting that appears only when
+	// somebody signs in is not one they can check at the bench.
+	p, err := PlanBuild(m, "/tmp/pc-odj.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(p.Warnings, " | "), "first sign-in") {
+		t.Errorf("the build did not say the per-user settings come later: %v", p.Warnings)
+	}
+}
