@@ -2508,7 +2508,7 @@ function appsOpt(target = "windows") {
     }
     shown = hits.map(m => ({ kind: "app", m }));
     // A full winget id not in the list: offer it, at the top.
-    if (!ubuntu && WINGET_ID.test(raw) && !byWinget(raw) && !picked.has("winget:" + raw))
+    if (!linux && WINGET_ID.test(raw) && !byWinget(raw) && !picked.has("winget:" + raw))
       shown.unshift({ kind: "winget", id: raw });
 
     let lastCat = "";
@@ -2536,7 +2536,7 @@ function appsOpt(target = "windows") {
     });
 
     if (!shown.length) {
-      const hint = !ubuntu && tokens.length && (state.not_in_winget || []).find(h => h.words.some(w => tokens.some(t => w.startsWith(t) && t.length >= 3)));
+      const hint = !linux && tokens.length && (state.not_in_winget || []).find(h => h.words.some(w => tokens.some(t => w.startsWith(t) && t.length >= 3)));
       const empty = el("div", "empty");
       if (hint) {
         empty.append(el("div", null, hint.note));
@@ -2545,8 +2545,10 @@ function appsOpt(target = "windows") {
           b.onmousedown = e => { e.preventDefault(); results.hidden = true; addInstaller(); };
           empty.append(b);
         }
-      } else if (tokens.length && ubuntu) {
-        empty.textContent = "No program matches. Only programs from Ubuntu, verified snaps, verified Flathub apps and Google Chrome are offered for Ubuntu.";
+      } else if (tokens.length && linux) {
+        empty.textContent = target === "fedora"
+          ? "No program matches. Only programs from Fedora and verified Flathub apps are offered for Fedora."
+          : "No program matches. Only programs from Ubuntu, verified snaps, verified Flathub apps and Google Chrome are offered for Ubuntu.";
       } else if (tokens.length) {
         empty.textContent = "No program matches. Any winget package can be used by its id, such as Brave.Brave; an installer winget doesn't have can be added under Your installers.";
       } else {
