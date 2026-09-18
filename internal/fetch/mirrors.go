@@ -54,7 +54,28 @@ var mirrorRoots = map[string][]string{
 		"https://mirror.rackspace.com/rocky/",
 		"https://ftp.lysator.liu.se/pub/rocky/",
 	},
+	"https://cdimage.debian.org/debian-cd/": {
+		"https://ftp.acc.umu.se/debian-cd/",
+		"https://mirror.csclub.uwaterloo.ca/debian-cd/",
+		"https://mirrors.dotsrc.org/debian-cd/",
+		"https://mirror.us.leaseweb.net/debian-cd/",
+	},
+	// Mint publishes through mirrors and has no file host of its own, so the
+	// catalog's "origin" is already one of these. It is listed as the root
+	// because that is the URL the entry names; the others widen it.
+	"https://mirrors.edge.kernel.org/linuxmint/": {
+		"https://mirror.csclub.uwaterloo.ca/linuxmint/",
+		"https://mirrors.layeronline.com/linuxmint/",
+	},
 }
+
+// Deliberately not here: Arch and openSUSE, whose entries resolve a checksum
+// at pull time rather than pinning one, and pullURLs will not widen an
+// unpinned source -- there would be nothing to catch a mirror serving a
+// different file. Their own hosts are redirectors into a mirror network in any
+// case. The rest of the catalog -- Bazzite, Nobara, Garuda, Pop!_OS, CachyOS,
+// SteamOS, Raspberry Pi OS, TrueNAS, Proxmox, Omarchy -- publishes from one
+// host and has no mirror network to name.
 
 // Alternates returns the mirror URLs for u, or nil if none are known.
 func Alternates(u string) []string {
