@@ -394,6 +394,14 @@ type catalogEntry struct {
 	// Ubuntu's installer can fetch the proprietary ones; Anaconda has no
 	// equivalent, so the dialog does not offer a control that does nothing.
 	ThirdPartyDrivers bool `json:"third_party_drivers,omitempty"`
+	// InstallerNote is what the stick does with nothing ticked, which is the
+	// state the dialog opens in and the one nobody was told about: on an entry
+	// that only writes answers when programs are picked, choosing none leaves
+	// the ISO exactly as the distribution published it. Somebody built a
+	// Fedora stick that way, booted it, and found an ordinary installer asking
+	// every question -- the page having said only what picking programs would
+	// do, never what not picking them does.
+	InstallerNote string `json:"installer_note,omitempty"`
 	// ProgramsNote is the sentence the picker shows once something is ticked,
 	// built from the entry's own install plan. The page used to assemble it
 	// from a flag called `ubuntu` that meant "any Linux", so the Fedora picker
@@ -662,6 +670,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 			ThirdPartyDrivers: e.ThirdPartyDriversSupported(),
 			AppTarget:         string(e.AppTarget()),
 			ProgramsNote:      programsNote(e),
+			InstallerNote:     installerNote(e),
 		})
 	}
 	if s.Cfg != nil {
@@ -2426,4 +2435,15 @@ func programsNote(e oscatalog.Entry) string {
 		return ""
 	}
 	return e.InstallPlan(oscatalog.Options{Apps: []string{"vlc"}}).PickerNote()
+}
+
+// installerNote is what this entry does when no programs are picked -- the
+// plan for empty options, which is the honest answer to "what will this stick
+// do" before anybody has chosen anything.
+func installerNote(e oscatalog.Entry) string {
+	if !e.ProgramsSupported() || e.Family == oscatalog.Windows {
+		return ""
+	}
+	p := e.InstallPlan(oscatalog.Options{})
+	return p.InstallerLine() + ". Pick a program and it installs by itself instead."
 }

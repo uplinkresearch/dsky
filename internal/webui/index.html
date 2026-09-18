@@ -2420,8 +2420,12 @@ function appsOpt(target = "windows") {
     // install plan -- the same describer the CLI and the recipe page use. It
     // used to be assembled here from a flag called `ubuntu` that meant "any
     // Linux", so the Fedora picker announced it would install Ubuntu.
+    // With nothing ticked the stick is the distribution's own ISO and the
+    // installer asks everything -- which the page used only to imply, by
+    // saying what picking programs *would* do. Somebody built a Fedora stick
+    // with nothing picked and found out at the machine.
     note.textContent = extra || (linux
-      ? (installOS && installOS.programs_note) || ""
+      ? (installOS && (picked.size ? installOS.programs_note : installOS.installer_note)) || ""
       : payload
         ? "Programs from the list install with winget when the payload runs, so the machine needs to be online then." +
           (anyMine ? " Your own installers are carried inside the payload and need no network." : "")
