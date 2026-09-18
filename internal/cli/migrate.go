@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,7 +25,7 @@ import (
 // says so rather than pretending.
 func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("migrate: need scan, resolve, review, build, result, verify, validate, report or schema (see docs/plan-migrate.md)")
+		return fmt.Errorf("migrate: need scan, resolve, review, build, capture, restore, result, verify, validate, report or schema (see docs/plan-migrate.md)")
 	}
 	switch args[0] {
 	case "scan":
@@ -47,10 +48,14 @@ func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 		return migrateBuild(ctx, env, args[1:])
 	case "result":
 		return migrateResult(args[1:])
+	case "capture":
+		return migrateUSMT(ctx, args[1:], true)
+	case "restore":
+		return migrateUSMT(ctx, args[1:], false)
 	case "verify":
 		return migrateVerify(ctx, args[1:])
 	default:
-		return fmt.Errorf("migrate: no such thing as %q (scan, resolve, review, build, result, verify, validate, report, schema)", args[0])
+		return fmt.Errorf("migrate: no such thing as %q (scan, resolve, review, build, capture, restore, result, verify, validate, report, schema)", args[0])
 	}
 }
 
@@ -540,4 +545,80 @@ func offerAliases(v *migrate.Verification, path string, all bool) error {
 	}
 	fmt.Printf("remembered %d program(s) in %s\n", added, path)
 	return nil
+}
+
+// migrateUSMT moves somebody's files: capture on the old machine before it is
+// retired, restore on the new one once it is built.
+//
+// Both are run by a person rather than by the first-boot agent, and the reason
+// is the key. An encrypted store needs one, and the rule this feature does not
+// bend is that a secret never rides on the USB — so the key is typed on the
+// machine in front of somebody and never goes near the media. It is read the
+// same way the administrator password is, and for the same reason: a password
+// on a command line is in the shell history and in the process list.
+func migrateUSMT(ctx context.Context, args []string, capturing bool) error {
+	what := "restore"
+	if capturing {
+		what = "capture"
+	}
+	fs := flag.NewFlagSet("migrate "+what, flag.ContinueOnError)
+	usmt := fs.String("usmt", "", "the folder holding scanstate.exe and loadstate.exe, from the Windows ADK")
+	keyStdin := fs.Bool("key-stdin", false, "read the store's encryption key from stdin")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("migrate %s <manifest.json> --usmt <adk folder> [--key-stdin]", what)
+	}
+	m, err := migrate.Load(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	// The plan says whose files move and where they go, and both were
+	// approved by somebody who knew whose machine it was. An unapproved plan
+	// has not had that conversation.
+	if err := m.CheckApproved(); err != nil {
+		return fmt.Errorf("this plan cannot move anybody's files: %w", err)
+	}
+	u, err := migrate.NewUSMT(*usmt)
+	if err != nil {
+		return err
+	}
+	key, err := usmtKey(m, *keyStdin)
+	if err != nil {
+		return err
+	}
+	if capturing {
+		return u.Capture(ctx, m, key, os.Stdout)
+	}
+	return u.Restore(ctx, m, key, os.Stdout)
+}
+
+// usmtKey reads the store's encryption key, when there is one to read.
+func usmtKey(m *migrate.Manifest, fromStdin bool) (string, error) {
+	if !m.Data.Encrypted {
+		return "", nil
+	}
+	if fromStdin {
+		b, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", fmt.Errorf("reading the store key from stdin: %w", err)
+		}
+		if k := strings.Trim(string(b), "\r\n"); k != "" {
+			return k, nil
+		}
+		return "", fmt.Errorf("--key-stdin was given but stdin was empty")
+	}
+	if k := os.Getenv("DSKY_USMT_KEY"); k != "" {
+		return k, nil
+	}
+	return "", fmt.Errorf(`this plan's store is encrypted, so it needs its key.
+
+Give it one of these two ways, so that it stays out of your shell history:
+
+  printf %%s 'the-key' | dsky migrate %s <manifest.json> --usmt <folder> --key-stdin
+  DSKY_USMT_KEY=... dsky migrate ... --usmt <folder>
+
+The key is not in the plan and never rides on the stick: it unlocks every
+document the old machine had`, "capture|restore")
 }

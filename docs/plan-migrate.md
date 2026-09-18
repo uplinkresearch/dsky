@@ -85,9 +85,10 @@ M0 is built. The rest keep the spec's order, with the reuse above folded in.
   **blocked, not deferred**: it restores files nothing collects yet. Settings,
   printers, mapped drives, the per-user logon script and the result report are
   built; see "What M5 built" below.
-- **M6 — data and verify.** USMT hooks (`--usmt`, never bundled), `dsky
-  migrate verify` diffing a rescan against the approved manifest, every
-  missing-with-a-fuzzy-match offered as a mapping-table alias.
+- **M6 — data and verify. Done.** `dsky migrate capture` / `restore` around
+  USMT (never bundled), and `dsky migrate verify` diffing a fresh scan against
+  the approved manifest, offering every near miss as a mapping-table alias.
+  See "What M6 built" below.
 
 ## Non-goals
 
@@ -101,6 +102,60 @@ not read this file.
 Windows first, and the schema is OS-neutral on purpose (`apps[].source_kind`,
 `settings[].apply` keyed by target OS) so a Linux scanner can be added without
 reshaping the file.
+
+## What M6 built
+
+**Verifying** is the one reading taken from the finished machine by something
+that had no part in building it. Every other piece of this feature reports on
+its own work, and all of it can be right while the machine is still wrong: a
+program installs and does not run, a setting is applied and then overwritten by
+the program installed after it, a queue is added to an account nobody uses.
+`dsky migrate verify` scans the new machine and compares it with the approved
+plan.
+
+Most of the design is in what it does **not** call wrong. An application the
+plan dropped, or left for somebody to install by hand, is absent because the
+plan said so. A setting the plan never claimed it could apply — the default
+browser — is not a difference. A report that cries wolf on every machine is a
+report people stop opening.
+
+The near miss is the half that earns its keep. A program installed under a name
+nobody expected looks exactly like a program that failed to install, and the
+difference is somebody's afternoon against one line in the site's table. So a
+missing program with something similar enough on the machine is offered as an
+alias, above a threshold deliberately higher than the resolver's own — this
+writes into the site's table, where a wrong entry is wrong for every machine
+afterwards.
+
+**That alias had its direction wrong when first written, and only running the
+command against a real pair of files showed it.** It recorded the plan's old
+name against whatever resolution a scan of the new machine happened to carry —
+which for a real scan is nothing anybody decided, matched against a name that
+already resolved. It records the name the program has *now*, with the way the
+plan installed it, because the next machine to be scanned is the one that will
+show the new name. There is a test pinning the direction; the unit test written
+from the same misunderstanding would have passed.
+
+**USMT** moves the files, and DSKY never ships it: it comes in the Windows ADK
+under Microsoft's licence, so an operator installs the ADK and points at the
+folder. A missing tool is said plainly before anything else happens, because
+the alternative is finding out after the old PC has been wiped.
+
+`dsky migrate capture` runs on the old machine, `dsky migrate restore` on the
+new one. Both are run by a person, not by the first-boot agent, and that is the
+encryption key's doing: the rule this feature does not bend is that a secret
+never rides on the USB, so the key is typed on the machine in front of somebody
+and never goes near the media. It is read from stdin or the environment, never
+a flag value, and written to a mode-0600 temp file passed as `/keyfile` rather
+than `/key:` — anybody on the machine can read a command line out of the
+process list, and that one unlocks every document the old PC had. The file does
+not outlive the run, and there is a test that fails if it does.
+
+Capture excludes everybody and then names the plan's people. Copying a profile
+nobody asked for is a privacy problem, not a bonus.
+
+This also unblocks M5's per-app config drop, which was waiting for files to
+exist somewhere.
 
 ## What M5 built, and the item it cannot build yet
 
