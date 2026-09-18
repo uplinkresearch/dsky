@@ -29,6 +29,22 @@ real Ubuntu ISOs in a VM) is built as `test/autoinstall/vm.sh` and the
 sources, proven in VMs on this machine. See "What step 2 turned out to be"
 below — most of the work was not the program table.
 
+**On real hardware (2026-09-18).** Everything above was proven in VMs, which
+share one firmware and one disk controller. An HP EliteBook x360 1040 G8 --
+NVMe, Intel graphics, no ethernet port -- has now had the lot:
+
+| | Result |
+|---|---|
+| Ubuntu Desktop 26.04, Secure Boot **on** | Installed; review screen appeared as designed; programs arrived at first boot |
+| Ubuntu Server 26.04, Secure Boot **on** | Installed unattended. This is the one that matters: Server is where the GRUB menu is rewritten in place, and it survives signature checking on vendor firmware |
+| Omarchy, Secure Boot **on** | Will not boot -- archiso ships no signed shim. Works with it off. The catalog's FirmwareNotes said exactly this, and were right |
+
+Two bugs came out of it that no VM would have found: `/proc/mounts` escapes a
+space as `\040` and DSKY handed that to `umount`, so re-flashing a stick that
+held an Ubuntu ISO always failed; and the Linux readback verify read through
+the page cache, so "written and verified" would have passed a stick that
+stored nothing.
+
 ## Where it is today
 
 Steps 1 to 3 are built and proven. Ubuntu takes a program list through the
