@@ -93,8 +93,15 @@ func TestWithOEMCopy(t *testing.T) {
 		if len(cmds) == 0 || cmds[0] != "# "+oemCopyDescription {
 			t.Errorf("%q: specialize commands %v, want the copy first", mode, cmds)
 		}
-		if mode == "by_serial" && (len(cmds) != 2 || cmds[1] != "## DSKY domain join by serial number") {
+		// by_serial also carries the automatic-sign-in registry writes that a
+		// domain-joined machine needs (OOBE refuses to set them), so what
+		// matters here is that the copy is first and the join is second, and
+		// that everything after them was renumbered in order.
+		if mode == "by_serial" && (len(cmds) < 2 || cmds[1] != "## DSKY domain join by serial number") {
 			t.Errorf("by_serial: %v", cmds)
+		}
+		if mode == "offline" && len(cmds) < 2 {
+			t.Errorf("an offline join should still sign the machine in automatically: %v", cmds)
 		}
 		again, _ := withOEMCopy(got)
 		if again != got {

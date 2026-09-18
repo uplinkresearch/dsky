@@ -49,11 +49,23 @@ func agentCovers(r *recipe.Recipe) (bool, string) {
 			return false, "its first-boot steps include commands the agent does not run"
 		}
 	}
-	if w.Domain != nil {
-		// The offline join runs in specialize, before the agent exists on
-		// the machine, and is proven as it stands. Left alone deliberately.
-		return false, "it joins a domain"
+	if w.Domain != nil && !w.Domain.Offline() {
+		// Two joins still belong to the generated scripts, for different
+		// reasons. A credentialed join is proven as it stands and its
+		// password handling is the part least worth disturbing. A by-serial
+		// join is reported by the generated first boot, which looks for the
+		// log that dsky-domain-join.ps1 leaves when it fails; handing that
+		// boot to the agent would make a failed join silent, which is worse
+		// than not using the agent. The agent grows its own domain check
+		// with the migration runner, and this can be revisited then.
+		return false, "it joins a domain without a single join file"
 	}
+	// A single offline join file is no obstacle: Setup performs the join in
+	// specialize, from the blob in the unattend, long before anything runs at
+	// first logon, and the two never meet. This was refused for caution
+	// rather than conflict, and the refusal meant every migration -- which
+	// joins a domain by definition -- fell back to the generated scripts,
+	// which cannot read a migration's manifest.
 	if !agentbin.Available(agentbin.AMD64) {
 		return false, "this DSKY was built without the agent"
 	}

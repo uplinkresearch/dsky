@@ -146,6 +146,20 @@ type Options struct {
 	// DomainBlobsDir is a folder of join files named by serial number, so one
 	// stick joins a batch of computers (windows.domain.blobs_by_serial).
 	DomainBlobsDir string
+	// Hostname, Locale and Timezone are what the new machine should be. They
+	// exist because a migration knows them: it read them off the machine
+	// being replaced, and a replacement PC in the installer's time zone is
+	// noticed within the hour. Empty means what it always meant -- a random
+	// name, en-US, and whatever Windows picks.
+	//
+	// Hostname is ignored on an offline domain join: the join file names the
+	// computer, and a second name here breaks the trust the join sets up.
+	Hostname string
+	Locale   string
+	Timezone string
+	// AdminUser is the local administrator's name, for the same reason: a
+	// migration knows what the operator calls it.
+	AdminUser string
 }
 
 // sourceFormat is the manifest format for this entry's download. Raw images
@@ -937,11 +951,12 @@ windows:
     template: %s
     vars:
       edition_key: %s
-      locale: en-US
-      admin_user: user
-      admin_display_name: User
+      locale: %s
+      timezone: %q
+      admin_user: %s
+      admin_display_name: %s
       admin_password: ""
-      computer_name: "*"
+      computer_name: %q
       account_mode: %s
       bypass_requirements: "%s"
 %s  debloat:
@@ -953,7 +968,27 @@ windows:
 flash:
   verify: readback-sha256
 `, m.ID, m.Name, e.ID, minStick, editionName(opts.Edition), m.Template, genericKeys[opts.Edition],
+		orDefault(opts.Locale, "en-US"), opts.Timezone,
+		orDefault(opts.AdminUser, "user"), displayName(orDefault(opts.AdminUser, "user")),
+		orDefault(opts.Hostname, "*"),
 		opts.AccountMode, bypass, hardwareYAML(hw), preset, appsBlock, payloadBlock, domainBlock, steps)
+}
+
+func orDefault(s, def string) string {
+	if strings.TrimSpace(s) == "" {
+		return def
+	}
+	return s
+}
+
+// displayName is the name Windows shows for the local account: the account
+// name with its first letter capitalised, which is what the quick install has
+// always done for "user" -> "User".
+func displayName(user string) string {
+	if user == "" {
+		return "User"
+	}
+	return strings.ToUpper(user[:1]) + user[1:]
 }
 
 // editionName maps the option to the ei.cfg EditionID (drops the "N"/space).

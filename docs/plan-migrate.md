@@ -76,11 +76,10 @@ M0 is built. The rest keep the spec's order, with the reuse above folded in.
 - **M1 — scanner. Built** (see "What M1 built" below).
 - **M2 — resolver. Built** (see "What M2 built" below).
 - **M3 — review. Built** (see "What M3 built" below).
-- **M4 — build.** `djoin /provision /reuse`, group add, blob into the
-  unattend, payload staged (pre-downloaded winget packages, installers from
-  the table, App Installer and its dependencies), the agent's manifest
-  extended, `agentCovers` fixed for offline joins. Refuses an unapproved or
-  edited manifest.
+- **M4 — build. Mostly built, and it found two Windows defects that block
+  unattended first boot on any domain-joined DSKY media** (see "What M4 built
+  and what it found" below). Still to do there: pre-downloaded winget packages
+  and the App Installer bundle for machines with no internet at first boot.
 - **M5 — runner.** New agent steps: settings, per-app config drop, printers,
   per-user logon script, result JSON and HTML.
 - **M6 — data and verify.** USMT hooks (`--usmt`, never bundled), `dsky
@@ -99,6 +98,59 @@ not read this file.
 Windows first, and the schema is OS-neutral on purpose (`apps[].source_kind`,
 `settings[].apply` keyed by target OS) so a Linux scanner can be added without
 reshaping the file.
+
+## What M4 built, and what it found
+
+`dsky migrate build` refuses a plan nobody approved, one edited after approval,
+one with an application nobody placed, or a domain machine with no OU; asks for
+(or runs) `djoin /provision` for that one machine; copies the plan's installers
+into the library the way an operator's own .msi goes in; and hands the rest to
+the pipeline that has been building Windows sticks all along. `agentCovers`
+now allows the first-boot agent alongside a single offline join file, which is
+the conflict this plan flagged on day one: Setup performs that join in
+specialize, long before anything runs at first logon, and refusing it meant
+every migration fell back to the generated scripts, which cannot read a
+manifest.
+
+A credentialed join and a by-serial batch still keep the generated scripts. The
+by-serial refusal is not caution: the generated first boot is what reports a
+join that failed, and handing that boot to the agent would make a failed join
+silent. The agent grows its own domain check with the runner (M5), and that is
+when by-serial can be revisited.
+
+Proven against the lab: a computer account provisioned on the Server 2025 DC,
+the join file carried into the media, and the media checked for what it should
+contain — the blob in `AccountData`, the old machine's time zone, the local
+administrator's name, no `ComputerName` (the blob names the machine), the
+staged installer, and `firstboot.cmd` reduced to the agent handoff. Booted on a
+fresh VM, **the offline domain join worked**: `NetSetup.LOG` says
+"Provisioning package installation completed successfully", and the machine's
+logon screen offers "Sign in to: LAB".
+
+**And then it stops, for two reasons that are Windows' and not this feature's.**
+Both affect any DSKY media that joins a domain, not just a migration:
+
+1. **OOBE refuses to set automatic sign-in for a local account on a
+   domain-joined machine.** Its own log says so: "Not setting autologon for new
+   local user. e.g. upgrade, domain-joined, or system-managed user". The
+   machine reaches a logon screen and stops, with none of the first boot run —
+   no agent, no programs, nothing. The fix in this commit writes the same
+   intent (`AutoAdminLogon`, `DefaultUserName`, `DefaultDomainName`,
+   `AutoLogonCount`) straight to the registry in the specialize pass, before
+   OOBE has an opinion, for every domain-joined build. The agent already clears
+   all of it as its last act.
+2. **Windows 11 OOBE puts up "Why did my PC restart?" and waits for a click.**
+   On the first machine one click let it continue; on the second it stayed put
+   even after a click that visibly landed. Unattended media cannot depend on
+   somebody clicking, so this is the next thing to solve. The likely thread to
+   pull: the local administrator has no password, which on a domain-joined
+   machine may be what makes OOBE restart in the first place — and the spec
+   already says the local admin password is asked for at build time and never
+   stored in the manifest. Giving it one would serve both defects.
+
+Because of (2), fix (1) is written but not yet proven on a machine. That is
+stated here rather than implied, because a plan doc that says "built" about
+something nobody has watched work is how a feature arrives broken.
 
 ## What M3 built
 

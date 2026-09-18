@@ -36,12 +36,26 @@ func TestAgentCoversOnlyWhatItCanDo(t *testing.T) {
 		t.Error("a hand-written first-boot script was replaced by the agent")
 	}
 
-	// The offline join runs in specialize, before the agent is on the
-	// machine, and is proven as it stands.
+	// A single offline join file is performed by Setup in specialize, long
+	// before the agent runs at first logon: the two never meet, and a
+	// migration joins a domain by definition.
 	withDomain := base
 	withDomain.Domain = &recipe.DomainSpec{Blob: "pc.txt"}
-	if covered, _ := agentCovers(&recipe.Recipe{ID: "d", Windows: &withDomain}); covered {
-		t.Error("a domain-joining recipe was handed to the agent")
+	if covered, why := agentCovers(&recipe.Recipe{ID: "d", Windows: &withDomain}); !covered {
+		t.Errorf("an offline join kept the agent away: %s", why)
+	}
+	// A credentialed join stays with the generated scripts, and so does a
+	// by-serial batch: the generated first boot is what reports a join that
+	// failed, and losing that would make it silent.
+	withCreds := base
+	withCreds.Domain = &recipe.DomainSpec{Join: "corp.example.com", Username: "svc", Password: "x"}
+	if covered, _ := agentCovers(&recipe.Recipe{ID: "e", Windows: &withCreds}); covered {
+		t.Error("a credentialed join was handed to the agent")
+	}
+	withSerials := base
+	withSerials.Domain = &recipe.DomainSpec{BlobsBySerial: "blobs"}
+	if covered, _ := agentCovers(&recipe.Recipe{ID: "f", Windows: &withSerials}); covered {
+		t.Error("a by-serial batch was handed to the agent, which does not report a failed join")
 	}
 }
 

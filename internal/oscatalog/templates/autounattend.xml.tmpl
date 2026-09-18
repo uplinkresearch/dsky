@@ -63,6 +63,9 @@
       {{else}}
       <ComputerName>{{.Vars.computer_name}}</ComputerName>
       {{end}}
+      {{/* index, not .Vars.timezone: templates render with missingkey=error,
+           and a recipe written before this existed has no such key. */}}
+      {{with index .Vars "timezone"}}<TimeZone>{{.}}</TimeZone>{{end}}
     </component>
     {{if eq .Vars.domain_mode "offline"}}
     <!-- Offline domain join. The computer account was created in advance by
@@ -143,6 +146,97 @@
           <Description>DSKY domain join by serial number</Description>
           <Path>powershell -NoProfile -ExecutionPolicy Bypass -File C:\Windows\Setup\Scripts\dsky-domain-join.ps1</Path>
         </RunSynchronousCommand>
+      {{if eq .Vars.account_mode "local"}}
+        <!-- Signing in automatically on a machine that has just joined a
+             domain. OOBE refuses to apply the AutoLogon element below on a
+             domain-joined machine, and says so in its own log: "Not setting
+             autologon for new local user. e.g. upgrade, domain-joined, or
+             system-managed user". A machine that joins a domain therefore
+             reaches a logon screen and stops there with none of the first
+             boot run. Found on a lab machine that had joined perfectly and
+             then sat waiting for somebody to type a password.
+
+             Winlogon reads these values regardless, so the same intent is
+             written straight to the registry in this pass, before OOBE has an
+             opinion. The agent clears all of them as its last act, exactly as
+             it does for the ones OOBE sets. -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Description>DSKY automatic sign-in (domain-joined)</Description>
+          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Description>DSKY automatic sign-in: which account</Description>
+          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName /t REG_SZ /d "{{.Vars.admin_user}}" /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Description>DSKY automatic sign-in: the local machine, not the domain</Description>
+          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultDomainName /t REG_SZ /d "." /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Description>DSKY automatic sign-in: how many times</Description>
+          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoLogonCount /t REG_DWORD /d 3 /f</Path>
+        </RunSynchronousCommand>
+        {{if .Vars.admin_password}}
+        <RunSynchronousCommand wcm:action="add">
+          <Order>6</Order>
+          <Description>DSKY automatic sign-in: the password it signs in with</Description>
+          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "{{.Vars.admin_password}}" /f</Path>
+        </RunSynchronousCommand>
+        {{end}}
+      {{end}}
+      </RunSynchronous>
+    </component>
+    {{end}}
+    {{if and (ne .Vars.domain_mode "") (ne .Vars.domain_mode "by_serial")}}
+    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+      {{if eq .Vars.account_mode "local"}}
+        <!-- Signing in automatically on a machine that has just joined a
+             domain. OOBE refuses to apply the AutoLogon element below on a
+             domain-joined machine, and says so in its own log: "Not setting
+             autologon for new local user. e.g. upgrade, domain-joined, or
+             system-managed user". A machine that joins a domain therefore
+             reaches a logon screen and stops there with none of the first
+             boot run. Found on a lab machine that had joined perfectly and
+             then sat waiting for somebody to type a password.
+
+             Winlogon reads these values regardless, so the same intent is
+             written straight to the registry in this pass, before OOBE has an
+             opinion. The agent clears all of them as its last act, exactly as
+             it does for the ones OOBE sets. -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Description>DSKY automatic sign-in (domain-joined)</Description>
+          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon /t REG_SZ /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Description>DSKY automatic sign-in: which account</Description>
+          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultUserName /t REG_SZ /d "{{.Vars.admin_user}}" /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Description>DSKY automatic sign-in: the local machine, not the domain</Description>
+          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultDomainName /t REG_SZ /d "." /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Description>DSKY automatic sign-in: how many times</Description>
+          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoLogonCount /t REG_DWORD /d 3 /f</Path>
+        </RunSynchronousCommand>
+        {{if .Vars.admin_password}}
+        <RunSynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Description>DSKY automatic sign-in: the password it signs in with</Description>
+          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v DefaultPassword /t REG_SZ /d "{{.Vars.admin_password}}" /f</Path>
+        </RunSynchronousCommand>
+        {{end}}
+      {{end}}
       </RunSynchronous>
     </component>
     {{end}}

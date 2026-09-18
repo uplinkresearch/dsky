@@ -22,7 +22,7 @@ import (
 // says so rather than pretending.
 func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("migrate: need scan, resolve, review, validate, report or schema (see docs/plan-migrate.md)")
+		return fmt.Errorf("migrate: need scan, resolve, review, build, validate, report or schema (see docs/plan-migrate.md)")
 	}
 	switch args[0] {
 	case "scan":
@@ -41,10 +41,12 @@ func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 		return migrateResolve(args[1:])
 	case "review":
 		return migrateReview(args[1:])
-	case "build", "verify":
-		return fmt.Errorf("migrate %s is not built yet — scan, resolve, review, validate, report and schema are; see docs/plan-migrate.md", args[0])
+	case "build":
+		return migrateBuild(ctx, env, args[1:])
+	case "verify":
+		return fmt.Errorf("migrate verify is not built yet — scan, resolve, review, build, validate, report and schema are; see docs/plan-migrate.md")
 	default:
-		return fmt.Errorf("migrate: no such thing as %q (scan, resolve, review, validate, report, schema)", args[0])
+		return fmt.Errorf("migrate: no such thing as %q (scan, resolve, review, build, validate, report, schema)", args[0])
 	}
 }
 
