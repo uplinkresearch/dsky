@@ -157,9 +157,23 @@
              then sat waiting for somebody to type a password.
 
              Winlogon reads these values regardless, so the same intent is
-             written straight to the registry in this pass, before OOBE has an
-             opinion. The agent clears all of them as its last act, exactly as
-             it does for the ones OOBE sets. -->
+             written straight to the registry here. These commands do run and
+             do succeed - the lab log shows all of them returning 0x0.
+
+             They are NOT SUFFICIENT ON THEIR OWN, and the lab log says why:
+             a few minutes after this pass, OOBE logs its refusal above and
+             then "Transferring unattend.xml autologon values", which is OOBE
+             writing these same values itself. Anything specialize put there
+             is behind OOBE in the queue. To make an automatic sign-in stick
+             on a domain member it has to be re-established after OOBE has
+             finished with it - SetupComplete.cmd is the hook for that - and
+             that is not wired up yet, because on this path OOBE does not
+             currently reach the end unattended at all (see the plan doc).
+
+             Kept, rather than removed, because the values are right and
+             harmless, and because the next change needs them here to see
+             what OOBE does to them. The agent clears all of them as its last
+             act, exactly as it does for the ones OOBE sets. -->
         <RunSynchronousCommand wcm:action="add">
           <Order>2</Order>
           <Description>DSKY automatic sign-in (domain-joined)</Description>
@@ -206,9 +220,23 @@
              then sat waiting for somebody to type a password.
 
              Winlogon reads these values regardless, so the same intent is
-             written straight to the registry in this pass, before OOBE has an
-             opinion. The agent clears all of them as its last act, exactly as
-             it does for the ones OOBE sets. -->
+             written straight to the registry here. These commands do run and
+             do succeed - the lab log shows all of them returning 0x0.
+
+             They are NOT SUFFICIENT ON THEIR OWN, and the lab log says why:
+             a few minutes after this pass, OOBE logs its refusal above and
+             then "Transferring unattend.xml autologon values", which is OOBE
+             writing these same values itself. Anything specialize put there
+             is behind OOBE in the queue. To make an automatic sign-in stick
+             on a domain member it has to be re-established after OOBE has
+             finished with it - SetupComplete.cmd is the hook for that - and
+             that is not wired up yet, because on this path OOBE does not
+             currently reach the end unattended at all (see the plan doc).
+
+             Kept, rather than removed, because the values are right and
+             harmless, and because the next change needs them here to see
+             what OOBE does to them. The agent clears all of them as its last
+             act, exactly as it does for the ones OOBE sets. -->
         <RunSynchronousCommand wcm:action="add">
           <Order>1</Order>
           <Description>DSKY automatic sign-in (domain-joined)</Description>

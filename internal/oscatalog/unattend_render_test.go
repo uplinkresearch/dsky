@@ -117,3 +117,67 @@ func TestTheAnswerFileCoversEveryRestartTheAgentMayTake(t *testing.T) {
 			want, need, agent.MaxRestarts)
 	}
 }
+
+// A domain-joined machine signs itself in to run its first boot, so the
+// administrator it signs in as needs a password. Two things have to be true at
+// once: the password must reach the answer file, and it must not be written
+// into the recipe the build leaves behind in the library -- a file somebody
+// can read later is not where the password to a domain member belongs.
+func TestAnAdminPasswordReachesTheAnswerFileAndNotTheRecipe(t *testing.T) {
+	const pass = "Sup3rSecret!pw"
+	opts := Options{Edition: "Pro", AccountMode: "local", AdminUser: "uplink", AdminPassword: pass}
+	yaml := recipeYAML(recipeMeta{ID: "q", Name: "Quick", Template: "autounattend.xml.tmpl"},
+		Entry{ID: "windows-11", Family: Windows}, opts, nil)
+	if strings.Contains(yaml, pass) {
+		t.Errorf("the password is written into the recipe on disk:\n%s", yaml)
+	}
+	if !strings.Contains(yaml, `admin_password: "${var:admin_password}"`) {
+		t.Errorf("the recipe does not say where to find the password:\n%s", yaml)
+	}
+	if v := quickVars(opts); v["admin_password"] != pass {
+		t.Errorf("the build does not carry the password in memory: %v", v)
+	}
+	// And with no password the recipe is exactly what it has always been, so
+	// a standalone quick install is unchanged.
+	plain := recipeYAML(recipeMeta{ID: "q", Name: "Quick", Template: "autounattend.xml.tmpl"},
+		Entry{ID: "windows-11", Family: Windows}, Options{Edition: "Pro", AccountMode: "local"}, nil)
+	if !strings.Contains(plain, `admin_password: ""`) {
+		t.Errorf("a build with no password changed shape:\n%s", plain)
+	}
+	if quickVars(Options{}) != nil {
+		t.Error("a build with no password carries a password var")
+	}
+
+	// Rendered: the account gets it, the automatic sign-in gets it, and so
+	// does the registry command that stands in for the sign-in OOBE refuses
+	// to set on a domain-joined machine.
+	tmpl, err := templatesFS.ReadFile("templates/autounattend.xml.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "autounattend.xml.tmpl")
+	if err := os.WriteFile(path, tmpl, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := recipe.RenderTemplate(path, recipe.Context{Vars: map[string]string{
+		"locale": "en-US", "computer_name": "*", "edition_key": "KEY",
+		"admin_user": "uplink", "admin_display_name": "Uplink", "admin_password": pass,
+		"account_mode": "local", "bypass_requirements": "1", "domain_mode": "offline",
+		"domain_odj_blob": "QUJD",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(out, "<Value>"+pass+"</Value>"); n != 2 {
+		t.Errorf("the password reached %d of the 2 places that need it", n)
+	}
+	if !strings.Contains(out, `/v DefaultPassword /t REG_SZ /d "`+pass+`"`) {
+		t.Errorf("the automatic sign-in has no password to use:\n%s", out)
+	}
+	if strings.Contains(out, "<Value></Value>") {
+		t.Errorf("an empty password element survived alongside a real password:\n%s", out)
+	}
+	if p := undeclaredPrefix(t, out); p != "" {
+		t.Errorf("undeclared namespace prefix on %s", p)
+	}
+}

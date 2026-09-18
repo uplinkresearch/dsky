@@ -134,23 +134,60 @@ Both affect any DSKY media that joins a domain, not just a migration:
    domain-joined machine.** Its own log says so: "Not setting autologon for new
    local user. e.g. upgrade, domain-joined, or system-managed user". The
    machine reaches a logon screen and stops, with none of the first boot run —
-   no agent, no programs, nothing. The fix in this commit writes the same
-   intent (`AutoAdminLogon`, `DefaultUserName`, `DefaultDomainName`,
-   `AutoLogonCount`) straight to the registry in the specialize pass, before
-   OOBE has an opinion, for every domain-joined build. The agent already clears
-   all of it as its last act.
+   no agent, no programs, nothing.
 2. **Windows 11 OOBE puts up "Why did my PC restart?" and waits for a click.**
    On the first machine one click let it continue; on the second it stayed put
    even after a click that visibly landed. Unattended media cannot depend on
-   somebody clicking, so this is the next thing to solve. The likely thread to
-   pull: the local administrator has no password, which on a domain-joined
-   machine may be what makes OOBE restart in the first place — and the spec
-   already says the local admin password is asked for at build time and never
-   stored in the manifest. Giving it one would serve both defects.
+   somebody clicking.
 
-Because of (2), fix (1) is written but not yet proven on a machine. That is
-stated here rather than implied, because a plan doc that says "built" about
-something nobody has watched work is how a feature arrives broken.
+The first attempt at (1) wrote the same intent (`AutoAdminLogon`,
+`DefaultUserName`, `DefaultDomainName`, `AutoLogonCount`) straight to the
+registry in the specialize pass, on the theory that Winlogon reads those values
+whatever OOBE thinks. **Reading the machine's disk afterwards disproved it**,
+and the way it did is worth keeping:
+
+- The commands are on the media exactly as intended, and they ran: the
+  specialize log shows all five RunSynchronous commands returning `0x0`.
+- Twenty-two minutes later, OOBE logs its refusal — and then, on the next
+  line, **"Transferring unattend.xml autologon values"**. That is OOBE writing
+  the same registry values itself, after specialize. Anything specialize put
+  there is behind OOBE in the queue, so the pass is simply too early.
+- The account was never created (`C:\Users` holds only `defaultuser0`, OOBE's
+  own temporary account) and no `firstboot.log` exists, so nothing of the first
+  boot ran — while the agent, its manifest and the staged installer are all
+  sitting in `C:\Windows\Setup\Scripts`, which confirms the media handoff
+  itself works.
+- OOBE **did not crash**: every task it started ended "successfully", the
+  zero-day-patch scan completed ("Found 0 updates"), and the log simply stops
+  where the VM was killed. So "Why did my PC restart?" is a page OOBE chose to
+  show and wait on, not the aftermath of a failure — which rules out the
+  theory that a blank administrator password was crashing it.
+
+So the sign-in has to be re-established *after* OOBE is done with those values;
+`SetupComplete.cmd` is the hook, and it is deliberately not wired up yet,
+because nothing after OOBE runs at all until (2) is solved. The specialize
+commands are kept: they are correct, harmless, and the next attempt needs them
+there to see what OOBE does to them.
+
+The order of work is therefore (2) first, then (1) on top of it. (2) is a
+question about why OOBE goes interactive on this path at all: it creates
+`defaultuser0` and runs `PrepareUserOOBE`, which is the flow for a person
+typing answers, despite `HideOnlineAccountScreens`, `HideEULAPage` and a
+`LocalAccount` that should leave it nothing to ask.
+
+A separate finding, independent of both: this build was making a **passwordless
+local administrator that signs itself in automatically on a domain member** —
+anybody who walked past the new PC before somebody collected it would get an
+administrator's desktop on a machine the domain already trusts. Fine on a
+standalone box in front of you, which is why the quick install has always
+allowed it; not fine here. `dsky migrate build` now refuses a domain build
+without a password and takes it on stdin or from `DSKY_ADMIN_PASSWORD`, never
+as a flag value that would land in shell history. It is not written to the
+manifest (a document people mail around) and not to the recipe the build
+leaves in the library: the recipe says `${var:admin_password}` and the value
+travels in memory. That also gives the automatic sign-in a `DefaultPassword`
+to use, which it had no way to work without — but it is not a fix for (2), and
+the log above is why.
 
 ## What M3 built
 

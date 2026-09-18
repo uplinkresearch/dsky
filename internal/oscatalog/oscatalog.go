@@ -160,6 +160,38 @@ type Options struct {
 	// AdminUser is the local administrator's name, for the same reason: a
 	// migration knows what the operator calls it.
 	AdminUser string
+	// AdminPassword is that account's password, supplied at build time and
+	// never stored: it is not in the recipe on disk, not in a migration
+	// manifest, and not in the workspace. It reaches the answer file through
+	// compose's in-memory CLIVars, which is the same channel a credentialed
+	// join's password uses.
+	//
+	// Empty is what it has always been -- a passwordless local
+	// administrator, which is fine on a standalone machine that somebody is
+	// standing in front of. It is not fine on a machine that joins a domain
+	// and signs itself in automatically: anybody who walks up to the new PC
+	// gets an administrator's desktop on a domain member. A migration
+	// therefore asks for one.
+	AdminPassword string
+}
+
+// adminPasswordVar is what the recipe says about the administrator's password.
+// When there is one it says where to find it, never what it is: the value
+// arrives at render time through CLIVars, so a recipe left behind in the
+// library cannot hand somebody the password to a domain member.
+func adminPasswordVar(pass string) string {
+	if pass == "" {
+		return `""`
+	}
+	return `"${var:admin_password}"`
+}
+
+// quickVars are the values a quick build keeps out of its own recipe.
+func quickVars(opts Options) map[string]string {
+	if opts.AdminPassword == "" {
+		return nil
+	}
+	return map[string]string{"admin_password": opts.AdminPassword}
 }
 
 // sourceFormat is the manifest format for this entry's download. Raw images
@@ -452,6 +484,7 @@ func BuildQuick(ctx context.Context, lib *library.Library, e Entry, opts Options
 	}
 	return compose.Build(ctx, compose.Request{
 		Workspace: ws, Library: lib, Recipe: r,
+		CLIVars:  quickVars(opts),
 		Progress: progress,
 	})
 }
@@ -500,6 +533,7 @@ func BuildQuickPayload(ctx context.Context, lib *library.Library, e Entry, opts 
 	}
 	return compose.BuildPayload(ctx, compose.Request{
 		Workspace: ws, Library: lib, Recipe: r,
+		CLIVars:  quickVars(opts),
 		Progress: progress,
 	})
 }
@@ -955,7 +989,7 @@ windows:
       timezone: %q
       admin_user: %s
       admin_display_name: %s
-      admin_password: ""
+      admin_password: %s
       computer_name: %q
       account_mode: %s
       bypass_requirements: "%s"
@@ -970,6 +1004,7 @@ flash:
 `, m.ID, m.Name, e.ID, minStick, editionName(opts.Edition), m.Template, genericKeys[opts.Edition],
 		orDefault(opts.Locale, "en-US"), opts.Timezone,
 		orDefault(opts.AdminUser, "user"), displayName(orDefault(opts.AdminUser, "user")),
+		adminPasswordVar(opts.AdminPassword),
 		orDefault(opts.Hostname, "*"),
 		opts.AccountMode, bypass, hardwareYAML(hw), preset, appsBlock, payloadBlock, domainBlock, steps)
 }

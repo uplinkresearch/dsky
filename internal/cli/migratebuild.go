@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,6 +36,7 @@ func migrateBuild(ctx context.Context, env *Env, args []string) error {
 	iso := fs.String("iso", "", "a Windows 11 ISO you already have, instead of fetching one")
 	target := fs.String("device", "", "write to this drive when the build is done")
 	buildOnly := fs.Bool("build-only", false, "build the image and stop, without writing a drive")
+	passStdin := fs.Bool("admin-password-stdin", false, "read the local administrator's password from stdin")
 	yes := fs.Bool("yes", false, "skip the typed size confirmation when writing a drive")
 	if err := parseFlags(fs, args); err != nil {
 		return err
@@ -59,6 +61,10 @@ func migrateBuild(ctx context.Context, env *Env, args []string) error {
 		}
 	}
 	plan, err := migrate.PlanBuild(m, blobPath)
+	if err != nil {
+		return err
+	}
+	adminPass, err := adminPassword(m, *passStdin, fs.Arg(0))
 	if err != nil {
 		return err
 	}
@@ -103,7 +109,8 @@ func migrateBuild(ctx context.Context, env *Env, args []string) error {
 	opts := oscatalog.Options{
 		Edition: plan.Edition, AccountMode: plan.AccountMode, Debloat: plan.Debloat,
 		Locale: plan.Locale, Timezone: plan.Timezone, AdminUser: plan.AdminUser,
-		Hostname: plan.Hostname, DomainBlob: plan.DomainBlob, Apps: plan.Apps,
+		AdminPassword: adminPass,
+		Hostname:      plan.Hostname, DomainBlob: plan.DomainBlob, Apps: plan.Apps,
 		BypassRequirement: true, // a replacement PC is new hardware; this costs nothing and saves a rebuild
 	}
 	if *iso != "" {
@@ -128,6 +135,63 @@ func migrateBuild(ctx context.Context, env *Env, args []string) error {
 		return err
 	}
 	return armAndFlashMany(ctx, art, devs, *yes)
+}
+
+// adminPassword is the new machine's local administrator password. A migration
+// asks for one, and a domain machine will not build without it.
+//
+// The reason is the first boot. A machine that joins a domain still signs
+// itself in automatically to run the first boot, and a passwordless
+// administrator on a domain member means anybody who walks past the new PC
+// before somebody collects it gets an administrator's desktop -- on a machine
+// that is already trusted by the domain. On a standalone machine the same
+// account is a local one on a box in front of you, which is why the quick
+// install has always allowed it and still does.
+//
+// It is not a flag value. This repository already says why, about the other
+// password it handles: a password passed to a command lands in shell history
+// and in the scrollback of whoever is watching. So it comes in on stdin or
+// from the environment, and it is never written down -- not in the manifest,
+// which is a document people mail around, and not in the recipe the build
+// leaves in the library.
+func adminPassword(m *migrate.Manifest, fromStdin bool, manifestFile string) (string, error) {
+	if fromStdin {
+		b, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", fmt.Errorf("reading the administrator password from stdin: %w", err)
+		}
+		if p := strings.Trim(string(b), "\r\n"); p != "" {
+			return p, nil
+		}
+		return "", fmt.Errorf("--admin-password-stdin was given but stdin was empty")
+	}
+	if p := os.Getenv("DSKY_ADMIN_PASSWORD"); p != "" {
+		return p, nil
+	}
+	if !m.Identity.Domained() {
+		return "", nil
+	}
+	return "", fmt.Errorf(`this machine joins %s, so %s needs a password.
+
+It signs itself in once to install the programs in the plan, and a
+domain-joined PC with a passwordless administrator is an administrator's
+desktop for anybody who walks past it first.
+
+Give it one of these two ways, so that it stays out of your shell history:
+
+  printf %%s 'the-password' | dsky migrate build %s --admin-password-stdin ...
+  DSKY_ADMIN_PASSWORD=... dsky migrate build ...
+
+It is not written to the plan or kept in the library`,
+		m.Identity.DomainFQDN, orUser(m.Target.LocalAdmin), filepath.Base(manifestFile))
+}
+
+// orUser names the account in a message when the plan does not.
+func orUser(name string) string {
+	if name == "" {
+		return "the local administrator"
+	}
+	return name
 }
 
 // provisionJoin makes the computer account and returns the file that carries
