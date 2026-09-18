@@ -33,14 +33,22 @@ func TestPublishedVectors(t *testing.T) {
 	}
 }
 
-// And against whatever this machine's own libc says, when there is one to ask.
+// And against whatever openssl this machine has, when there is one to ask.
 // The vectors above are the real check; this catches a vector transcribed
 // wrongly, which would otherwise pin the same mistake twice.
+//
+// ASCII only, deliberately. A non-ASCII password was in this list and passed
+// on Linux and failed on Windows, because passing one through a shell to
+// another program compares how the two encode an argument rather than how
+// they hash it -- the Go side hashes the UTF-8 bytes it holds, and whatever
+// PowerShell handed openssl was not those bytes. The scheme hashes bytes and
+// has no opinion about text, so there is nothing about Unicode for this
+// particular oracle to settle.
 func TestAgreesWithOpenSSL(t *testing.T) {
 	if _, err := exec.LookPath("openssl"); err != nil {
 		t.Skip("no openssl to compare against")
 	}
-	for _, pw := range []string{"hunter2", "a", "correct horse battery staple", "üñïçø∂é"} {
+	for _, pw := range []string{"hunter2", "a", "correct horse battery staple", "p@ss w/ spaces!"} {
 		out, err := exec.Command("openssl", "passwd", "-6", "-salt", "dskysalt", pw).Output()
 		if err != nil {
 			t.Fatalf("openssl: %v", err)
@@ -69,5 +77,22 @@ func TestSaltIsRandomAndLegal(t *testing.T) {
 			t.Fatalf("salt %q came up twice in %d", s, i+1)
 		}
 		seen[s] = true
+	}
+}
+
+// The scheme hashes bytes. What a caller thinks those bytes spell is not its
+// business, so a password with a multi-byte character has to hash to the same
+// thing as the identical byte sequence written out by hand -- which is what
+// an installer will be handed on the other side.
+func TestHashesBytesNotCharacters(t *testing.T) {
+	const pw = "üñïçø∂é"
+	same := string([]byte(pw))
+	if a, b := Hash(pw, "dskysalt"), Hash(same, "dskysalt"); a != b {
+		t.Errorf("the same bytes hashed differently:\n%s\n%s", a, b)
+	}
+	// And a different encoding of the same text is a different password, as
+	// it must be: nothing here normalises anything.
+	if Hash("e\u0301", "dskysalt") == Hash("\u00e9", "dskysalt") {
+		t.Error("two different byte sequences hashed the same")
 	}
 }
