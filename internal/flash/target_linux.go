@@ -43,11 +43,12 @@ func unmountAll(ctx context.Context, devPath string) error {
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		fields := strings.Fields(sc.Text())
-		if len(fields) < 2 || !strings.HasPrefix(fields[0], devPath) {
+		if len(fields) < 2 || !partitionOf(fields[0], devPath) {
 			continue
 		}
-		if out, err := exec.CommandContext(ctx, "umount", fields[1]).CombinedOutput(); err != nil {
-			return fmt.Errorf("flash: unmounting %s: %v\n%s", fields[1], err, out)
+		mount := unescapeMount(fields[1])
+		if out, err := exec.CommandContext(ctx, "umount", mount).CombinedOutput(); err != nil {
+			return fmt.Errorf("flash: unmounting %s: %v\n%s", mount, err, out)
 		}
 	}
 	return sc.Err()
@@ -113,4 +114,47 @@ func (t *unixTarget) Close() error { return t.f.Close() }
 // whole-disk block node.
 func needsCacheDrop(m os.FileMode) bool {
 	return m&os.ModeDevice != 0 && m&os.ModeCharDevice == 0
+}
+
+// unescapeMount turns a path back into itself. /proc/mounts writes a space as
+// \040, and the path went to umount with the escape still in it, so
+// re-flashing a stick that currently holds an Ubuntu ISO -- whose label is
+// "Ubuntu 26.04.1 LTS amd64", so whose mount point has spaces in it -- failed
+// with
+//
+//	umount: /run/media/dgb/Ubuntu\04026.04.1\040LTS\040amd64: no mount point specified
+//
+// which is umount saying, accurately, that no directory has that name. Found
+// on a laptop, re-using the stick from the install before. The four escapes
+// are the ones the kernel emits: space, tab, newline and backslash.
+func unescapeMount(p string) string {
+	if !strings.Contains(p, `\`) {
+		return p
+	}
+	return strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`).Replace(p)
+}
+
+// partitionOf reports whether a mount source is this disk or a partition of
+// it. A prefix match is not that -- /dev/sdaa1 begins with /dev/sda -- and
+// unmounting somebody else's filesystems before writing is not a small
+// mistake to make quietly.
+func partitionOf(source, disk string) bool {
+	if source == disk {
+		return true
+	}
+	rest, ok := strings.CutPrefix(source, disk)
+	if !ok || rest == "" {
+		return false
+	}
+	// nvme0n1p3 and mmcblk0p3 put a "p" between the disk and the number;
+	// sda3 does not.
+	if rest = strings.TrimPrefix(rest, "p"); rest == "" {
+		return false
+	}
+	for _, c := range rest {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
