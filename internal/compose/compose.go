@@ -43,6 +43,10 @@ type Request struct {
 	// handed in rather than read from the recipe on purpose: they belong to
 	// one machine's approved plan, not to a recipe somebody reuses.
 	Settings *agent.Settings
+	// Printers and Drives likewise: the queues and drive letters the old
+	// machine had.
+	Printers []agent.Printer
+	Drives   []agent.MappedDrive
 	// Rebuild forces composing even when a cached artifact matches.
 	Rebuild bool
 	// Progress receives coarse stage updates; total may be -1.
@@ -303,4 +307,9 @@ func minStickBytes(r *recipe.Recipe) int64 {
 		return 0
 	}
 	return n
+}
+
+// migrateParts gathers what a migration asked for, for the agent's manifest.
+func (r Request) migrateParts() migrateParts {
+	return migrateParts{Settings: r.Settings, Printers: r.Printers, Drives: r.Drives}
 }

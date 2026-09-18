@@ -176,6 +176,10 @@ type Options struct {
 	// plan, and they are not saved into a recipe, because they belong to one
 	// machine's approved plan.
 	Settings *agent.Settings
+	// Printers and Drives are the queues and drive letters the old machine
+	// had, for the same reason and by the same route.
+	Printers []agent.Printer
+	Drives   []agent.MappedDrive
 }
 
 // adminPasswordVar is what the recipe says about the administrator's password.
@@ -489,6 +493,8 @@ func BuildQuick(ctx context.Context, lib *library.Library, e Entry, opts Options
 		Workspace: ws, Library: lib, Recipe: r,
 		CLIVars:  quickVars(opts),
 		Settings: opts.Settings,
+		Printers: opts.Printers,
+		Drives:   opts.Drives,
 		Progress: progress,
 	})
 }
@@ -539,6 +545,8 @@ func BuildQuickPayload(ctx context.Context, lib *library.Library, e Entry, opts 
 		Workspace: ws, Library: lib, Recipe: r,
 		CLIVars:  quickVars(opts),
 		Settings: opts.Settings,
+		Printers: opts.Printers,
+		Drives:   opts.Drives,
 		Progress: progress,
 	})
 }

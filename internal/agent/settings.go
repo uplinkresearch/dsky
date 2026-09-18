@@ -66,8 +66,8 @@ func (a *Agent) settingsStep() {
 	if len(s.Machine) > 0 {
 		a.J.Info(stepSettings, "applied %d of %d setting(s) for this machine", done, done+failed)
 	}
-	if len(s.PerUser) > 0 {
-		a.stageUserSettings(s.PerUser)
+	if len(s.PerUser) > 0 || len(a.Manifest.sharedPrinters()) > 0 || len(a.Manifest.Drives) > 0 {
+		a.stageUserSettings(s.PerUser, a.Manifest.sharedPrinters(), a.Manifest.Drives)
 	}
 }
 

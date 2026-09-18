@@ -118,12 +118,15 @@ func migrateBuild(ctx context.Context, env *Env, args []string) error {
 			PerUser: agentActions(perUserSet),
 		}
 	}
+	printers, drives := migrate.PrintersAndDrives(m)
 	opts := oscatalog.Options{
 		Edition: plan.Edition, AccountMode: plan.AccountMode, Debloat: plan.Debloat,
 		Locale: plan.Locale, Timezone: plan.Timezone, AdminUser: plan.AdminUser,
 		AdminPassword: adminPass,
 		Hostname:      plan.Hostname, DomainBlob: plan.DomainBlob, Apps: plan.Apps,
 		Settings:          settings,
+		Printers:          agentPrinters(printers),
+		Drives:            agentDrives(drives),
 		BypassRequirement: true, // a replacement PC is new hardware; this costs nothing and saves a rebuild
 	}
 	if *iso != "" {
@@ -264,6 +267,25 @@ func agentActions(in []migrate.SettingAction) []agent.Action {
 	var out []agent.Action
 	for _, a := range in {
 		out = append(out, agent.Action{Key: a.Key, Method: a.Method, Ref: a.Ref})
+	}
+	return out
+}
+
+func agentPrinters(in []migrate.Printer) []agent.Printer {
+	var out []agent.Printer
+	for _, p := range in {
+		out = append(out, agent.Printer{
+			Name: p.Name, SharedPath: p.SharedPath, IP: p.IP,
+			Port: p.Port, DriverName: p.DriverName,
+		})
+	}
+	return out
+}
+
+func agentDrives(in []migrate.MappedDrive) []agent.MappedDrive {
+	var out []agent.MappedDrive
+	for _, d := range in {
+		out = append(out, agent.MappedDrive{Letter: d.Letter, UNC: d.UNC})
 	}
 	return out
 }

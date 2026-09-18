@@ -230,3 +230,29 @@ func TestSettingsThatBelongToAPersonWaitForThatPerson(t *testing.T) {
 		t.Errorf("the build did not say the per-user settings come later: %v", p.Warnings)
 	}
 }
+
+// The two kinds of printer are told apart before a stick is written, because
+// only one of them may need somebody to install a driver by hand.
+func TestTheBuildSaysWhichPrintersNeedAHand(t *testing.T) {
+	m := approved(t, "customized")
+	m.Peripherals.Printers = []Printer{
+		{Name: "Front Desk", SharedPath: `\\fs01\FrontDesk`},
+		{Name: "Back Office", IP: "10.0.0.50", DriverName: "HP UPD PCL6"},
+	}
+	rehash(t, m)
+	p, err := PlanBuild(m, "/tmp/pc-odj.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := strings.Join(p.Warnings, " | ")
+	if !strings.Contains(w, "own address") {
+		t.Errorf("nothing warned that a direct printer needs its driver: %s", w)
+	}
+	if !strings.Contains(w, "print server") || !strings.Contains(w, "first sign-in") {
+		t.Errorf("nothing said the shared queue arrives at sign-in: %s", w)
+	}
+	printers, _ := PrintersAndDrives(m)
+	if len(printers) != 2 {
+		t.Errorf("printers did not reach the build: %+v", printers)
+	}
+}

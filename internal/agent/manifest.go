@@ -58,6 +58,12 @@ type Manifest struct {
 	// else writes it: a plain install has no opinion about somebody's power
 	// plan or taskbar.
 	Settings *Settings `json:"settings,omitempty"`
+	// Printers and Drives come from a migration too. A shared queue and a
+	// mapped drive both belong to a person rather than to the machine, and
+	// are staged into the per-user script; a printer with its own address is
+	// the machine's and is added by the printers step.
+	Printers []Printer     `json:"printers,omitempty"`
+	Drives   []MappedDrive `json:"drives,omitempty"`
 
 	// Steps is the order to run in, using the recipe's own step names
 	// ("domain", "drivers", "debloat", "apps", "settings"). Unknown steps are logged and skipped
@@ -229,4 +235,16 @@ func (m *Manifest) Save(path string) error {
 		return err
 	}
 	return os.WriteFile(path, append(b, '\n'), 0o644)
+}
+
+// sharedPrinters are the queues that come from a print server, which each
+// person adds for themselves at sign-in.
+func (m *Manifest) sharedPrinters() []Printer {
+	var out []Printer
+	for _, p := range m.Printers {
+		if p.Shared() {
+			out = append(out, p)
+		}
+	}
+	return out
 }

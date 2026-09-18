@@ -69,7 +69,7 @@ func TestManifestCarriesTheRecipe(t *testing.T) {
 		Args []string
 	}{File: "sp142792.exe", Dir: "hp", Args: []string{"-pdf", "-e", "-s", `-f"{dir}"`}})
 
-	m := buildManifest(r, drivers, nil, "verify.ps1", nil)
+	m := buildManifest(r, drivers, nil, "verify.ps1", migrateParts{})
 	b, err := json.Marshal(m)
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +137,7 @@ func TestAnOfflineJoinIsTheAgentsToDoAfterOOBE(t *testing.T) {
 		Domain:    &recipe.DomainSpec{Blob: "newdesk01.txt"},
 		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{{Drivers: true}, {Debloat: true}, {Apps: true}}},
 	}}
-	m := buildManifest(r, recipe.ResolvedDrivers{}, nil, "", nil)
+	m := buildManifest(r, recipe.ResolvedDrivers{}, nil, "", migrateParts{})
 	if m.Domain == nil {
 		t.Fatal("the manifest does not carry the join, so the machine would install into a workgroup and look fine")
 	}
@@ -154,7 +154,7 @@ func TestAnOfflineJoinIsTheAgentsToDoAfterOOBE(t *testing.T) {
 	plain := &recipe.Recipe{ID: "p", Windows: &recipe.WindowsSpec{
 		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{{Drivers: true}}},
 	}}
-	if m := buildManifest(plain, recipe.ResolvedDrivers{}, nil, "", nil); m.Domain != nil ||
+	if m := buildManifest(plain, recipe.ResolvedDrivers{}, nil, "", migrateParts{}); m.Domain != nil ||
 		strings.Join(m.Steps, ",") != "drivers" {
 		t.Errorf("a build with no domain grew a join: %+v %v", m.Domain, m.Steps)
 	}

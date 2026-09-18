@@ -101,7 +101,7 @@ func agentCovers(r *recipe.Recipe) (bool, string) {
 
 // buildManifest turns what compose already resolved into the agent's
 // instructions. Nothing is decided here that was not decided by the recipe.
-func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []agent.Installer, verifyScript string, settings *agent.Settings) *agent.Manifest {
+func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []agent.Installer, verifyScript string, mig migrateParts) *agent.Manifest {
 	w := r.Windows
 	m := &agent.Manifest{
 		Version:      agent.ManifestVersion,
@@ -129,9 +129,25 @@ func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []a
 	// still installing programs has not finished changing, and a setting
 	// applied before a program that overwrites it is not a setting anybody
 	// kept.
-	if settings != nil && (len(settings.Machine) > 0 || len(settings.PerUser) > 0) {
-		m.Settings = settings
+	if s := mig.Settings; s != nil && (len(s.Machine) > 0 || len(s.PerUser) > 0) {
+		m.Settings = s
 		m.Steps = append(m.Steps, agent.StepSettings)
+	}
+	if len(mig.Printers) > 0 || len(mig.Drives) > 0 {
+		m.Printers, m.Drives = mig.Printers, mig.Drives
+		// The settings step is what stages the per-user script, and a shared
+		// queue or a mapped drive rides on it, so make sure it runs even
+		// when the plan changed no settings at all.
+		if m.Settings == nil {
+			m.Settings = &agent.Settings{}
+			m.Steps = append(m.Steps, agent.StepSettings)
+		}
+		for _, p := range mig.Printers {
+			if !p.Shared() {
+				m.Steps = append(m.Steps, agent.StepPrinters)
+				break
+			}
+		}
 	}
 	if w.Domain.Offline() {
 		m.Domain = &agent.Domain{File: agentODJName}
@@ -276,4 +292,13 @@ func checkJoinCanBeDeferred(r *recipe.Recipe) error {
 		"the first-boot script (windows.firstboot.mode: generate), or apply the join from your own "+
 		"script with: djoin /requestodj /loadfile %%WINDIR%%\\Setup\\Scripts\\%s /windowspath "+
 		"%%WINDIR%% /localos, and restart afterwards", r.ID, recipe.DomainBlobFile)
+}
+
+// migrateParts are the pieces of an approved migration plan that the agent
+// carries out. They are handed to the build rather than read from the recipe:
+// they belong to one machine's plan, not to a recipe somebody reuses.
+type migrateParts struct {
+	Settings *agent.Settings
+	Printers []agent.Printer
+	Drives   []agent.MappedDrive
 }

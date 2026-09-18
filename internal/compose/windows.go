@@ -313,7 +313,7 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 			// machine to be run by hand.
 			verifyScript = "verify.ps1"
 		}
-		if err := stageAgent(stage, buildTmp, buildManifest(r, drivers, agentInstallers(w, refFiles), verifyScript, req.Settings)); err != nil {
+		if err := stageAgent(stage, buildTmp, buildManifest(r, drivers, agentInstallers(w, refFiles), verifyScript, req.migrateParts())); err != nil {
 			return nil, err
 		}
 	}

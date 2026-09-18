@@ -144,9 +144,26 @@ func PlanBuild(m *Manifest, odjBlob string) (*BuildPlan, error) {
 			"the user's files are to be copied with USMT from %s — that runs after this drive has installed Windows, not now",
 			m.Data.StorePath))
 	}
-	if len(m.Peripherals.Printers) > 0 {
-		p.Warnings = append(p.Warnings, fmt.Sprintf("%d printer(s) are in the plan; the first-boot agent does not add printers yet",
-			len(m.Peripherals.Printers)))
+	// A printer with its own address needs a driver that a new Windows 11
+	// probably does not have, and that is the one the operator may have to
+	// deal with. A shared queue installs its own driver from the server when
+	// somebody signs in, so it is not a warning, it is just later.
+	var direct, shared int
+	for _, pr := range m.Peripherals.Printers {
+		if pr.SharedPath != "" {
+			shared++
+		} else {
+			direct++
+		}
+	}
+	if direct > 0 {
+		p.Warnings = append(p.Warnings, fmt.Sprintf(
+			"%d printer(s) have their own address, so they need their driver on the new machine; any that cannot be added say so in the first-boot log",
+			direct))
+	}
+	if shared > 0 {
+		p.Warnings = append(p.Warnings, fmt.Sprintf(
+			"%d printer(s) come from a print server, so they are added at each person's first sign-in and not before", shared))
 	}
 	// Settings that belong to a person rather than the machine are worth
 	// saying out loud: they do not appear until that person signs in, so an
@@ -296,4 +313,15 @@ type SettingAction struct {
 	Key    string
 	Method string
 	Ref    string
+}
+
+// PrintersAndDrives are the queues and drive letters the old machine had, for
+// the build to hand to the agent.
+//
+// Nothing is decided here beyond what the scanner already recorded: a queue
+// with a share path came from a print server and is a per-user connection, one
+// with an address is the machine's. That difference is what decides whether
+// anybody has to install a driver by hand, which is why the report says it too.
+func PrintersAndDrives(m *Manifest) ([]Printer, []MappedDrive) {
+	return m.Peripherals.Printers, m.Peripherals.MappedDrives
 }
