@@ -81,8 +81,10 @@ M0 is built. The rest keep the spec's order, with the reuse above folded in.
   defect rather than two and is fixed by joining after OOBE instead of during
   it (see below). Still to do: pre-downloaded winget packages and the App
   Installer bundle for machines with no internet at first boot.
-- **M5 — runner.** New agent steps: settings, per-app config drop, printers,
-  per-user logon script, result JSON and HTML.
+- **M5 — runner.** Settings, printers, mapped drives and the per-user logon
+  script are **done**; see "What M5 built" below. The result JSON and HTML are
+  still to do. The per-app config drop is **blocked, not deferred** — see the
+  same section.
 - **M6 — data and verify.** USMT hooks (`--usmt`, never bundled), `dsky
   migrate verify` diffing a rescan against the approved manifest, every
   missing-with-a-fuzzy-match offered as a mapping-table alias.
@@ -99,6 +101,56 @@ not read this file.
 Windows first, and the schema is OS-neutral on purpose (`apps[].source_kind`,
 `settings[].apply` keyed by target OS) so a Linux scanner can be added without
 reshaping the file.
+
+## What M5 built, and the item it cannot build yet
+
+The runner carries out the parts of a plan that are not programs, and the one
+decision running through all of it is **who a thing belongs to**.
+
+The agent runs at first boot as a local administrator nobody will ever sign in
+as. Half of what a person notices about their PC lives in HKCU — file
+extensions, hidden files, the taskbar search box — and a shared printer queue
+and a mapped drive are theirs too. Applying any of that as the agent would work
+perfectly, in an account that does not matter, and leave the person who sits
+down to a machine that looks nothing like the one they had. It would also look
+like it had worked.
+
+So the plan splits in two. What belongs to the machine — power plan, time zone,
+locale, region, a printer with its own address — the agent applies. What
+belongs to a person is staged: a fixed script under the machine's `Run` key, a
+typed data file beside it (`reg|`, `printer|`, `drive|`), and a marker in each
+person's own profile so it runs once for them and is a no-op afterwards. It
+never removes itself, because a machine has more than one user and the second
+person to sit down deserves the same settings as the first. Explorer is
+restarted at the end, because it reads most of those values once, at sign-in.
+
+The script is byte-identical on every machine DSKY makes; everything that
+differs is a line in a text file. That is the rule this package exists for:
+text assembled per build cannot be tested per build.
+
+The build says which of these arrive later, because an operator checking a
+machine at the bench will not see them and would otherwise reasonably conclude
+they had not worked. Direct printers get a warning of their own: they need a
+driver a new Windows 11 probably does not have, and when one cannot be added
+the first-boot log names the printer, names the missing driver, and says to
+install it and add the queue by hand — which is exactly what happens next.
+
+Settings and printers reach the build through the build request rather than the
+recipe. They belong to one machine's approved plan, not to a recipe somebody
+reuses, and the recipe schema has no business learning what a migration is.
+
+**The per-app config drop cannot be built yet, and that is worth being exact
+about.** `config_capture` records *where* a known application keeps its
+settings on the old machine. Nothing collects those files: the scanner only
+reads, by design ("no install on the source machine"), and the copying is the
+file-migration work in M6. So a drop step written now would be code against
+data nothing produces — it could not be tested, and the first real test would
+be somebody's machine. It waits for M6, where the files start existing.
+
+Still to do in M5: the result report. The agent should write what it was asked
+to do and what happened, as JSON on the machine; the HTML belongs in DSKY,
+where the plan report's template already lives, rather than in the agent, which
+should not grow a template engine to say what it did.
 
 ## What M4 built, and what it found
 
