@@ -24,14 +24,26 @@ type lsblkDev struct {
 	RM         bool        `json:"rm"`
 	Type       string      `json:"type"`
 	Mountpoint *string     `json:"mountpoint"`
-	Children   []lsblkDev  `json:"children"`
+	// Mountpoints is every place this node is mounted. MOUNTPOINT, singular,
+	// is only the first of them, and on a root filesystem with more than one
+	// -- btrfs subvolumes, a bind-heavy LVM, ZFS -- the first is frequently
+	// not "/". On the machine this was found on, the LUKS root reported
+	// "/mnt/data" and neither "/" nor "/home" was visible at all; that disk
+	// was marked as the system's only because /boot happened to be a separate
+	// partition on it. Move /boot inside the root filesystem, as systemd-boot
+	// layouts do, and the running system's own disk stops looking like one.
+	//
+	// util-linux has had the plural since 2.37 (2021). Older ones omit the
+	// field, and the singular is still read for them.
+	Mountpoints []*string  `json:"mountpoints"`
+	Children    []lsblkDev `json:"children"`
 }
 
 func list(ctx context.Context) ([]Device, error) {
 	if isWSL() {
 		return nil, fmt.Errorf("device: running under WSL, which cannot see USB block devices — use the Windows dsky.exe instead")
 	}
-	cmd := exec.CommandContext(ctx, "lsblk", "-J", "-b", "-o", "NAME,MODEL,SERIAL,SIZE,TRAN,RM,TYPE,MOUNTPOINT")
+	cmd := exec.CommandContext(ctx, "lsblk", "-J", "-b", "-o", "NAME,MODEL,SERIAL,SIZE,TRAN,RM,TYPE,MOUNTPOINT,MOUNTPOINTS")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("device: lsblk: %w", err)
@@ -82,18 +94,47 @@ func virtualDisk(name string) bool {
 	return false
 }
 
-// collectMounts walks children marking mounts; "/", "/boot", "/home" (or
-// swap) anywhere on the disk marks it as the system disk.
+// systemMount is a mount that makes the disk under it the running system's.
+// /efi is here because systemd-boot puts the ESP there rather than at
+// /boot/efi, and a machine laid out that way was the one this list failed on.
+func systemMount(mp string) bool {
+	switch mp {
+	case "/", "/boot", "/boot/efi", "/efi", "/home", "/var", "/usr", "[SWAP]":
+		return true
+	}
+	return false
+}
+
+// collectMounts walks children marking mounts; a system mount anywhere on the
+// disk marks it as the system disk.
 func collectMounts(d lsblkDev, dev *Device) {
-	if mp := deref(d.Mountpoint); mp != "" {
+	for _, mp := range mountsOf(d) {
 		dev.Mounts = append(dev.Mounts, mp)
-		if mp == "/" || mp == "/boot" || mp == "/boot/efi" || mp == "/home" || mp == "[SWAP]" {
+		if systemMount(mp) {
 			dev.System = true
 		}
 	}
 	for _, c := range d.Children {
 		collectMounts(c, dev)
 	}
+}
+
+// mountsOf is every place a node is mounted, preferring the plural field and
+// falling back to the singular on a util-linux too old to have it.
+func mountsOf(d lsblkDev) []string {
+	var out []string
+	for _, p := range d.Mountpoints {
+		if mp := deref(p); mp != "" {
+			out = append(out, mp)
+		}
+	}
+	if len(out) > 0 {
+		return out
+	}
+	if mp := deref(d.Mountpoint); mp != "" {
+		return []string{mp}
+	}
+	return nil
 }
 
 func deref(s *string) string {

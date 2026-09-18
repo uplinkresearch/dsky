@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -154,7 +155,7 @@ func unmountDisk(ctx context.Context, disk string) error {
 	}
 	for _, line := range strings.Split(string(b), "\n") {
 		f := strings.Fields(line)
-		if len(f) < 2 || !onDisk(f[0], disk) {
+		if len(f) < 2 || !mountedFromDisk(f[0], disk) {
 			continue
 		}
 		// Mount points escape spaces as \040.
@@ -231,4 +232,66 @@ func partitionPath(disk string, n int) string {
 		return fmt.Sprintf("%sp%d", disk, n)
 	}
 	return fmt.Sprintf("%s%d", disk, n)
+}
+
+// mountedFromDisk reports whether a mount source sits on this disk, including
+// when device-mapper is in the way.
+//
+// onDisk compares names, which is right for /dev/sda1 and useless for
+// /dev/mapper/root: an encrypted or LVM root mounts under a name that shares
+// nothing with the disk it is built on. So the check above found nothing on
+// the majority of laptops, reported that the disk was not in use, and the
+// caller went on to wipefs and re-partition it -- the one interlock that would
+// have said "this disk is live" never firing on exactly the machines where it
+// matters most.
+//
+// Unwound through sysfs rather than by parsing names, because the relationship
+// is a fact the kernel already publishes: /sys/class/block/dm-0/slaves lists
+// what dm-0 is made of, and so on down until a partition or a disk.
+func mountedFromDisk(source, disk string) bool {
+	if onDisk(source, disk) {
+		return true
+	}
+	name, err := blockName(source)
+	if err != nil {
+		return false
+	}
+	return builtOn(name, filepath.Base(disk), 0)
+}
+
+// sysfsBlock is where the kernel publishes what each block device is made of.
+// A variable so a test can build a small one rather than need an encrypted
+// disk to check the walk against.
+var sysfsBlock = "/sys/class/block"
+
+// blockName is the kernel's name for a device node: /dev/mapper/root is a
+// symlink to ../dm-0, and dm-0 is what sysfs knows it as.
+func blockName(node string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(node)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Base(resolved), nil
+}
+
+// builtOn walks the slaves chain looking for the disk. The depth limit is
+// belt and braces: the kernel does not make cycles here, but a loop reading
+// /sys as root should not be the first place to find out otherwise.
+func builtOn(name, disk string, depth int) bool {
+	if depth > 8 {
+		return false
+	}
+	if name == disk || onDisk("/dev/"+name, "/dev/"+disk) {
+		return true
+	}
+	slaves, err := os.ReadDir(filepath.Join(sysfsBlock, name, "slaves"))
+	if err != nil {
+		return false
+	}
+	for _, s := range slaves {
+		if builtOn(s.Name(), disk, depth+1) {
+			return true
+		}
+	}
+	return false
 }
