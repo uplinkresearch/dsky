@@ -191,32 +191,12 @@
     border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px;
     font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; }
 
-  /* ── The three doors ────────────────────────────────────────────────────
+  /* ── The five screens ───────────────────────────────────────────────────
      Everything used to be on screen at once, which showed a newcomer nine
-     panels and no idea which one their job started in. Each door is a job
-     somebody turned up to do; the panels behind it are the ones that job
-     needs. */
-  #home { grid-column: 1 / -1; background: none; border: none; }
-  .doors { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-    gap: 14px; }
-  .door { display: flex; flex-direction: column; align-items: flex-start; gap: 7px;
-    text-align: left; padding: 20px; border-radius: 10px;
-    background: var(--panel); border: 1px solid var(--line); cursor: pointer;
-    font: inherit; color: var(--text); }
-  .door:hover { border-color: var(--accent); background: var(--panel2); }
-  .door-k { font-size: 16px; font-weight: 600; }
-  .door-d { color: var(--dim); font-size: 13px; line-height: 1.5; flex: 1; }
-  .door-go { color: var(--accent2); font-size: 13px; font-weight: 600; }
-  .homefoot { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
-    margin-top: 14px; color: var(--dim); font-size: 12px; }
-  .homefoot .linkish { margin-left: auto; background: none; border: none;
-    padding: 0; font-size: 12px; }
-  /* Everything after the logo sits at the far end: the logo anchors the
-     left, the controls gather on the right, and the space between them is
-     empty rather than a row of things crowded together. */
-  header .doorname { color: var(--dim); margin-left: auto; }
-  #backBtn { margin-right: 2px; }
-  /* A panel is shown when the current door is in its data-door list. The
+     panels and no idea which one their job started in. Each screen is a job
+     somebody turned up to do; the panels on it are the ones that job needs,
+     and the keys above choose between them.
+     A panel is shown when the current screen is in its data-door list. The
      attribute is a space-separated set, so ~= matches one whole word and
      "disks" cannot match "disksomething". */
   main > .col > section { display: none; }
@@ -225,13 +205,12 @@
   body[data-door="payload"]  section[data-door~="payload"],
   body[data-door="disks"]    section[data-door~="disks"],
   body[data-door="advanced"] section[data-door~="advanced"] { display: block; }
-  body:not([data-door="home"]) #home { display: none; }
-  /* With one door open the second column is usually empty, so the grid
+  /* With one screen open the second column is usually empty, so the grid
      collapses to a single readable column rather than leaving a gap. */
   body[data-door="install"] main, body[data-door="advanced"] main,
   body[data-door="disks"] main, body[data-door="payload"] main {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); }
-  body[data-door="home"] main, body[data-door="clone"] main {
+  body[data-door="clone"] main {
     grid-template-columns: minmax(0, 1fr); max-width: 900px; }
   /* Activity is pinned under the header on every screen, the start screen
      included. It used to sit under the work on the screens that had it, and on
@@ -419,12 +398,6 @@
     border-bottom: 1px solid var(--metal-dark);
     box-shadow: 0 1px 0 #8f978335, inset 0 1px 0 #e9edd70b; }
   .toolbar .spacer { flex: 1; }
-  header .doorname, .toolbar .doorname { color: var(--accent2); font: 11px/1.8 var(--mono);
-    letter-spacing: 1.3px; text-transform: uppercase; margin-left: 0;
-    border-left: 2px solid var(--accent2); padding: 2px 0 2px 9px; }
-  /* On the start screen there is no screen name, and a marker with nothing
-     beside it is just a tick of paint on the panel. */
-  .toolbar .doorname:empty { display: none; }
   /* The update notice is the one strip that appears above everything else, so
      it is the machine's own printed warning label: amber on a darker plate,
      across the top of the chassis. */
@@ -519,6 +492,7 @@
     border-bottom-color: #909b7d; border-radius: 4px;
     box-shadow: inset 0 2px 6px #0618077a, 0 1px 0 #ffffff0e; }
   .pick select:hover, select:hover { border-bottom-color: var(--accent); }
+  select option:checked { background-color: #2c4432; }
   .opt.check input, .dstrow input, .row input[type=checkbox] { accent-color: var(--accent); }
   .badge { border-radius: 2px; font-family: var(--mono); letter-spacing: .5px;
     text-transform: uppercase; font-size: 10.5px; padding: 2px 7px;
@@ -700,28 +674,51 @@
   #jobs .dismiss:hover { color: var(--text); background: #2e3a33; }
   #jobs .dismiss:active { transform: none; }
 
-  /* ── The start screen ──────────────────────────────────────────────────────
-     Four panels laid out on the bench, each one the job it does. */
-  .door { border: 1px solid var(--metal); border-top-color: var(--metal-light);
-    border-right: 3px solid var(--metal-dark); border-bottom: 3px solid var(--metal-dark);
-    border-radius: 6px; padding: 22px;
-    background-color: var(--panel);
-    background-image: var(--grain), radial-gradient(ellipse at 15% 0, #f7efd020, transparent 65%), linear-gradient(170deg, transparent 70%, #72644120);
+  /* ── The screen keys ───────────────────────────────────────────────────────
+     Moulded ivory keycaps with the number printed on them, standing a little
+     proud of the strip. The one you are on is held down: sunk into the panel,
+     dark, with an amber line across the top of the cut. A key that has been
+     pressed and stayed pressed is exactly what the current screen is, so the
+     panel needs no other way to say which one that is. */
+  .cmdkeys { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+  .cmdkey { position: relative; isolation: isolate; overflow: hidden;
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+    min-height: 43px; min-width: 104px; padding: 9px 14px 10px;
+    font: 11px/1.35 var(--mono); letter-spacing: .8px; text-transform: uppercase;
+    color: var(--key-ink);
+    background-color: var(--key);
+    background-image: var(--grain), radial-gradient(ellipse at 43% 15%, #fffdeb78, transparent 75%), linear-gradient(180deg, #ece7c70a 60%, #867d563d);
     background-blend-mode: multiply, normal, normal;
-    box-shadow: 0 1px 0 #d5dab329, 0 4px 0 #172817, 1px 5px 7px #081d093b,
-      inset 0 0 0 1px #eee6c719; }
-  .door:hover { background-color: var(--panel2); border-top-color: var(--accent2); }
-  .door:active { transform: translateY(1px); }
-  .door-k { font-size: 18px; font-weight: 500; letter-spacing: 1px; }
-  /* "Start ›" is a key, not a caption: it is the thing being pressed. */
-  .door-go { display: inline-flex; align-items: center; gap: 7px; margin-top: 16px;
-    padding: 7px 12px; font-size: 12px; font-weight: 500; color: var(--key-ink);
-    background-color: var(--key); background-image: var(--grain);
-    background-blend-mode: multiply;
-    border: 1px solid #8a9470; border-top-color: #f7efcf; border-left-color: #e7dfbc;
-    border-right-width: 2px; border-bottom-width: 3px; border-bottom-color: #7c8866;
-    border-radius: 3px; box-shadow: 0 2px 2px #34462333; }
-  .homefoot { font-family: var(--mono); font-size: 11.5px; }
+    border: 1px solid #d7d6b9; border-top-color: #efecd2;
+    border-right: 2px solid #8c9177; border-bottom: 4px solid #82856a;
+    border-radius: 4px 4px 5px 5px;
+    box-shadow: 0 1px 0 #0e1b15, 1px 4px 3px #050d0a70, inset 0 0 0 1px #fff9d54a,
+      inset 0 -2px 4px #78715c26;
+    text-shadow: 0 1px 0 #fffbed85;
+    transform: translateY(-1px);
+    transition: transform .1s, box-shadow .1s, background-color .12s; }
+  .cmdkey:hover { background-color: var(--key-hover); border-color: #efecd2;
+    border-right-color: #8c9177; border-bottom-color: #82856a; }
+  .cmdkey .keynum { opacity: .6; }
+  .cmdkey[aria-current="page"] { transform: translateY(1px); color: #ece8d7;
+    background-color: #1b2423;
+    background-image: var(--grain), linear-gradient(0deg, #51625222, #040f1033);
+    border: 1px solid #5a6950; border-top: 2px solid #0b1413;
+    border-right-color: #33443a; border-bottom: 2px solid #798672;
+    box-shadow: inset 0 3px 4px #0000007a, 0 1px 0 #aeb69b29;
+    text-shadow: none; }
+  /* The lit line across the top of the cut — the only trim on the panel that
+     moves, which is why it is the thing the eye finds first. */
+  .cmdkey[aria-current="page"]::before { content: ""; position: absolute;
+    left: 12px; right: 12px; top: 3px; height: 2px; background: var(--accent2);
+    opacity: .95; pointer-events: none; }
+  .cmdkey[aria-current="page"] .keynum { color: var(--accent2); opacity: 1; }
+  .cmdkey:active { transform: translateY(2px);
+    box-shadow: inset 0 2px 5px #273c204d, 0 1px 0 #e7e4c444; }
+  @media (max-width: 760px) {
+    .cmdkey { min-width: 0; padding: 9px 10px; }
+    .cmdkey .keylegend { display: none; }
+  }
 
   /* ── Dialogs ───────────────────────────────────────────────────────────────
      A dialog is the same panel, lifted off the chassis and lit a little
@@ -798,7 +795,7 @@
     .pct .seg.b, .pct .seg.c, .pct .seg.e, .pct .seg.f { width: 4px; height: 17px; }
   }
   @media (prefers-reduced-motion: reduce) {
-    button, .door { transition: none; }
+    button { transition: none; }
   }
 </style>
 </head>
@@ -811,9 +808,14 @@
   <div class="brandsub">Display &amp; keyboard<br>Ground support systems</div>
   <div class="nameplate"><span>Uplink Research</span><span>Media Operations</span></div>
 </header>
+<!-- The screens, as keys that are always down. There was a start screen and a
+     back button: two presses to cross from one job to another, and a screen
+     whose only content was the way to four others. A panel does not put its
+     controls away when you are not using them -- the keys stay on the face,
+     the one you are on is held down, and any other screen is one press from
+     any screen. -->
 <div class="toolbar">
-  <button id="backBtn" title="Back to the start" onclick="setDoor('home')" hidden>‹ Back</button>
-  <span class="doorname" id="doorName"></span>
+  <nav class="cmdkeys" id="cmdkeys" aria-label="Screens"></nav>
   <span class="spacer"></span>
   <span class="ver" id="ver" title="Check for a newer release"></span>
   <button id="guideBtn" onclick="startGuide(door)" title="How this screen works" aria-label="How this screen works">?</button>
@@ -854,41 +856,6 @@
   </section>
 </div>
 <main>
-  <!-- The start screen. The things this tool does, in the words someone
-       would use for the job they turned up with — one door each, so the job
-       decides the screen and no screen offers another screen's job. -->
-  <section id="home">
-    <div class="doors">
-      <button class="door" onclick="setDoor('install')">
-        <span class="door-k">Install an operating system</span>
-        <span class="door-d">Pick an OS, choose what gets installed with it, and write a bootable
-          drive. Downloads and verifies the official media for you.</span>
-        <span class="door-go">Start ›</span>
-      </button>
-      <button class="door" onclick="setDoor('payload')">
-        <span class="door-k">Payload</span>
-        <span class="door-d">Put programs and drivers on a machine that already runs Windows.
-          Builds one file to run there — nothing is erased, no operating system is installed.</span>
-        <span class="door-go">Start ›</span>
-      </button>
-      <button class="door" onclick="setDoor('clone')">
-        <span class="door-k">Copy a drive</span>
-        <span class="door-d">Duplicate a drive you already have — onto one, or onto many at once.
-          Reads any disk, including an internal SSD.</span>
-        <span class="door-go">Start ›</span>
-      </button>
-      <button class="door" onclick="setDoor('disks')">
-        <span class="door-k">Disk utility</span>
-        <span class="door-d">See what is on a disk and what is using it, and put a disk back into
-          a state this computer can read.</span>
-        <span class="door-go">Start ›</span>
-      </button>
-    </div>
-    <div class="homefoot">
-      <span id="homeHint"></span>
-      <button class="linkish" onclick="setDoor('advanced')">Workspaces and sources ›</button>
-    </div>
-  </section>
 
   <div class="col" style="display:flex;flex-direction:column;gap:16px">
     <section data-door="install" id="catalogSec"><h2>Install an OS <span class="spacer"></span><button onclick="writeOwnImage()" title="Write an ISO or disk image from your own disk">Use your own ISO…</button></h2>
@@ -1567,22 +1534,44 @@ function editPayload(a) {
 // Which door is open is UI state and nothing else: no panel is unmounted, no
 // request is cancelled, and a job started behind one door keeps running and
 // keeps reporting from Activity, which every door shows.
+// The screens, in the order their keys sit on the panel. The number is on the
+// key because position is what gets learned: "02" is in the same place every
+// time, and a key you can find without reading is a key you stop reading.
 const DOORS = {
-  home:     { name: "" },
-  install:  { name: "Install an operating system" },
-  payload:  { name: "Payload" },
-  clone:    { name: "Copy a drive" },
-  disks:    { name: "Disk utility" },
-  advanced: { name: "Workspaces and sources" },
+  install:  { key: "01", legend: "Install",    name: "Install an operating system" },
+  payload:  { key: "02", legend: "Payload",    name: "Payload" },
+  clone:    { key: "03", legend: "Copy",       name: "Copy a drive" },
+  disks:    { key: "04", legend: "Disks",      name: "Disk utility" },
+  advanced: { key: "05", legend: "Workspaces", name: "Workspaces and sources" },
 };
-let door = "home";
+const FIRST_DOOR = "install";
+let door = FIRST_DOOR;
+
+function buildKeys() {
+  const bar = $("cmdkeys");
+  for (const [name, d] of Object.entries(DOORS)) {
+    const key = el("button", "cmdkey");
+    key.dataset.door = name;
+    key.title = d.name;
+    // The legend is an element rather than a bare text node so a narrow
+    // window can drop it and leave the numbers, which is the part that was
+    // learned by position anyway.
+    key.append(el("span", "keynum", d.key), el("span", "keylegend", d.legend));
+    key.onclick = () => setDoor(name);
+    bar.append(key);
+  }
+}
 
 function setDoor(name) {
-  if (!DOORS[name]) name = "home";
+  if (!DOORS[name]) name = FIRST_DOOR;
   door = name;
   document.body.setAttribute("data-door", name);
-  $("doorName").textContent = DOORS[name].name;
-  $("backBtn").hidden = name === "home";
+  // aria-current rather than a class: the key being held down is the same
+  // fact as this being the current screen, and a reader should hear it.
+  for (const key of $("cmdkeys").children) {
+    if (key.dataset.door === name) key.setAttribute("aria-current", "page");
+    else key.removeAttribute("aria-current");
+  }
   // Coming back to a door should show what is true now, not what was true
   // when it was last open — a stick may have been pulled out since.
   if (name === "clone" || name === "disks") {
@@ -1601,13 +1590,14 @@ function setDoor(name) {
   if (!guide) setTimeout(maybeStartGuide, 150);
 }
 
-// Reopening the app lands on the start screen deliberately. The exception is a
-// reload, which is usually someone recovering the page they were already on.
+// Reopening lands on Install: it is what most launches are for, and with the
+// keys always up, being on the wrong one costs a single press. The exception
+// is a reload, which is usually someone recovering the page they were on.
 function restoreDoor() {
-  let start = "home";
+  let start = FIRST_DOOR;
   try {
     if (performance.getEntriesByType("navigation")[0]?.type === "reload") {
-      start = localStorage.getItem("door") || "home";
+      start = localStorage.getItem("door") || FIRST_DOOR;
     }
   } catch (e) {}
   setDoor(start);
@@ -1705,20 +1695,6 @@ async function renderCopy() {
     box.oninput = check; check();
     $("copyGo").onclick = () => startCopy(want);
   }
-}
-
-// homeHint says what is plugged in, so the start screen orients somebody
-// before they choose rather than after.
-function renderHomeHint() {
-  const disks = allDisks();
-  const usb = disks.filter(d => d.flashable);
-  const hint = $("homeHint");
-  if (!hint) return;
-  if (!disks.length) { hint.textContent = "Looking for disks…"; return; }
-  hint.textContent = usb.length
-    ? `${usb.length} removable ${usb.length === 1 ? "disk" : "disks"} connected — ` +
-      usb.map(d => diskLabel(d)).join(", ")
-    : "No removable disk connected. You can still copy and inspect fixed disks.";
 }
 
 function diskLabel(d) {
@@ -1827,7 +1803,6 @@ function render() {
 
   // ── OS catalog (Quick Install) ──────────────────────────────────────────
   renderCatalog();
-  renderHomeHint();
   if (door === "clone") renderCopy();
   if (door === "disks") renderDiskUtil();
 
@@ -3536,24 +3511,28 @@ async function loadState() {
 // only request it makes is recording that it has been closed.
 const onScreen = id => () => $(id);
 const GUIDES = {
+  // The opening tour. It is still called "home" — the name is what the server
+  // records as seen, and renaming it would offer this tour again to everybody
+  // who has already closed it once. There is no start screen any more; the
+  // keys it used to describe are the thing it points at.
   home: [
     {
-      door: "home", target: () => document.querySelector("#home .doors"),
+      door: "install", target: onScreen("cmdkeys"),
       title: "Start here",
-      text: "DSKY does four jobs: install an operating system, put programs on a machine that already runs Windows, copy a drive, or look at a disk. Pick the one you came to do.",
+      text: "DSKY does four jobs, one per key: install an operating system, put programs on a machine that already runs Windows, copy a drive, or look at a disk. The fifth holds saved settings. Press the one you came to do — they stay up, so changing your mind costs one press.",
     },
     {
-      door: "home", target: onScreen("jobsSec"), example: "activity",
+      door: "install", target: onScreen("jobsSec"), example: "activity",
       title: "Activity",
-      text: "Downloads, builds and writes show their progress here, on every screen, until you dismiss them.",
+      text: "The panel under the keys is on whatever screen you are on, and stays lit when nothing is running: its lamps say whether a drive worth writing to is connected and whether there is an image to write. A download, build or write shows its progress there until you dismiss it.",
     },
     {
-      door: "home", target: () => null, example: "disk",
+      door: "install", target: () => null, example: "disk",
       title: "Before anything is erased",
       text: "DSKY describes the disk the way you'd recognise it (model, size, what's on it) and asks you to type its size before erasing. It never writes to the disk this computer is running from.",
     },
     {
-      door: "home", target: onScreen("guideBtn"),
+      door: "install", target: onScreen("guideBtn"),
       title: "A guide on every screen",
       text: "Each screen has a short guide of its own, shown the first time you open it. This ? opens the guide for whichever screen you're on.",
     },
@@ -3816,11 +3795,15 @@ function endGuide() {
 // which is no moment for a tour. Skipped is not seen: it is offered next time.
 function maybeStartGuide() {
   if (guide || !state.guides_seen) return;
-  if (state.guides_seen.includes(door)) return;
   if (document.querySelector("dialog[open]")) return;
   if ([...jobEls.values()].some(j => !j.final)) return;
-  // The start screen's guide comes first: it is where the others are pointed out.
-  if (door !== "home" && !state.guides_seen.includes("home")) return;
+  // The opening tour comes first, wherever you happen to be standing: it is
+  // what explains the keys, and a screen's own guide makes little sense to
+  // somebody who has not been told what the screens are. It used to be tied
+  // to the start screen, which no longer exists -- so it is offered on the
+  // first screen opened instead, and the screen's own guide waits its turn.
+  if (!state.guides_seen.includes("home")) { startGuide("home"); return; }
+  if (state.guides_seen.includes(door)) return;
   startGuide(door);
 }
 // ── Paint, and the wear on it ───────────────────────────────────────────────
@@ -3838,7 +3821,7 @@ function maybeStartGuide() {
 //
 // This is the only part of the page that is purely appearance. If the canvas
 // context is unavailable it simply does not run, and the page is flat.
-const SURFACES = "header, .toolbar, .updbar, main, section, .door, .nameplate, .instrument, .screen, dialog, button.primary";
+const SURFACES = "header, .toolbar, .updbar, main, section, .cmdkey, .nameplate, .instrument, .screen, dialog, button.primary";
 const surfaces = [];
 let paintFrame = 0;
 let paintWatcher = null;
@@ -3876,7 +3859,7 @@ function grain() {
 function surfaceKind(node) {
   if (node.classList.contains("screen")) return "glass";
   if (node.classList.contains("nameplate")) return "plate";
-  if (node.tagName === "BUTTON" && !node.classList.contains("door")) return "key";
+  if (node.tagName === "BUTTON") return "key";
   return "enamel";
 }
 
@@ -4074,6 +4057,10 @@ async function pollDevices() {
 }
 
 grain();
+// The keys before the paint: dressAll only weathers what is on the page when
+// it runs, and keys built after it would be the one clean thing on a worn
+// panel.
+buildKeys();
 dressAll(document);
 restoreDoor();
 loadState();
