@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -95,5 +96,33 @@ func TestARerunStepReplacesItsOwnOutcome(t *testing.T) {
 	}
 	if r.Outcomes[0].State != StateDone {
 		t.Errorf("the later run should have the last word: %+v", r.Outcomes[0])
+	}
+}
+
+// An agent that cannot read its manifest still has to say so on the machine.
+// Without this the failure is perfect silence: Windows installs, signs itself
+// in, and hands over a PC that looks untouched, with a domain join file still
+// sitting unused beside an agent that quietly refused its own manifest.
+func TestAnUnreadableManifestIsWrittenDownOnTheMachine(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ManifestName),
+		[]byte(`{"version":1,"recipe":"r","settings":{"machine":[]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadManifest(filepath.Join(dir, ManifestName))
+	if err == nil {
+		t.Skip("this agent understands the field; nothing to report")
+	}
+	noteUnreadableManifest(dir, err)
+
+	b, err := os.ReadFile(filepath.Join(dir, LogName))
+	if err != nil {
+		t.Fatalf("nothing was written where first boot is logged: %v", err)
+	}
+	log := string(b)
+	for _, want := range []string{"NOTHING WAS DONE", "no domain join", "build-agent.sh"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("the machine's own log does not say %q:\n%s", want, log)
+		}
 	}
 }
