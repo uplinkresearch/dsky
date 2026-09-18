@@ -6,8 +6,10 @@ package webui
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -176,22 +178,40 @@ func Serve(ctx context.Context, ln net.Listener, s *Server) error {
 	}
 }
 
+// asset serves one embedded file, tagged with what it contains rather than
+// given a lifetime.
+//
+// The page, the logo and the icon were sent with max-age=86400 and nothing to
+// check them against. Their URLs never change, so after an update the browser
+// had no reason to ask for them again and went on drawing the old ones for a
+// day: v0.8.0 changed the logo and people kept seeing the previous one. The
+// update itself had worked, which is the part that makes it hard to believe.
+//
+// The tag is a hash of the bytes, so a build that changed the file answers a
+// revalidation with the new one and a build that did not answers 304. That is
+// a conditional request over loopback for a few kilobytes — the cost this
+// should have been paying all along.
+func asset(contentType string, body []byte) http.HandlerFunc {
+	sum := sha256.Sum256(body)
+	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", contentType)
+		// no-cache means "ask me first", not "do not keep it".
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", etag)
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Write(body)
+	}
+}
+
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(indexHTML)
-	})
-	mux.HandleFunc("GET /logo.webp", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/webp")
-		w.Header().Set("Cache-Control", "max-age=86400")
-		w.Write(logoWebP)
-	})
-	mux.HandleFunc("GET /favicon.png", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		w.Header().Set("Cache-Control", "max-age=86400")
-		w.Write(faviconPNG)
-	})
+	mux.HandleFunc("GET /{$}", asset("text/html; charset=utf-8", indexHTML))
+	mux.HandleFunc("GET /logo.webp", asset("image/webp", logoWebP))
+	mux.HandleFunc("GET /favicon.png", asset("image/png", faviconPNG))
 	mux.HandleFunc("GET /api/state", s.auth(s.handleState))
 	mux.HandleFunc("POST /api/workspace", s.auth(s.handleSetWorkspace))
 	mux.HandleFunc("POST /api/browse", s.auth(s.handleBrowse))
