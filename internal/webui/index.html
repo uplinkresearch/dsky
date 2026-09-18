@@ -684,44 +684,55 @@
   #jobs .dismiss:active { transform: none; }
 
   /* ── The screen keys ───────────────────────────────────────────────────────
-     Moulded ivory keycaps with the number printed on them, standing a little
-     proud of the strip. The one you are on is held down: sunk into the panel,
-     dark, with an amber line across the top of the cut. A key that has been
-     pressed and stayed pressed is exactly what the current screen is, so the
-     panel needs no other way to say which one that is. */
+     Lit pushbuttons: a translucent plastic cap with the legend and its rule
+     printed on the face, and a lamp behind it. The cap never changes. It does
+     not sink, the printing does not move, the borders stay where they are —
+     the only thing that happens when a screen is yours is that the lamp comes
+     on behind the plastic.
+
+     That is the whole idea, and it is why the earlier version was wrong: it
+     recessed the key and turned it dark, so the current screen was marked by
+     the key having become a different object. On a real panel the key is the
+     same object lit. Everything below is arranged so that the lit and unlit
+     rules differ in nothing but light. */
   .cmdkeys { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
   .cmdkey { position: relative; isolation: isolate; overflow: hidden;
-    display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+    display: inline-flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 6px;
     min-height: 43px; min-width: 104px; padding: 9px 14px 10px;
     font: 11px/1.35 var(--mono); letter-spacing: .8px; text-transform: uppercase;
-    color: var(--key-ink);
-    background-color: var(--key);
-    background-image: var(--grain), radial-gradient(ellipse at 43% 15%, #fffdeb78, transparent 75%), linear-gradient(180deg, #ece7c70a 60%, #867d563d);
+    color: #4a5142;
+    background-color: #bdb9a0;
+    background-image: var(--grain), radial-gradient(ellipse at 43% 12%, #fffdeb5c, transparent 72%), linear-gradient(180deg, #ece7c70a 55%, #6f6a4a3d);
     background-blend-mode: multiply, normal, normal;
-    border: 1px solid #d7d6b9; border-top-color: #efecd2;
-    border-right: 2px solid #8c9177; border-bottom: 4px solid #82856a;
+    border: 1px solid #a9a68d; border-top-color: #d8d5bc;
+    border-right: 2px solid #86846d; border-bottom: 4px solid #7b7962;
     border-radius: 4px 4px 5px 5px;
-    box-shadow: 0 1px 0 #0e1b15, 1px 4px 3px #050d0a70, inset 0 0 0 1px #fff9d54a,
+    box-shadow: 0 1px 0 #0e1b15, 1px 4px 3px #050d0a70, inset 0 0 0 1px #fff9d52e,
       inset 0 -2px 4px #78715c26;
-    text-shadow: 0 1px 0 #fffbed85;
-    transform: translateY(-1px);
-    transition: transform .1s, box-shadow .1s, background-color .12s; }
-  .cmdkey:hover { background-color: var(--key-hover); border-color: #efecd2;
-    border-right-color: #8c9177; border-bottom-color: #82856a; }
-  .cmdkey[aria-current="page"] { transform: translateY(1px); color: #ece8d7;
-    background-color: #1b2423;
-    background-image: var(--grain), linear-gradient(0deg, #51625222, #040f1033);
-    border: 1px solid #5a6950; border-top: 2px solid #0b1413;
-    border-right-color: #33443a; border-bottom: 2px solid #798672;
-    box-shadow: inset 0 3px 4px #0000007a, 0 1px 0 #aeb69b29;
-    text-shadow: none; }
-  /* The lit line across the top of the cut — the only trim on the panel that
-     moves, which is why it is the thing the eye finds first. */
-  .cmdkey[aria-current="page"]::before { content: ""; position: absolute;
-    left: 12px; right: 12px; top: 3px; height: 2px; background: var(--accent2);
-    opacity: .95; pointer-events: none; }
-  .cmdkey:active { transform: translateY(2px);
-    box-shadow: inset 0 2px 5px #273c204d, 0 1px 0 #e7e4c444; }
+    text-shadow: 0 1px 0 #fffbed5c;
+    transition: background-color .14s, color .14s, box-shadow .14s; }
+  /* The rule under the legend is printed on the cap, so it is on every key
+     whether or not its lamp is on. Unlit it is ink; lit it is the same ink
+     over a lamp. It was above the word before, which made it read as a
+     highlight the panel had added rather than as part of the printing. */
+  .cmdkey::after { content: ""; align-self: stretch; height: 2px; border-radius: 1px;
+    background: var(--accent2); opacity: .6; transition: opacity .14s; }
+  /* Unlit, the cap only responds to the pointer — the plastic catching a
+     little more of the room, not the lamp coming on. */
+  .cmdkey:hover { background-color: #c9c5aa; }
+  /* Lit. The lamp is behind the plastic, so the light comes from within the
+     face and spills slightly past its edges; the legend darkens against it the
+     way printed ink does over a bright ground. Geometry, borders, padding and
+     position are deliberately untouched. */
+  .cmdkey[aria-current="page"] { color: #3d3016;
+    background-color: #f2e3b4;
+    background-image: var(--grain), radial-gradient(ellipse at 50% 46%, #fff6cf, #f0dca6 62%, #e3c988 100%);
+    box-shadow: 0 1px 0 #0e1b15, 1px 4px 3px #050d0a70,
+      inset 0 0 12px #fff3c2cc, inset 0 0 0 1px #fffbe08a, 0 0 14px #e8bb7147;
+    text-shadow: 0 1px 0 #fffdf0a0; }
+  .cmdkey[aria-current="page"]::after { opacity: 1; }
+  .cmdkey[aria-current="page"]:hover { background-color: #f7ebc4; }
   /* Narrow: the keys give up their padding before they give up their words,
      and wrap to a second row rather than shrink to something unreadable. */
   @media (max-width: 760px) {
