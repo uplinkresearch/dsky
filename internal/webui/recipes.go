@@ -156,7 +156,12 @@ func (s *Server) describeRecipe(rc *recipe.Recipe, form *oscatalog.RecipeForm) [
 			}
 		}
 	} else {
-		if rc.Linux != nil && rc.Linux.Autoinstall != nil {
+		// A kickstart recipe is as automatic as an autoinstall one, and used to
+		// fall through to "nothing set in advance" — said of the one recipe
+		// shape that clears the disk without asking, with its program list
+		// left off the page entirely.
+		switch {
+		case rc.Linux != nil && rc.Linux.Autoinstall != nil:
 			if form != nil {
 				add("Install programs", programs(form.Apps))
 			}
@@ -165,7 +170,12 @@ func (s *Server) describeRecipe(rc *recipe.Recipe, form *oscatalog.RecipeForm) [
 			} else {
 				add("Installer", "Waits for Install on the review screen, then erases the computer's disk")
 			}
-		} else {
+		case rc.Linux != nil && rc.Linux.Kickstart != nil:
+			if form != nil {
+				add("Install programs", programs(form.Apps))
+			}
+			add("Installer", "Installs by itself and erases the computer's disk")
+		default:
 			add("Installer", "Boots the installer — nothing set in advance")
 		}
 	}
