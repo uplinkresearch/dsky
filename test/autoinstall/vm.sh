@@ -170,6 +170,15 @@ fedora-44-programs)
   SHA=85837793bfa36db6bc709b4cecd2ec116951b87d9c53c3d95eb2fac8dcf7cf1f
   KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
   PROGRAMS=vlc,obsidian,chrome,dsky SRC_ID=fedora-44-server ;;
+server-26.04-two-disks)
+  # The Ubuntu half of the question. Its answers say `storage: layout: direct`
+  # rather than anything like clearpart --all, so subiquity is expected to
+  # choose one disk -- but "expected to" is what the Fedora case was, and that
+  # erased the label of a disk nobody offered it.
+  URL=$MIRROR/26.04/ubuntu-26.04.1-live-server-amd64.iso
+  SHA=cc8a95cde20f6ced61a322420de00f10cc3c90ced545daa46cb9c1a117f1d927
+  KIND=server PATCH=true IDENTITY=true OBSERVE=false
+  SECOND_DISK=true ;;
 fedora-44-two-disks)
   # Does an install erase only the disk it was meant to?
   #
@@ -185,7 +194,15 @@ fedora-44-two-disks)
   URL=https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-dvd-x86_64-44-1.7.iso
   SHA=85837793bfa36db6bc709b4cecd2ec116951b87d9c53c3d95eb2fac8dcf7cf1f
   KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
-  SRC_ID=fedora-44-server ENVGROUP=minimal-environment KSPKG=nano
+  # No ENVGROUP: the default (server-product-environment) is the one this DVD
+  # carries. minimal-environment, copied from the AlmaLinux case, is not on it,
+  # and Anaconda answers that by stopping on "Invalid environment specified in
+  # kickstart" and waiting at a menu -- an hour of an install that never began.
+  # No KSPKG either: the default (vim-enhanced) is what this DVD carries.
+  # nano, also copied from the AlmaLinux case, is not on it -- and because
+  # %packages is --ignoremissing, it is skipped in silence and only the check
+  # afterwards notices.
+  SRC_ID=fedora-44-server
   SECOND_DISK=true ;;
 omarchy)
   # Omarchy has no unattended path: archiso boots straight into Omarchy's own
