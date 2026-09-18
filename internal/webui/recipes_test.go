@@ -63,7 +63,7 @@ func TestRecipeOpenEditDelete(t *testing.T) {
 		strings.Join(d.Form.Apps, ",") != "vlc,brave" {
 		t.Errorf("after update: %+v form %+v", d, d.Form)
 	}
-	if w := post(t, h, "/api/recipes/update", `{"id":"front-desk","os_id":"windows-10"}`); w.Code != 400 {
+	if w := post(t, h, "/api/recipes/update", `{"id":"front-desk","os_id":"ubuntu-26.04-desktop"}`); w.Code != 400 {
 		t.Errorf("changing the OS: %d", w.Code)
 	}
 

@@ -20,7 +20,7 @@ import (
 // to the workspace as a pinned, self-describing driver-pack manifest.
 func driversSearch(ctx context.Context, env *Env, args []string) error {
 	fs := flag.NewFlagSet("drivers search", flag.ContinueOnError)
-	osName := fs.String("os", "win11", "target OS: win11 | win10")
+	osName := fs.String("os", "win11", "target OS (win11; Windows 10 is out of support and not offered)")
 	limit := fs.Int("limit", 15, "max results to show")
 	add := fs.Bool("add", false, "add a result to the workspace (manifest + library pull)")
 	pick := fs.Int("pick", 1, "which result --add takes (1 = first)")
@@ -177,12 +177,12 @@ func driversResolve(ctx context.Context, env *Env, args []string) error {
 // the same list the Install dialog's model picker offers.
 func driversModels(ctx context.Context, env *Env, args []string) error {
 	fs := flag.NewFlagSet("drivers models", flag.ContinueOnError)
-	osName := fs.String("os", "win11", "win11 or win10")
+	osName := fs.String("os", "win11", "target OS (win11; Windows 10 is out of support and not offered)")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("drivers models <%s> [--os win11|win10]", modelFeedNames())
+		return fmt.Errorf("drivers models <%s> [--os win11]", modelFeedNames())
 	}
 	lib, err := env.library()
 	if err != nil {

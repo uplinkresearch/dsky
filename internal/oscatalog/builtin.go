@@ -37,17 +37,6 @@ var builtin = []Entry{
 		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting. On unsupported hardware, enable 'skip requirement checks'.",
 	},
 	{
-		ID:            "windows-10",
-		Name:          "Windows 10",
-		Family:        Windows,
-		Version:       "22H2",
-		Editions:      []string{"Pro", "Home", "Pro N", "Education", "Enterprise"},
-		Provider:      "fido",
-		Fido:          &manifest.FidoSpec{Win: "10", Release: "22H2", Edition: "Pro", Language: "English", Arch: "x64"},
-		Notes:         "Official Microsoft media, fetched on demand.",
-		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting.",
-	},
-	{
 		ID:            "ubuntu-24.04-server",
 		Name:          "Ubuntu 24.04 LTS Server",
 		Family:        Linux,

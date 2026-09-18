@@ -304,7 +304,7 @@ func migrateValidate(args []string) error {
 func migrateReport(args []string) error {
 	fs := flag.NewFlagSet("migrate report", flag.ContinueOnError)
 	out := fs.String("out", "", "write here instead of beside the manifest (- for standard output)")
-	osName := fs.String("os", "win11", "the Windows the new machine will run: win11 or win10")
+	osName := fs.String("os", "win11", "the Windows the new machine will run (win11)")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}

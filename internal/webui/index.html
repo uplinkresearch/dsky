@@ -2269,7 +2269,7 @@ function modelPickerOpt(os, carrier = "stick") {
     const waiting = MODEL_VENDORS.filter(v => !status[v.id]).map(v => v.name);
     const partial = MODEL_VENDORS.filter(v => status[v.id] && status[v.id].partial);
     const failed = MODEL_VENDORS.filter(v => status[v.id] && status[v.id].error && !status[v.id].partial);
-    const osName = os.id === "windows-10" ? "Windows 10" : "Windows 11";
+    const osName = "Windows 11";
     let text = waiting.length
       ? `${all.length} computer models listed so far for ${osName}; still loading ${waiting.join(", ")}.`
       : `${all.length} computer models listed for ${osName}. One ${carrier} can carry drivers for several.`;
@@ -2621,7 +2621,7 @@ function isoOpt(os) {
   }
   if (os.family !== "windows") return null;
   const home = state.host_os === "darwin" ? "/Users/you" : "/home/you";
-  const page = /windows-10/.test(os.id) ? "microsoft.com/software-download/windows10" : "microsoft.com/software-download/windows11";
+  const page = "microsoft.com/software-download/windows11";
   let opt;
   if (state.windows_fetch || os.downloaded) {
     opt = textOpt("Use an ISO you downloaded (optional)",

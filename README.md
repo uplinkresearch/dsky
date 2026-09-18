@@ -71,7 +71,7 @@ had to say plainly what it was about to do.
 
 ## What it produces
 
-- **Windows 10/11 unattended installers** — FAT32, UEFI-boot, `autounattend.xml`
+- **Windows 11 unattended installers** — FAT32, UEFI-boot, `autounattend.xml`
   + `ei.cfg` + `$OEM$` payload; drivers install at first boot via `pnputil`
   (never DISM-injected), agents install at first boot (never baked — cloned
   agent identities collide in RMMs). WIMs over FAT32's 4 GiB limit are split
