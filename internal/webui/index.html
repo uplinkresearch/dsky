@@ -602,6 +602,12 @@
     box-shadow: inset 0 1px 2px #9caa862e, inset 0 -3px 5px #15281055,
       0 1px 2px #14261099;
     text-shadow: 0 1px 0 #24361d80; }
+  /* How many drives are connected, printed in the corner of the lamp rather
+     than set beside the legend: the lamp has to read as its label first, and
+     two lines of "USB FOUND" already fill it. It sits under the reflection
+     below, so it looks printed on the lens rather than floating over it. */
+  .lamp .lampcount { position: absolute; top: 3px; right: 5px;
+    font: 10px/1 var(--mono); font-weight: 400; opacity: .75; }
   /* The reflection off the lens, which is what makes it read as glass. */
   .lamp::after { content: ""; position: absolute; inset: 1px; border-radius: 2px;
     pointer-events: none; opacity: calc(.3 + var(--glass));
@@ -3198,6 +3204,10 @@ function buildLampsInto(grid) {
     // from the start; lighting it is then only ever adding "on".
     const tint = key === "write" ? " work" : key === "fault" ? " fault" : "";
     const lamp = el("span", "lamp" + tint, label);
+    // How many drives are connected, in the corner of the lamp. Lit or dark
+    // cannot show a change that does not cross zero: with two sticks in,
+    // pulling one leaves the lamp lit and looks like nothing happened.
+    if (key === "usb") lamp.append(el("b", "lampcount"));
     set[key] = lamp;
     grid.append(lamp);
   }
@@ -3226,9 +3236,11 @@ const idleLamps = buildLampsInto($("idleLamps"));
 // be willing to write to, which is not the same as a drive being plugged in
 // -- the disk the machine booted from is plugged in too.
 function machineLamps() {
+  const sticks = (state.devices || []).filter(d => d.flashable).length;
   return {
     media: (state.artifacts || []).length > 0 || (state.downloads || []).length > 0,
-    usb: (state.devices || []).some(d => d.flashable),
+    usb: sticks > 0,
+    sticks,
   };
 }
 
@@ -3236,12 +3248,19 @@ function lampSets() {
   return [idleLamps, ...[...jobEls.values()].map(j => j.lamps)];
 }
 
+// The two machine lamps, and the count that goes with one of them. Blank at
+// zero rather than "0": the lamp is already dark, and a nought sitting in the
+// corner of an unlit lamp reads as a fault rather than as an absence.
+function applyMachineLamps(set, lit) {
+  set.media.classList.toggle("on", !!lit.media);
+  set.usb.classList.toggle("on", !!lit.usb);
+  const count = set.usb.querySelector(".lampcount");
+  if (count) count.textContent = lit.sticks > 0 ? String(lit.sticks) : "";
+}
+
 function refreshMachineLamps() {
   const lit = machineLamps();
-  for (const set of lampSets()) {
-    set.media.classList.toggle("on", lit.media);
-    set.usb.classList.toggle("on", lit.usb);
-  }
+  for (const set of lampSets()) applyMachineLamps(set, lit);
 }
 
 function setLamps(j, ev) {
@@ -3259,6 +3278,7 @@ function setLamps(j, ev) {
     fault: failed,
   });
   for (const [key, lamp] of Object.entries(j.lamps)) lamp.classList.toggle("on", !!lit[key]);
+  applyMachineLamps(j.lamps, lit);
 }
 
 // Which bars make which digit. Seven segments, named a–g the way the data
