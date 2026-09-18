@@ -75,10 +75,7 @@ M0 is built. The rest keep the spec's order, with the reuse above folded in.
 
 - **M1 — scanner. Built** (see "What M1 built" below).
 - **M2 — resolver. Built** (see "What M2 built" below).
-- **M3 — review.** Terminal UI first (the portal's a second pass): blockers,
-  then unplaced applications one at a time, with "also save to the site table"
-  defaulting to yes. Approval writes the hash. `--auto-approve` only when
-  nothing is unplaced and no blocker is unanswered.
+- **M3 — review. Built** (see "What M3 built" below).
 - **M4 — build.** `djoin /provision /reuse`, group add, blob into the
   unattend, payload staged (pre-downloaded winget packages, installers from
   the table, App Installer and its dependencies), the agent's manifest
@@ -102,6 +99,38 @@ not read this file.
 Windows first, and the schema is OS-neutral on purpose (`apps[].source_kind`,
 `settings[].apply` keyed by target OS) so a Linux scanner can be added without
 reshaping the file.
+
+## What M3 built
+
+`dsky migrate review` is the step the spec refuses to remove, so the work was
+making a person's part short rather than clever. It asks in the order that can
+stop a build: blockers, then each application nobody could place, then the two
+or three facts a scan cannot know (where a USMT store lives, whether the new
+machine joins a different OU), then a note for the report, then approval.
+
+Every answer is offered back to the site's table, defaulting to yes, because
+the expensive part of a migration is working out where a practice's own
+software comes from and nobody should pay for it twice. Proven on the lab
+machine: reviewing it once taught the table its practice software, and a
+second machine at that site resolved with no questions at all.
+
+Three things the running of it settled:
+
+- **Enter never decides.** On an application's question it means "decide
+  later", so somebody holding Enter down a long list cannot agree to installs
+  they never read. Accepting the resolver's suggestion is one key (`y`), which
+  is the common case.
+- **A wrong key says so.** Silently re-asking the same question reads like a
+  stuck program; it now names what it did not understand.
+- **"Accept the risk" has to mean something the plan says out loud.** Accepting
+  the missing-USMT blocker used to leave a plan still claiming it would copy
+  somebody's files with nothing to copy them with — noticed, if at all, as an
+  empty Documents folder on the new machine. It now switches the plan to "not
+  migrated" and writes that into the notes the report prints.
+
+`--auto-approve` is the repeat-machine path: no questions, and it refuses
+exactly what the review refuses. On the lab's second machine it refused,
+correctly, because the USMT blocker was unanswered.
 
 ## What M2 built
 

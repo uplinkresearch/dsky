@@ -22,7 +22,7 @@ import (
 // says so rather than pretending.
 func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("migrate: need scan, resolve, validate, report or schema (see docs/plan-migrate.md)")
+		return fmt.Errorf("migrate: need scan, resolve, review, validate, report or schema (see docs/plan-migrate.md)")
 	}
 	switch args[0] {
 	case "scan":
@@ -39,10 +39,12 @@ func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 		return err
 	case "resolve":
 		return migrateResolve(args[1:])
-	case "review", "build", "verify":
-		return fmt.Errorf("migrate %s is not built yet — scan, resolve, validate, report and schema are; see docs/plan-migrate.md", args[0])
+	case "review":
+		return migrateReview(args[1:])
+	case "build", "verify":
+		return fmt.Errorf("migrate %s is not built yet — scan, resolve, review, validate, report and schema are; see docs/plan-migrate.md", args[0])
 	default:
-		return fmt.Errorf("migrate: no such thing as %q (scan, resolve, validate, report, schema)", args[0])
+		return fmt.Errorf("migrate: no such thing as %q (scan, resolve, review, validate, report, schema)", args[0])
 	}
 }
 
@@ -154,6 +156,84 @@ func short(s string) string {
 		return s
 	}
 	return s[:41] + "..."
+}
+
+// migrateReview is the step that cannot be skipped: a person reads the plan,
+// settles what the resolver could not, and approves it. Everything they
+// decide is offered to the site's table, so the next machine at that customer
+// asks fewer questions than this one did.
+func migrateReview(args []string) error {
+	fs := flag.NewFlagSet("migrate review", flag.ContinueOnError)
+	site := fs.String("site", "", "the site's mapping table (default: mappings.json beside the manifest)")
+	by := fs.String("by", "", "who is approving (default: this account)")
+	auto := fs.Bool("auto-approve", false, "approve without asking, and only if there is nothing to ask about")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("migrate review <manifest.json> [--site mappings.json] [--by name] [--auto-approve]")
+	}
+	path := fs.Arg(0)
+	m, err := migrate.Load(path)
+	if err != nil {
+		return err
+	}
+	who := *by
+	if who == "" {
+		who = whoami()
+	}
+
+	if *auto {
+		if err := migrate.AutoApprove(m, who); err != nil {
+			return err
+		}
+		if err := m.Save(path); err != nil {
+			return err
+		}
+		fmt.Printf("approved by %s without asking: nothing was outstanding\n", who)
+		return nil
+	}
+
+	sitePath := *site
+	if sitePath == "" {
+		sitePath = filepath.Join(filepath.Dir(path), migrate.MappingName)
+	}
+	table, err := migrate.LoadTable(sitePath)
+	if err != nil {
+		return err
+	}
+	r := &migrate.Review{
+		In: os.Stdin, Out: os.Stdout, By: who,
+		Site: table, SitePath: sitePath,
+		Save: func(t *migrate.Table) error { return t.Save(sitePath) },
+	}
+	changed, err := r.Run(m)
+	if err != nil {
+		return err
+	}
+	if !changed {
+		fmt.Println("nothing changed; the manifest is as it was")
+		return nil
+	}
+	if err := m.Save(path); err != nil {
+		return err
+	}
+	fmt.Println("wrote", path)
+	if len(table.Entries) > 0 {
+		fmt.Printf("%s holds %d decision(s) for this site\n", sitePath, len(table.Entries))
+	}
+	return nil
+}
+
+// whoami is who to record as having approved a plan, when nobody said.
+func whoami() string {
+	if u := os.Getenv("USER"); u != "" {
+		return u
+	}
+	if u := os.Getenv("USERNAME"); u != "" {
+		return u
+	}
+	return "operator"
 }
 
 // migrateValidate is the answer to "is this file a migration plan DSKY will
