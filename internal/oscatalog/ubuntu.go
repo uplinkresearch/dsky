@@ -94,6 +94,9 @@ func checkPrograms(e Entry, ids []string) error {
 	if !e.ProgramsSupported() {
 		return fmt.Errorf("installing programs alongside %s is not supported — programs can be installed with Windows, with Ubuntu (Server 24.04 and 26.04, Desktop 26.04) and with Fedora Server", e.Name)
 	}
+	if err := checkNeedsDesktop(e, ids); err != nil {
+		return err
+	}
 	switch e.AppTarget() {
 	case appcatalog.TargetWindows:
 		_, _, err := appcatalog.Resolve(ids)
@@ -104,6 +107,37 @@ func checkPrograms(e Entry, ids []string) error {
 	}
 	_, err := appcatalog.ResolveUbuntu(ids)
 	return err
+}
+
+// checkNeedsDesktop refuses a graphical program on a server.
+//
+// Ubuntu Server and Fedora Server install no desktop at all -- no X, no
+// Wayland, no GNOME -- and the picker offered VLC, Chrome and GIMP for them
+// anyway. The packages install cleanly, which is the trouble: nothing fails,
+// and the machine simply has no way to run any of them. A stick that quietly
+// installs something unusable is worse than one that says it will not.
+func checkNeedsDesktop(e Entry, ids []string) error {
+	if e.Group() != Server {
+		return nil
+	}
+	var refused []string
+	for _, id := range ids {
+		a, ok := appcatalog.Get(strings.TrimSpace(id))
+		if ok && a.Desktop {
+			refused = append(refused, a.Name)
+		}
+	}
+	if len(refused) == 0 {
+		return nil
+	}
+	return fmt.Errorf(`%s needs a desktop, and %s installs none.
+
+%s has no graphical session at all, so it would install and then have nothing
+to run it. Leave it out, or install a desktop environment yourself afterwards.
+
+For anything the picker will not do, `+"`dsky apps add <installer>`"+` takes your own
+installer, and a workspace recipe takes whatever you want to write.`,
+		strings.Join(refused, ", "), e.Name, e.Name)
 }
 
 // ubuntuUserDataFile is where the generated answers go in a workspace.
