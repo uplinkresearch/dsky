@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.R.Machine}} — what this machine was built with</title>
+<style>
+/* The plan report's palette, because this is the other half of the same
+   document and they get read side by side. Printable: this one gets stapled
+   to the work order as often as the plan does. */
+:root {
+  --bg: #05050f; --panel: #0a0a1f; --panel2: #14142e; --line: #25254a;
+  --text: #c8c8d4; --dim: #8a8aa6; --accent: #00f5ff; --ok: #00ff41;
+  --warn: #ffd700; --err: #ff4d88; --on-bright: #05050f;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px 18px 64px; background: var(--bg); color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1040px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 0 0 2px; }
+h2 { font-size: 15px; margin: 28px 0 8px; }
+.sub { color: var(--dim); font-size: 13px; }
+.mono { font-family: var(--mono); }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 14px 16px; margin: 12px 0; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+.kind { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.bad { color: var(--err); }
+.wait { color: var(--warn); }
+.good { color: var(--ok); }
+.lead { border-left: 3px solid var(--err); }
+.lead-wait { border-left: 3px solid var(--warn); }
+.none { color: var(--dim); font-style: italic; }
+@media print {
+  :root { --bg: #fff; --panel: #fff; --panel2: #fff; --line: #bbb; --text: #111;
+          --dim: #555; --ok: #060; --warn: #7a5c00; --err: #900; }
+  body { padding: 0; font-size: 11pt; }
+  section { break-inside: avoid; border-radius: 0; }
+}
+</style>
+</head><body><main>
+
+<h1>{{.R.Machine}}</h1>
+<p class="sub">
+  What this machine was built with{{if .R.Recipe}}, from {{.R.Recipe}}{{end}}.
+  {{if .Took}}Set up in {{.Took}}.{{end}}
+  {{if not .R.Finished.IsZero}}Finished {{humanTime .R.Finished}}.{{else}}<span class="wait">This build did not reach the end.</span>{{end}}
+</p>
+
+<h2>Needs a hand</h2>
+{{if .Failed}}
+<section class="lead">
+  <p class="sub">These did not happen. Nothing else on this page is waiting on them.</p>
+  <table>
+    <tr><th>What</th><th>Why not</th></tr>
+    {{range .Failed}}
+    <tr><td><span class="kind">{{.Kind}}</span><br>{{.Name}}</td><td class="bad">{{if .Note}}{{.Note}}{{else}}no reason recorded{{end}}</td></tr>
+    {{end}}
+  </table>
+</section>
+{{else}}
+<section><p class="none">Nothing. Everything the plan asked for either happened or is waiting for somebody to sign in.</p></section>
+{{end}}
+
+<h2>Waiting for the person who will use it</h2>
+{{if .Waiting}}
+<section class="lead-wait">
+  <p class="sub">
+    These are not faults and there is nothing to fix. They belong to a person
+    rather than to the machine — their file-extension setting, their printers,
+    their mapped drives — so they are applied the first time that person signs
+    in. Checking this machine from an administrator account will not show them.
+  </p>
+  <table>
+    <tr><th>What</th><th>When</th></tr>
+    {{range .Waiting}}
+    <tr><td><span class="kind">{{.Kind}}</span><br>{{.Name}}</td><td class="wait">{{if .Note}}{{.Note}}{{else}}at first sign-in{{end}}</td></tr>
+    {{end}}
+  </table>
+</section>
+{{else}}
+<section><p class="none">Nothing waiting.</p></section>
+{{end}}
+
+<h2>Done</h2>
+{{if .Done}}
+<section>
+  <table>
+    <tr><th>What</th><th></th></tr>
+    {{range .Done}}
+    <tr><td><span class="kind">{{.Kind}}</span><br>{{.Name}}</td><td class="good">done</td></tr>
+    {{end}}
+  </table>
+</section>
+{{else}}
+<section><p class="none">Nothing finished.</p></section>
+{{end}}
+
+{{if .R.Problems}}
+<h2>Everything the build logged as a problem</h2>
+<section>
+  <p class="sub">The first-boot log's own words, in the order they happened.</p>
+  <ul class="mono">{{range .R.Problems}}<li>{{.}}</li>{{end}}</ul>
+</section>
+{{end}}
+
+<p class="sub">
+  Written by the machine itself at first boot and rendered by DSKY {{.Version}}
+  on {{humanTime .RenderedAt}}. The machine's own copy is
+  <span class="mono">C:\Windows\Setup\Scripts\dsky-migrate-result.json</span>.
+</p>
+
+</main></body></html>

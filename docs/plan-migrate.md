@@ -81,10 +81,10 @@ M0 is built. The rest keep the spec's order, with the reuse above folded in.
   defect rather than two and is fixed by joining after OOBE instead of during
   it (see below). Still to do: pre-downloaded winget packages and the App
   Installer bundle for machines with no internet at first boot.
-- **M5 — runner.** Settings, printers, mapped drives and the per-user logon
-  script are **done**; see "What M5 built" below. The result JSON and HTML are
-  still to do. The per-app config drop is **blocked, not deferred** — see the
-  same section.
+- **M5 — runner. Done**, apart from the per-app config drop, which is
+  **blocked, not deferred**: it restores files nothing collects yet. Settings,
+  printers, mapped drives, the per-user logon script and the result report are
+  built; see "What M5 built" below.
 - **M6 — data and verify.** USMT hooks (`--usmt`, never bundled), `dsky
   migrate verify` diffing a rescan against the approved manifest, every
   missing-with-a-fuzzy-match offered as a mapping-table alias.
@@ -147,10 +147,23 @@ file-migration work in M6. So a drop step written now would be code against
 data nothing produces — it could not be tested, and the first real test would
 be somebody's machine. It waits for M6, where the files start existing.
 
-Still to do in M5: the result report. The agent should write what it was asked
-to do and what happened, as JSON on the machine; the HTML belongs in DSKY,
-where the plan report's template already lives, rather than in the agent, which
-should not grow a template engine to say what it did.
+The result report is done, in two halves. The agent writes
+`dsky-migrate-result.json` on the machine — after every step, not at the end,
+because a migration guarantees a restart and a record written only at the end
+is never written on exactly the machines this exists for. `dsky migrate result`
+renders it as a page, with the plan alongside so a program is called what
+people call it rather than which file was run.
+
+Three states, and the third is the one that matters: `done`, `failed`, and
+`at-sign-in` for everything belonging to a person and waiting for them to turn
+up. Calling those done would be a lie; calling them failed would send a
+technician looking for a fault that is not there. The page leads with what
+needs a hand, then explains the waiting ones as not being faults, then lists
+what is finished — because the question somebody reads it with is "what do I
+have to do?". It exits non-zero when anything needs a hand, so a bench of
+machines can be swept without opening every page.
+
+M5 is therefore done except for the config drop, which is blocked above.
 
 ## What M4 built, and what it found
 

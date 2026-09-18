@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/uplinkresearch/dsky/internal/buildinfo"
 	"github.com/uplinkresearch/dsky/internal/migrate"
@@ -22,7 +23,7 @@ import (
 // says so rather than pretending.
 func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("migrate: need scan, resolve, review, build, validate, report or schema (see docs/plan-migrate.md)")
+		return fmt.Errorf("migrate: need scan, resolve, review, build, result, validate, report or schema (see docs/plan-migrate.md)")
 	}
 	switch args[0] {
 	case "scan":
@@ -43,10 +44,12 @@ func cmdMigrate(ctx context.Context, env *Env, args []string) error {
 		return migrateReview(args[1:])
 	case "build":
 		return migrateBuild(ctx, env, args[1:])
+	case "result":
+		return migrateResult(args[1:])
 	case "verify":
 		return fmt.Errorf("migrate verify is not built yet — scan, resolve, review, build, validate, report and schema are; see docs/plan-migrate.md")
 	default:
-		return fmt.Errorf("migrate: no such thing as %q (scan, resolve, review, build, validate, report, schema)", args[0])
+		return fmt.Errorf("migrate: no such thing as %q (scan, resolve, review, build, result, validate, report, schema)", args[0])
 	}
 }
 
@@ -326,4 +329,72 @@ func migrateReport(args []string) error {
 	}
 	fmt.Println("wrote", path)
 	return nil
+}
+
+// migrateResult renders the record a machine wrote about its own build.
+//
+// The record is JSON on the machine, which is the right thing for the agent to
+// write and the wrong thing to hand anybody. This turns it into the page that
+// gets stapled to the work order -- and with the plan alongside it, the page
+// can say "ArcGIS Pro" where the machine could only say which file it ran.
+func migrateResult(args []string) error {
+	fs := flag.NewFlagSet("migrate result", flag.ContinueOnError)
+	plan := fs.String("plan", "", "the approved manifest, so programs are named the way people name them")
+	out := fs.String("out", "", "write the page here (default: beside the record)")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("migrate result <dsky-migrate-result.json> [--plan manifest.json] [--out page.html]")
+	}
+	rec, err := migrate.LoadRecord(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	var m *migrate.Manifest
+	if *plan != "" {
+		if m, err = migrate.Load(*plan); err != nil {
+			return err
+		}
+	}
+	path := *out
+	if path == "" {
+		path = strings.TrimSuffix(fs.Arg(0), ".json") + ".html"
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := migrate.RecordReport(f, rec, m, buildinfo.Version); err != nil {
+		return err
+	}
+
+	// The counts, so somebody running this over a bench of machines does not
+	// have to open every page to find the one with a problem.
+	var failed, waiting int
+	for _, o := range rec.Outcomes {
+		switch o.State {
+		case migrate.StateFailed:
+			failed++
+		case migrate.StateAtSignIn:
+			waiting++
+		}
+	}
+	fmt.Printf("%s — %d done, %d waiting for the person who will use it, %d need a hand\n",
+		rec.Machine, len(rec.Outcomes)-failed-waiting, waiting, failed)
+	fmt.Println("wrote", path)
+	if failed > 0 {
+		// A non-zero exit so a script over a bench can find these without
+		// reading anything.
+		return errQuiet{n: failed}
+	}
+	return nil
+}
+
+// errQuiet carries a count out as an exit code without printing twice.
+type errQuiet struct{ n int }
+
+func (e errQuiet) Error() string {
+	return fmt.Sprintf("%d thing(s) on this machine need a hand", e.n)
 }
