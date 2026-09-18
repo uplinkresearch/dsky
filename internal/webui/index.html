@@ -1852,10 +1852,6 @@ function appsOpt(target = "windows") {
   // "linux" here means any of the Linux targets: what differs between them is
   // which flag on the program says it installs, and which note to show.
   const linux = target === "ubuntu" || target === "fedora";
-  // Whose installer is being described. `ubuntu` used to mean "any Linux",
-  // so the Fedora picker announced that the stick would install Ubuntu.
-  const ubuntu = target === "ubuntu";
-  const osName = installOS && installOS.name ? installOS.name : (target === "fedora" ? "Fedora" : "Ubuntu");
   // A payload runs on a machine that is already in use, whenever somebody
   // starts it -- not at a first boot, and not off a stick.
   const payload = target === "payload";
@@ -1899,11 +1895,12 @@ function appsOpt(target = "windows") {
                                : (a.mine ? ["your installer"] : []).concat(a.labels || []);
   const setNote = extra => {
     const anyMine = [...picked.keys()].some(k => (state.apps || []).some(a => a.id === k && a.mine));
+    // The sentence comes from the server, which builds it from the entry's own
+    // install plan -- the same describer the CLI and the recipe page use. It
+    // used to be assembled here from a flag called `ubuntu` that meant "any
+    // Linux", so the Fedora picker announced it would install Ubuntu.
     note.textContent = extra || (linux
-      ? "Picking programs makes the stick install " + osName + " by itself and erase the computer's disk. The programs install during setup and on first boot, so the computer needs to be online. " +
-        (!ubuntu || (installOS && installOS.category === "server")
-          ? "The installer asks only for the account."
-          : "Ubuntu shows its review screen and waits for Install before erasing anything.")
+      ? (installOS && installOS.programs_note) || ""
       : payload
         ? "Programs from the list install with winget when the payload runs, so the machine needs to be online then." +
           (anyMine ? " Your own installers are carried inside the payload and need no network." : "")

@@ -154,28 +154,16 @@ func (s *Server) describeRecipe(rc *recipe.Recipe, form *oscatalog.RecipeForm) [
 			}
 		}
 	} else {
-		// A kickstart recipe is as automatic as an autoinstall one, and used to
-		// fall through to "nothing set in advance" — said of the one recipe
-		// shape that clears the disk without asking, with its program list
+		// One describer answers this for the CLI, the picker and this page. It
+		// used to be worked out here from "is there an autoinstall section?",
+		// so a kickstart — the one recipe shape that clears the disk without
+		// asking — came out as "nothing set in advance" with its program list
 		// left off the page entirely.
-		switch {
-		case rc.Linux != nil && rc.Linux.Autoinstall != nil:
-			if form != nil {
-				add("Install programs", programs(form.Apps))
-			}
-			if rc.Linux.Autoinstall.PatchKernel() {
-				add("Installer", "Installs by itself and erases the computer's disk")
-			} else {
-				add("Installer", "Waits for Install on the review screen, then erases the computer's disk")
-			}
-		case rc.Linux != nil && rc.Linux.Kickstart != nil:
-			if form != nil {
-				add("Install programs", programs(form.Apps))
-			}
-			add("Installer", "Installs by itself and erases the computer's disk")
-		default:
-			add("Installer", "Boots the installer — nothing set in advance")
+		p := oscatalog.RecipeInstallPlan(rc, form)
+		if form != nil {
+			add("Install programs", programs(form.Apps))
 		}
+		add("Installer", p.InstallerLine())
 	}
 	if ms := rc.Target.MinStick; ms != "" {
 		add("Stick", "At least "+strings.Replace(ms, "GiB", " GB", 1))
