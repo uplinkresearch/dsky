@@ -1073,7 +1073,7 @@ func (s *Server) handleFlash(w http.ResponseWriter, r *http.Request) {
 	if title == "" {
 		title = filepath.Base(req.Artifact)
 	}
-	job := s.Reg.New("flash", fmt.Sprintf("%s → %s", title, dev.ID))
+	job := s.Reg.NewOn("flash", fmt.Sprintf("%s → %s", title, dev.ID), dev.ID)
 	go func() {
 		s.deviceMu.Lock()
 		defer s.deviceMu.Unlock()
@@ -1271,7 +1271,7 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 	var job *jobs.Job
 	switch mode {
 	case "install":
-		job = s.Reg.New("install", fmt.Sprintf("%s → %s", e.Name, dev.ID))
+		job = s.Reg.NewOn("install", fmt.Sprintf("%s → %s", e.Name, dev.ID), dev.ID)
 	case "setup":
 		job = s.Reg.New("setup", "set up "+e.Name)
 	case "payload":
@@ -1556,7 +1556,7 @@ func (s *Server) handleWritePayload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := stickFileName(art.Name)
-	job := s.Reg.New("flash", fmt.Sprintf("payload %s → %s", name, dev.ID))
+	job := s.Reg.NewOn("flash", fmt.Sprintf("payload %s → %s", name, dev.ID), dev.ID)
 	go func() {
 		s.deviceMu.Lock()
 		defer s.deviceMu.Unlock()
@@ -2245,7 +2245,7 @@ func (s *Server) handleDiskPrepare(w http.ResponseWriter, r *http.Request) {
 			dev.ID, dev.SizeConfirmation(), dev.SizeConfirmation())
 		return
 	}
-	job := s.Reg.New("prepare", fmt.Sprintf("%s → %s %s", dev.ID, opts.FS, opts.Label))
+	job := s.Reg.NewOn("prepare", fmt.Sprintf("%s → %s %s", dev.ID, opts.FS, opts.Label), dev.ID)
 	go func() {
 		s.deviceMu.Lock()
 		defer s.deviceMu.Unlock()
@@ -2318,7 +2318,7 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	outPath := filepath.Join(s.Lib.ArtifactsDir(), fmt.Sprintf("clone-%s.img", time.Now().Format("20060102-150405")))
-	job := s.Reg.New("clone", fmt.Sprintf("%s → %s", dev.ID, filepath.Base(outPath)))
+	job := s.Reg.NewOn("clone", fmt.Sprintf("%s → %s", dev.ID, filepath.Base(outPath)), dev.ID)
 	go func() {
 		s.deviceMu.Lock()
 		defer s.deviceMu.Unlock()

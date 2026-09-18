@@ -22,6 +22,16 @@ type Event struct {
 	Final bool   `json:"final,omitempty"`
 	// Result carries a small payload on success (e.g. artifact path).
 	Result string `json:"result,omitempty"`
+	// Device is the disk this job is about, when it is about one: a flash
+	// names the stick it writes, a capture the disk it reads. Empty for work
+	// that touches no disk — a download, a build, an update.
+	//
+	// It is carried here rather than left inside Title because the page acts
+	// on it: a finished run is cleared when its disk is unplugged, since the
+	// record was only ever a note about that stick. Reading the name back out
+	// of a title would mean parsing a sentence that is written differently for
+	// every kind of job and differently again on Windows.
+	Device string `json:"device,omitempty"`
 	At     int64  `json:"at"` // unix millis
 }
 
@@ -116,32 +126,51 @@ type Job struct {
 	ID    string
 	Kind  string
 	Title string
-	reg   *Registry
+	// Device is the disk this job is about, or empty. See Event.Device.
+	Device string
+	reg    *Registry
 }
 
-// New starts tracking a job and emits its initial event.
-func (r *Registry) New(kind, title string) *Job {
+// New starts tracking a job that is not about any one disk.
+func (r *Registry) New(kind, title string) *Job { return r.NewOn(kind, title, "") }
+
+// NewOn starts tracking a job that is about one disk, and emits its initial
+// event. device is the same id the page knows the disk by.
+func (r *Registry) NewOn(kind, title, device string) *Job {
 	j := &Job{
-		ID:    fmt.Sprintf("%s-%d", kind, r.nextID.Add(1)),
-		Kind:  kind,
-		Title: title,
-		reg:   r,
+		ID:     fmt.Sprintf("%s-%d", kind, r.nextID.Add(1)),
+		Kind:   kind,
+		Title:  title,
+		Device: device,
+		reg:    r,
 	}
 	j.Progress("queued", 0, -1)
 	return j
 }
 
+// event fills in everything constant about this job, so a field added to
+// Event cannot reach one publisher and miss another.
+func (j *Job) event() Event {
+	return Event{JobID: j.ID, Kind: j.Kind, Title: j.Title, Device: j.Device}
+}
+
 // Progress publishes a non-terminal update.
 func (j *Job) Progress(stage string, done, total int64) {
-	j.reg.publish(Event{JobID: j.ID, Kind: j.Kind, Title: j.Title, Stage: stage, Done: done, Total: total})
+	ev := j.event()
+	ev.Stage, ev.Done, ev.Total = stage, done, total
+	j.reg.publish(ev)
 }
 
 // Finish publishes the terminal success event.
 func (j *Job) Finish(result string) {
-	j.reg.publish(Event{JobID: j.ID, Kind: j.Kind, Title: j.Title, Stage: "done", Final: true, Result: result})
+	ev := j.event()
+	ev.Stage, ev.Final, ev.Result = "done", true, result
+	j.reg.publish(ev)
 }
 
 // Fail publishes the terminal failure event.
 func (j *Job) Fail(err error) {
-	j.reg.publish(Event{JobID: j.ID, Kind: j.Kind, Title: j.Title, Stage: "error", Final: true, Err: err.Error()})
+	ev := j.event()
+	ev.Stage, ev.Final, ev.Err = "error", true, err.Error()
+	j.reg.publish(ev)
 }
