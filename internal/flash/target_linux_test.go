@@ -48,3 +48,47 @@ func TestSyncLeavesImageFilesAlone(t *testing.T) {
 		t.Fatalf("an image file should sync without a BLKFLSBUF: %v", err)
 	}
 }
+
+// The exact line that failed on a laptop: a stick holding an Ubuntu ISO, whose
+// label has spaces, mounted where /proc/mounts writes those spaces as \040.
+func TestUnescapeMount(t *testing.T) {
+	cases := map[string]string{
+		`/run/media/dgb/Ubuntu\04026.04.1\040LTS\040amd64`: "/run/media/dgb/Ubuntu 26.04.1 LTS amd64",
+		`/mnt/data`:            "/mnt/data",
+		`/mnt/a\011b`:          "/mnt/a\tb",
+		`/mnt/back\134slash`:   `/mnt/back\slash`,
+		`/mnt/line\012break`:   "/mnt/line\nbreak",
+		`/run/media/x/NO NAME`: "/run/media/x/NO NAME",
+	}
+	for in, want := range cases {
+		if got := unescapeMount(in); got != want {
+			t.Errorf("unescapeMount(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Unmounting somebody else's filesystems before writing is not a small
+// mistake to make quietly, and a prefix match makes it: /dev/sdaa1 begins
+// with /dev/sda.
+func TestPartitionOf(t *testing.T) {
+	cases := []struct {
+		source, disk string
+		want         bool
+	}{
+		{"/dev/sda", "/dev/sda", true},
+		{"/dev/sda1", "/dev/sda", true},
+		{"/dev/sda12", "/dev/sda", true},
+		{"/dev/sdaa1", "/dev/sda", false},
+		{"/dev/sdb1", "/dev/sda", false},
+		{"/dev/nvme0n1p3", "/dev/nvme0n1", true},
+		{"/dev/nvme0n10p1", "/dev/nvme0n1", false},
+		{"/dev/mmcblk0p1", "/dev/mmcblk0", true},
+		{"/dev/mapper/root", "/dev/sda", false},
+		{"/dev/sdap", "/dev/sda", false},
+	}
+	for _, c := range cases {
+		if got := partitionOf(c.source, c.disk); got != c.want {
+			t.Errorf("partitionOf(%q, %q) = %v, want %v", c.source, c.disk, got, c.want)
+		}
+	}
+}
