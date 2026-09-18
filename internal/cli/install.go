@@ -277,53 +277,16 @@ func detectedHardware(ctx context.Context, e oscatalog.Entry) ([]recipe.Hardware
 }
 
 // printLinuxProgramPlan says what --apps will put on the machine, in the last
-// thing shown before the disk is erased.
-//
-// What an id means depends on the OS: `docker` is docker.io on Ubuntu and
-// moby-engine on Fedora. This resolved every Linux entry with Ubuntu's table
-// and printed the word "Ubuntu" over it, so a Fedora stick announced Ubuntu
-// and a package name it would never install. Releases were resolved and never
-// printed at all, so `--apps dsky` listed nothing and installed DSKY anyway.
+// thing shown before the disk is erased. The facts come from the entry's own
+// plan so this cannot drift from what the portal and the picker say.
 func printLinuxProgramPlan(w io.Writer, e oscatalog.Entry, appIDs []string) error {
-	fmt.Fprintf(w, "The stick will install %s with these programs, and erase the computer's disk:\n", e.Name)
-	var flatpaks, repos, releases []string
-	if e.AppTarget() == appcatalog.TargetFedora {
-		plan, err := appcatalog.ResolveFedora(appIDs)
-		if err != nil {
-			return err
-		}
-		if len(plan.Dnf) > 0 {
-			fmt.Fprintf(w, "  from Fedora: %s\n", strings.Join(plan.Dnf, ", "))
-		}
-		flatpaks, repos, releases = plan.Flatpaks, plan.Repos, plan.Releases
-	} else {
-		plan, err := appcatalog.ResolveUbuntu(appIDs)
-		if err != nil {
-			return err
-		}
-		if len(plan.Apt) > 0 {
-			fmt.Fprintf(w, "  from Ubuntu: %s\n", strings.Join(plan.Apt, ", "))
-		}
-		for _, sn := range plan.Snaps {
-			fmt.Fprintf(w, "  snap: %s\n", sn.Name)
-		}
-		flatpaks, repos, releases = plan.Flatpaks, plan.Repos, plan.Releases
+	p := e.InstallPlan(oscatalog.Options{Apps: appIDs})
+	fmt.Fprintf(w, "The stick will install %s with these programs, and erase the computer's disk:\n", p.OSName)
+	for _, g := range p.Programs {
+		fmt.Fprintf(w, "  %s: %s\n", g.Where, strings.Join(g.Names, ", "))
 	}
-	for _, f := range flatpaks {
-		fmt.Fprintf(w, "  Flathub, on first boot: %s\n", f)
-	}
-	for _, r := range repos {
-		fmt.Fprintf(w, "  vendor repository, on first boot: %s\n", r)
-	}
-	for _, r := range releases {
-		fmt.Fprintf(w, "  published release, on first boot: %s\n", r)
-	}
-	if e.AppTarget() == appcatalog.TargetUbuntu && e.Group() != oscatalog.Server {
-		fmt.Fprintln(w, "  Ubuntu shows its review screen and waits for Install before erasing anything.")
-	} else {
-		// Neither Ubuntu Server's identity section nor DSKY's kickstart carries
-		// an account, so both installers stop once to ask for one.
-		fmt.Fprintln(w, "  No questions except the account, which the installer asks for on screen.")
+	if line := p.StopsForLine(); line != "" {
+		fmt.Fprintf(w, "  %s\n", line)
 	}
 	return nil
 }

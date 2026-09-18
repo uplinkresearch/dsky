@@ -373,6 +373,11 @@ type catalogEntry struct {
 	// Ubuntu's installer can fetch the proprietary ones; Anaconda has no
 	// equivalent, so the dialog does not offer a control that does nothing.
 	ThirdPartyDrivers bool `json:"third_party_drivers,omitempty"`
+	// ProgramsNote is the sentence the picker shows once something is ticked,
+	// built from the entry's own install plan. The page used to assemble it
+	// from a flag called `ubuntu` that meant "any Linux", so the Fedora picker
+	// announced that the stick would install Ubuntu by itself.
+	ProgramsNote string `json:"programs_note,omitempty"`
 	// AppTarget is which program list this entry takes — windows, ubuntu or
 	// fedora. Sent rather than inferred: the dialog used to work it out from
 	// whether third-party drivers were offered, which is true of Ubuntu today
@@ -617,6 +622,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 			Downloaded: downloaded, FoundISO: found, Programs: e.ProgramsSupported(),
 			ThirdPartyDrivers: e.ThirdPartyDriversSupported(),
 			AppTarget:         string(e.AppTarget()),
+			ProgramsNote:      programsNote(e),
 		})
 	}
 	if s.Cfg != nil {
@@ -2371,4 +2377,14 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// programsNote is what the picker says about this entry once a program is
+// ticked. Asking the plan with one program is enough: the sentence is about
+// what the installer does, not about which programs were chosen.
+func programsNote(e oscatalog.Entry) string {
+	if !e.ProgramsSupported() || e.Family == oscatalog.Windows {
+		return ""
+	}
+	return e.InstallPlan(oscatalog.Options{Apps: []string{"vlc"}}).PickerNote()
 }
