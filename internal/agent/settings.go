@@ -54,6 +54,7 @@ func (a *Agent) settingsStep() {
 	done, failed := 0, 0
 	for _, act := range s.Machine {
 		if err := a.applyAction(act); err != nil {
+			a.failed(KindSetting, act.Key, err.Error())
 			// One line per setting, naming the setting rather than the
 			// registry path: whoever reads this is holding a plan that calls
 			// it power.plan, not a path under CurrentVersion.
@@ -61,6 +62,7 @@ func (a *Agent) settingsStep() {
 			failed++
 			continue
 		}
+		a.done(KindSetting, act.Key)
 		done++
 	}
 	if len(s.Machine) > 0 {

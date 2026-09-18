@@ -66,6 +66,7 @@ func (a *Agent) printersStep() {
 func (a *Agent) addDirectPrinter(p Printer) {
 	if p.IP == "" {
 		a.J.Fail(stepPrinters, "%s has no address, so it cannot be added here", p.Name)
+		a.failed(KindPrinter, p.Name, "the plan records no address for it")
 		return
 	}
 	port := p.Port
@@ -80,6 +81,7 @@ func (a *Agent) addDirectPrinter(p Printer) {
 	if p.DriverName == "" {
 		a.J.Fail(stepPrinters, "%s (%s) was not added: the plan does not say which driver it used, "+
 			"so it has to be added by hand", p.Name, p.IP)
+		a.failed(KindPrinter, p.Name, "the plan does not say which driver it used")
 		return
 	}
 	r := run(3*time.Minute, "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
@@ -90,8 +92,10 @@ func (a *Agent) addDirectPrinter(p Printer) {
 			fmt.Sprintf("%s (%s) was not added — its driver %q is not on this machine, so install the "+
 				"driver and add the printer by hand", p.Name, p.IP, p.DriverName),
 			trimOut(r.Out))
+		a.failed(KindPrinter, p.Name, "its driver "+p.DriverName+" is not on this machine")
 		return
 	}
+	a.done(KindPrinter, p.Name)
 	a.J.Info(stepPrinters, "added %s (%s)", p.Name, p.IP)
 }
 

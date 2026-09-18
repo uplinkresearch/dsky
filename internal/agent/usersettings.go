@@ -46,12 +46,15 @@ func (a *Agent) stageUserSettings(actions []Action, printers []Printer, drives [
 			kind, data = "REG_SZ", p.String
 		}
 		lines = append(lines, strings.Join([]string{"reg", p.Path, p.Name, kind, data}, "|"))
+		a.atSignIn(KindSetting, act.Key, "this belongs to a person, so it is applied when they first sign in")
 	}
 	for _, pr := range printers {
 		lines = append(lines, strings.Join([]string{"printer", pr.SharedPath}, "|"))
+		a.atSignIn(KindPrinter, pr.Name, "a queue from a print server belongs to a person, and installs its driver when they sign in")
 	}
 	for _, d := range drives {
 		lines = append(lines, strings.Join([]string{"drive", d.Letter, d.UNC}, "|"))
+		a.atSignIn(KindDrive, d.Letter+" "+d.UNC, "a mapped drive belongs to a person, and is mapped when they sign in")
 	}
 	if len(lines) == 0 {
 		return

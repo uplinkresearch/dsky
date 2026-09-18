@@ -24,6 +24,10 @@ type Agent struct {
 	// standalone payload started: the owner's, and never touched.
 	ownShortcuts map[string]bool
 
+	// outcomes is what the plan asked for and what happened to each of it,
+	// for the record left on the machine (see result.go).
+	outcomes []Outcome
+
 	// rebootWanted is set by a step that Windows told to restart the
 	// machine, with the reason in the operator's words. It is acted on
 	// between steps, never in the middle of one.
@@ -170,6 +174,7 @@ func Apply(dir string, opts RunOptions) (int, error) {
 		}
 		a.UI.Finished(step, len(a.J.Failures())-before)
 		a.State.Finish(step)
+		a.writeResult(machine, start, false)
 		// A restart is taken between steps, with the finished step
 		// recorded, so the machine comes back and carries on at the next
 		// one rather than repeating this one.
@@ -177,6 +182,8 @@ func Apply(dir string, opts RunOptions) (int, error) {
 			return len(a.J.Failures()), nil
 		}
 	}
+
+	a.writeResult(machine, start, true)
 
 	if failures := a.J.Failures(); len(failures) > 0 {
 		a.J.Info("", "finished in %s with %d problem(s): %s",

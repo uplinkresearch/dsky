@@ -80,8 +80,10 @@ func (a *Agent) domainStep() {
 			"this machine did not join the domain — it is usable, but as a workgroup machine, "+
 				"and the join must be provisioned again before another attempt",
 			trimOut(r.Out))
+		a.failed(KindDomain, "domain join", "the machine is in a workgroup; the join must be provisioned again")
 		return
 	}
+	a.done(KindDomain, "domain join")
 	a.J.Info(stepDomain, "joined; the domain membership takes effect at the next restart")
 	// The join is written into the local security database now and is only
 	// real after a restart. Asking for one here means the agent's own restart

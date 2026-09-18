@@ -133,9 +133,11 @@ func (a *Agent) installPackage(wg, id, scope string) {
 		switch r.Code {
 		case 0:
 			a.J.Info(stepApps, "installed %s", id)
+			a.done(KindApp, id)
 			return
 		case wingetAlreadyInstalled:
 			a.J.Info(stepApps, "%s is already present", id)
+			a.done(KindApp, id)
 			return
 		case wingetProhibitsElev:
 			// The agent runs elevated because pnputil requires it, and these
@@ -147,10 +149,13 @@ func (a *Agent) installPackage(wg, id, scope string) {
 			switch {
 			case err != nil:
 				a.J.FailDetail(stepApps, id+" could not be installed as the signed-in user", err.Error())
+				a.failed(KindApp, id, "it refuses an elevated install and could not be run as the signed-in user")
 			case code == 0 || code == wingetAlreadyInstalled:
 				a.J.Info(stepApps, "installed %s as the signed-in user", id)
+				a.done(KindApp, id)
 			default:
 				a.J.Fail(stepApps, "%s as the signed-in user exited %d", id, code)
+				a.failed(KindApp, id, "the installer exited "+itoa(code))
 			}
 			return
 		case wingetHashMismatch:
@@ -159,8 +164,11 @@ func (a *Agent) installPackage(wg, id, scope string) {
 			// minutes of certain failure; check the vendor's own signature
 			// instead, and stop either way.
 			a.J.Info(stepApps, "%s: winget's catalog is behind the vendor's download (installer hash does not match)", id)
-			if !a.installFromVendor(id, r.Out) {
+			if a.installFromVendor(id, r.Out) {
+				a.done(KindApp, id)
+			} else {
 				a.J.Fail(stepApps, "could not install %s", id)
+				a.failed(KindApp, id, "winget's catalog is behind the vendor's download, and the vendor's own installer did not run")
 			}
 			return
 		case wingetNoInstaller:
@@ -170,10 +178,12 @@ func (a *Agent) installPackage(wg, id, scope string) {
 		}
 		if r.Err != nil {
 			a.J.FailDetail(stepApps, id+" did not finish", r.Err.Error())
+			a.failed(KindApp, id, "the installer did not finish")
 			return
 		}
 	}
 	a.J.Fail(stepApps, "could not install %s", id)
+	a.failed(KindApp, id, "every attempt to install it failed")
 }
 
 // runInstaller runs one of the operator's own installers from the stick.
@@ -183,6 +193,7 @@ func (a *Agent) runInstaller(in Installer) {
 	src := filepath.Join(a.Dir, in.File)
 	if _, err := os.Stat(src); err != nil {
 		a.J.Fail(stepApps, "%s is not on the stick", in.File)
+		a.failed(KindApp, installerName(in), "its installer is not on the stick")
 		return
 	}
 	var r result
@@ -201,6 +212,7 @@ func (a *Agent) runInstaller(in Installer) {
 		a.J.FailDetail(stepApps, in.File+" did not finish", r.Err.Error())
 	case r.Code == 0 || r.Code == 3010: // 3010: installed, wants a restart
 		a.J.Info(stepApps, "installed %s (exit %d)", in.File, r.Code)
+		a.done(KindApp, installerName(in))
 	case r.Code == msiPackageInvalid:
 		// Windows will not open the file as an installer package. Seen on a
 		// bench: a ScreenConnect client saved as .msi that was really a
@@ -208,10 +220,18 @@ func (a *Agent) runInstaller(in Installer) {
 		// anybody found out.
 		a.J.Fail(stepApps, "%s: Windows could not open this as an installer package (1620). %s",
 			in.File, installerLooksLike(filepath.Join(a.Dir, in.File)))
+		a.failed(KindApp, installerName(in), "Windows could not open the file as an installer package")
 	default:
 		a.J.FailDetail(stepApps, in.File+" exited "+itoa(r.Code), trimOut(r.Out))
+		a.failed(KindApp, installerName(in), "its installer exited "+itoa(r.Code))
 	}
 }
+
+// installerName is what to call one of the operator's own installers in the
+// record. The staged file name is what the agent has; DSKY renders the report
+// and holds the plan, so it is the thing that can turn migrate-arcgispro.msi
+// back into "ArcGIS Pro" for somebody to read.
+func installerName(in Installer) string { return in.File }
 
 // itoa avoids pulling strconv in for one call site's sake.
 func itoa(n int) string {
