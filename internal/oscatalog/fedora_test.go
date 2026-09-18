@@ -16,7 +16,7 @@ func TestFedoraKickstart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ks := fedoraKickstart(plan)
+	ks := fedoraKickstart(plan, linuxAccount{})
 	if strings.Contains(ks, "{{") {
 		t.Errorf("the kickstart is rendered as a Go template, so it may not contain {{:\n%s", ks)
 	}
@@ -77,7 +77,7 @@ func TestFedoraKickstart(t *testing.T) {
 
 	// Nothing picked: nothing to run.
 	empty, _ := appcatalog.ResolveFedora(nil)
-	if !empty.Empty() || strings.Contains(fedoraKickstart(empty), "dsky-apps.sh") {
+	if !empty.Empty() || strings.Contains(fedoraKickstart(empty, linuxAccount{}), "dsky-apps.sh") {
 		t.Error("a first-boot pass was written for an empty program list")
 	}
 }

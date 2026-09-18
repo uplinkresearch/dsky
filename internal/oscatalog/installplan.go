@@ -47,6 +47,18 @@ type InstallPlan struct {
 	// ErasesDisk is true whenever DSKY's answers partition the disk, which is
 	// every case where answers are written at all.
 	ErasesDisk bool
+	// ErasesEveryDisk: the answers clear every disk in the machine, not only
+	// the one being installed to. Anaconda's `clearpart --all` does, and it
+	// was measured doing it -- a second disk that nobody offered came back
+	// with its partition table overwritten (test/autoinstall/vm.sh,
+	// fedora-44-two-disks). Ubuntu's `storage: layout: direct` was measured
+	// leaving the same disk untouched. Saying "the computer's disk" of the
+	// first is the kind of wrong that costs somebody their data.
+	ErasesEveryDisk bool
+	// CarriesCredential: an account and its password go on the stick, so the
+	// install asks nothing at all. Worth saying out loud -- the stick becomes
+	// a thing worth looking after.
+	CarriesCredential bool
 	// AsksForAccount: the one stop. Neither Ubuntu's identity section nor
 	// DSKY's kickstart carries a password, by an old decision to keep them out
 	// of DSKY, so both installers pause once to ask for one.
@@ -74,7 +86,10 @@ func (e Entry) InstallPlan(opts Options) InstallPlan {
 		return p
 	}
 	p.ErasesDisk = true
-	p.AsksForAccount = true
+	p.ErasesEveryDisk = e.kickstartPrograms()
+	// An account in the answers is one the installer does not stop to ask for.
+	p.CarriesCredential = opts.AdminPassword != ""
+	p.AsksForAccount = !p.CarriesCredential
 	p.ThirdPartyDrivers = opts.ThirdPartyDrivers && e.ThirdPartyDriversSupported()
 	// Ubuntu's desktop installer keeps its review screen — DSKY does not patch
 	// its GRUB menu — so it reads the answers and then waits to be told.
@@ -169,11 +184,15 @@ func (p InstallPlan) Any() bool { return len(p.Programs) > 0 }
 // InstallerLine is the one-line answer to "what happens when this boots?",
 // in the words the portal's recipe page uses.
 func (p InstallPlan) InstallerLine() string {
+	disk := "the computer's disk"
+	if p.ErasesEveryDisk {
+		disk = "every disk in the computer"
+	}
 	switch p.Automation {
 	case Unattended:
-		return "Installs by itself and erases the computer's disk"
+		return "Installs by itself and erases " + disk
 	case ConfirmsOnScreen:
-		return "Waits for Install on the review screen, then erases the computer's disk"
+		return "Waits for Install on the review screen, then erases " + disk
 	default:
 		return "Boots the installer — nothing set in advance"
 	}
@@ -190,6 +209,8 @@ func (p InstallPlan) StopsForLine() string {
 		return "The installer shows its review screen and waits for Install before erasing anything."
 	case p.AsksForAccount:
 		return "No questions except the account, which the installer asks for on screen."
+	case p.CarriesCredential:
+		return "No questions at all: the account is in the answers, so the stick carries its password and is worth looking after."
 	default:
 		return ""
 	}

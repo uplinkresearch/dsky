@@ -54,7 +54,7 @@ func TestProgramPlanNamesTheRightOSAndPackages(t *testing.T) {
 			t.Fatalf("%s missing from the catalog", c.id)
 		}
 		var b strings.Builder
-		if err := printLinuxProgramPlan(&b, e, c.apps); err != nil {
+		if err := printLinuxProgramPlan(&b, e, c.apps, ""); err != nil {
 			t.Fatalf("%s %v: %v", c.id, c.apps, err)
 		}
 		got := b.String()

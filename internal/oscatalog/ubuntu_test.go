@@ -43,7 +43,7 @@ func TestUbuntuUserData(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, desktop := range []bool{false, true} {
-		out := ubuntuUserData(plan, desktop, false)
+		out := ubuntuUserData(plan, desktop, false, linuxAccount{})
 		if !strings.HasPrefix(out, "#cloud-config\n") || strings.Contains(out, "{{") {
 			t.Fatalf("desktop=%v: not a plain cloud-config:\n%s", desktop, out)
 		}
@@ -93,14 +93,14 @@ func TestUbuntuUserData(t *testing.T) {
 	// first-boot pass, because that is what confirms the programs actually
 	// arrived on a machine whose network was late.
 	plain, _ := appcatalog.ResolveUbuntu([]string{"vlc"})
-	out := ubuntuUserData(plain, true, false)
+	out := ubuntuUserData(plain, true, false, linuxAccount{})
 	if !strings.Contains(out, "late-commands") || !strings.Contains(out, "dsky-apps.sh") {
 		t.Error("no first-boot pass for a plan that still needs confirming")
 	}
 
 	// Nothing picked at all: nothing to run.
 	empty, _ := appcatalog.ResolveUbuntu(nil)
-	if !empty.Empty() || strings.Contains(ubuntuUserData(empty, true, false), "dsky-apps.sh") {
+	if !empty.Empty() || strings.Contains(ubuntuUserData(empty, true, false, linuxAccount{}), "dsky-apps.sh") {
 		t.Error("a first-boot pass was written for an empty program list")
 	}
 
@@ -111,7 +111,7 @@ func TestUbuntuUserData(t *testing.T) {
 	// After= makes systemd break it by deleting this job, and the service
 	// silently never runs at all; waiting inside the script deadlocks the
 	// boot instead. Both were watched happening on Ubuntu Server 26.04.
-	script := firstBootScript(t, ubuntuUserData(plan, false, false))
+	script := firstBootScript(t, ubuntuUserData(plan, false, false, linuxAccount{}))
 	for _, forbidden := range []string{"cloud-final", "cloud-init status"} {
 		if strings.Contains(ubuntuFirstBootUnit, forbidden) {
 			t.Errorf("the first-boot unit mentions %q, which closes an ordering cycle", forbidden)
@@ -132,7 +132,7 @@ func TestUbuntuUserData(t *testing.T) {
 
 	// Drivers for this computer, Ubuntu's way: its installer is told to put on
 	// the proprietary ones it finds, and nothing is staged on the media.
-	drivers := ubuntuUserData(empty, true, true)
+	drivers := ubuntuUserData(empty, true, true, linuxAccount{})
 	var doc autoinstallDoc
 	if err := yaml.Unmarshal([]byte(drivers), &doc); err != nil {
 		t.Fatalf("drivers answers are not YAML: %v\n%s", err, drivers)
@@ -140,7 +140,7 @@ func TestUbuntuUserData(t *testing.T) {
 	if doc.Autoinstall.Drivers == nil || !doc.Autoinstall.Drivers.Install {
 		t.Errorf("the answers do not ask for third-party drivers:\n%s", drivers)
 	}
-	if strings.Contains(ubuntuUserData(empty, true, false), "drivers:") {
+	if strings.Contains(ubuntuUserData(empty, true, false, linuxAccount{}), "drivers:") {
 		t.Error("third-party drivers were asked for when nobody asked")
 	}
 }

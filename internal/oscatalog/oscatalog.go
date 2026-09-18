@@ -21,6 +21,7 @@ import (
 	"github.com/uplinkresearch/dsky/internal/library"
 	"github.com/uplinkresearch/dsky/internal/manifest"
 	"github.com/uplinkresearch/dsky/internal/recipe"
+	"github.com/uplinkresearch/dsky/internal/shacrypt"
 	"github.com/uplinkresearch/dsky/internal/workspace"
 )
 
@@ -194,11 +195,23 @@ func adminPasswordVar(pass string) string {
 }
 
 // quickVars are the values a quick build keeps out of its own recipe.
-func quickVars(opts Options) map[string]string {
+//
+// Windows takes the password as it is -- its answer file stores it in clear
+// text, which is the format's doing, not DSKY's. Linux takes a SHA-512 crypt
+// hash instead, because its installers accept one and there is no reason to
+// leave a readable password on a stick when a hash will do.
+func quickVars(opts Options) (map[string]string, error) {
 	if opts.AdminPassword == "" {
-		return nil
+		return nil, nil
 	}
-	return map[string]string{"admin_password": opts.AdminPassword}
+	hash, err := shacrypt.HashPassword(opts.AdminPassword)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		"admin_password":      opts.AdminPassword,
+		"admin_password_hash": hash,
+	}, nil
 }
 
 // sourceFormat is the manifest format for this entry's download. Raw images
@@ -489,9 +502,13 @@ func BuildQuick(ctx context.Context, lib *library.Library, e Entry, opts Options
 	if err != nil {
 		return nil, err
 	}
+	vars, err := quickVars(opts)
+	if err != nil {
+		return nil, err
+	}
 	return compose.Build(ctx, compose.Request{
 		Workspace: ws, Library: lib, Recipe: r,
-		CLIVars:  quickVars(opts),
+		CLIVars:  vars,
 		Settings: opts.Settings,
 		Printers: opts.Printers,
 		Drives:   opts.Drives,
@@ -541,9 +558,13 @@ func BuildQuickPayload(ctx context.Context, lib *library.Library, e Entry, opts 
 	if err != nil {
 		return nil, err
 	}
+	payloadVars, err := quickVars(opts)
+	if err != nil {
+		return nil, err
+	}
 	return compose.BuildPayload(ctx, compose.Request{
 		Workspace: ws, Library: lib, Recipe: r,
-		CLIVars:  quickVars(opts),
+		CLIVars:  payloadVars,
 		Settings: opts.Settings,
 		Printers: opts.Printers,
 		Drives:   opts.Drives,
