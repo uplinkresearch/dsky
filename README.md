@@ -381,13 +381,19 @@ goes on the stick. A join file is one computer's account, so it is one stick
 per computer: `--domain-blob PC-042.txt`, or "Join a domain" in the Install
 dialog. The PC gets the name in the file.
 
-The join is applied at first boot, by the agent, rather than during Windows
-Setup — and that is not an implementation detail. Windows will not sign a
+The join is applied at first boot — by the agent, or by the first-boot script
+DSKY generates — rather than during Windows Setup, and that is not an
+implementation detail. Windows will not sign a
 local account in automatically on a PC that has just joined a domain, so a PC
 joined during Setup never runs its first boot: it waits at a sign-in screen
 with no drivers and no programs, and resets itself back into Setup when nobody
 sits down at it. Joining afterwards avoids all of that. The PC installs, signs
 itself in, applies the join, restarts, and carries on.
+
+One recipe shape cannot have this done for it: a hand-written first-boot script
+(`windows.firstboot.mode: template`). DSKY will not edit a script somebody else
+wrote, so a recipe that has one *and* a domain join is refused at build time,
+with the `djoin` line to paste into that script.
 
 Joining a batch of computers from one stick (a folder of join files named by
 serial number) has been **withdrawn** for now: it joined each PC during Setup

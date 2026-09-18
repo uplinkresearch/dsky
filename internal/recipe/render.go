@@ -98,6 +98,14 @@ type ResolvedDrivers struct {
 // GenerateFirstboot builds the first-boot .cmd from ordered steps —
 // the generalized install-agent.cmd. resolveRef maps a payload/source ref to
 // its staged filename under Scripts\.
+// DomainBlobFile is the offline-join file staged beside the first-boot script,
+// and DomainJoinMarker records that it has been used, so the join is attempted
+// once and the machine restarts once.
+const (
+	DomainBlobFile   = "dsky-odj.txt"
+	DomainJoinMarker = "dsky-domain-joined.txt"
+)
+
 func GenerateFirstboot(r *Recipe, drivers ResolvedDrivers, resolveRef func(ref string) (string, error)) (string, error) {
 	w := r.Windows
 	var b strings.Builder
@@ -115,6 +123,46 @@ func GenerateFirstboot(r *Recipe, drivers ResolvedDrivers, resolveRef func(ref s
 	line(`set LOG=%%SCRIPTS%%\%s`, w.Firstboot.Log)
 	line("")
 	line(`echo [%%date%% %%time%%] first-boot script starting >> "%%LOG%%"`)
+
+	// The domain join happens here, at first boot, and not during Windows
+	// Setup -- which is where it used to happen and where it cannot happen.
+	//
+	// Windows will not sign a local account in automatically on a machine that
+	// has just joined a domain; its own OOBE log says "Not setting autologon
+	// for new local user. e.g. upgrade, domain-joined, or system-managed
+	// user". A PC joined during Setup therefore never reaches this script at
+	// all: it stops at a sign-in screen with no drivers and no programs, and
+	// Windows resets it back into Setup when nobody sits down at it.
+	//
+	// So: apply the join, and restart into the rest of first boot. RunOnce is
+	// the resume -- it runs this same script again at the next sign-in, which
+	// is an automatic one because the answer file still has sign-ins left. The
+	// marker file means one attempt and one restart, never a loop: a join that
+	// fails leaves the machine in a workgroup and says so below, which is the
+	// outcome this file has always been careful to make loud.
+	if w.Domain.Offline() {
+		line("")
+		line(`rem --- join the domain, then restart into the rest of first boot ---`)
+		line(`rem Not during Setup: Windows refuses to sign a local account in`)
+		line(`rem automatically on a machine that has just joined a domain, and`)
+		line(`rem this script would never run at all.`)
+		line(`if exist "%%SCRIPTS%%\%s" goto :dsky_joined`, DomainJoinMarker)
+		line(`if not exist "%%SCRIPTS%%\%s" goto :dsky_joined`, DomainBlobFile)
+		line(`echo [%%date%% %%time%%] applying the domain join from %s >> "%%LOG%%"`, DomainBlobFile)
+		line(`djoin /requestodj /loadfile "%%SCRIPTS%%\%s" /windowspath %%WINDIR%% /localos >> "%%LOG%%" 2>&1`, DomainBlobFile)
+		logNote("djoin /requestodj")
+		line(`echo done > "%%SCRIPTS%%\%s"`, DomainJoinMarker)
+		line(`rem The blob is this computer's domain password and is spent now.`)
+		line(`del /f /q "%%SCRIPTS%%\%s" >nul 2>&1`, DomainBlobFile)
+		line(`reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce" /v DSKYFirstBoot ` +
+			`/t REG_SZ /d "\"%%SCRIPTS%%\firstboot.cmd\"" /f >nul 2>&1`)
+		logNote("arming the restart")
+		line(`echo [%%date%% %%time%%] restarting so the join takes effect >> "%%LOG%%"`)
+		line(`shutdown /r /t 5 /c "DSKY: applying the domain join"`)
+		line(`endlocal`)
+		line(`exit /b 0`)
+		line(`:dsky_joined`)
+	}
 
 	// Domain join is checked before anything else runs, and it is not optional
 	// or configurable.

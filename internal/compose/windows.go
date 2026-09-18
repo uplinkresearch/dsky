@@ -118,10 +118,17 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 	vars := ws.MergedVars(r, req.CLIVars)
 	refFiles := map[string]string{} // source ref -> staged filename under Scripts/
 
-	// An offline join the agent performs at first boot rather than Setup in
-	// specialize. See agentODJ for why this is not the obvious way round.
-	useAgent, _ := agentCovers(r)
-	agentJoin := useAgent && w.Domain.Offline()
+	// An offline join is applied at first boot, never by Setup in specialize.
+	// See agentODJ for why this is not the obvious way round. Whichever runs
+	// first boot does it: the agent as its first step, or the generated script
+	// before anything else, restarting itself through RunOnce afterwards.
+	//
+	// A hand-written first-boot script is the one case nothing can be added
+	// to, so it is refused rather than built into a machine that strands.
+	deferredJoin := w.Domain.Offline()
+	if err := checkJoinCanBeDeferred(r); err != nil {
+		return nil, err
+	}
 	odjBase64 := ""
 
 	// Unattend.
@@ -136,13 +143,13 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 		}); err != nil {
 			return nil, fmt.Errorf("compose: %w", err)
 		}
-		if agentJoin {
+		if deferredJoin {
 			// The blob is read and validated exactly as before; what changes
 			// is who applies it. The answer file gets no join element at all,
 			// so Setup leaves the machine in a workgroup and OOBE takes the
 			// path DSKY has always shipped.
 			odjBase64 = uvars["domain_odj_blob"]
-			uvars["domain_mode"] = agentDomainMode
+			uvars["domain_mode"] = deferredDomainMode
 		}
 		rendered, err := recipe.RenderTemplate(
 			filepath.Join(ws.Dir, filepath.FromSlash(w.Unattend.Template)),
@@ -150,7 +157,7 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !agentJoin {
+		if !deferredJoin {
 			if err := checkDomainRendered(rendered, w.Domain, w.Unattend.Template); err != nil {
 				return nil, err
 			}
@@ -168,7 +175,7 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 	// An offline join the agent applies once the machine is up: the same file
 	// `djoin /provision` made, written the way `/savefile` writes it, because
 	// that is what `djoin /requestodj /loadfile` reads.
-	if agentJoin {
+	if deferredJoin {
 		if odjBase64 == "" {
 			return nil, fmt.Errorf("compose: this recipe joins a domain from a single file, but no provisioning data was read from it")
 		}

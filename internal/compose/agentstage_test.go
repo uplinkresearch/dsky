@@ -159,3 +159,47 @@ func TestAnOfflineJoinIsTheAgentsToDoAfterOOBE(t *testing.T) {
 		t.Errorf("a build with no domain grew a join: %+v %v", m.Domain, m.Steps)
 	}
 }
+
+// A hand-written first-boot script and a domain join cannot be combined, and
+// the build says so instead of writing a stick that strands the machine.
+//
+// The join has to be applied by first boot rather than by Windows Setup, and
+// DSKY cannot add that to a script it did not write. The refusal names the
+// command, so somebody who wants both can put it in their own script.
+func TestAHandWrittenFirstBootCannotAlsoJoinADomain(t *testing.T) {
+	r := &recipe.Recipe{Version: 1, ID: "bench", Name: "Bench",
+		OS: recipe.OSSpec{Type: "windows", Source: "win11", SourceMode: recipe.SourceISO},
+		Windows: &recipe.WindowsSpec{
+			Domain:    &recipe.DomainSpec{Blob: "PC-042.txt"},
+			Firstboot: recipe.FirstbootSpec{Mode: "template", Template: "mine.cmd"},
+		}}
+	err := checkJoinCanBeDeferred(r)
+	if err == nil {
+		t.Fatal("a hand-written first boot was combined with a domain join")
+	}
+	for _, want := range []string{"hand-written", "djoin /requestodj", "firstboot.mode: generate"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal never mentions %q:\n%v", want, err)
+		}
+	}
+}
+
+// And the shapes that can be deferred are not refused.
+func TestAJoinThatCanBeDeferredIsAllowed(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		w    recipe.WindowsSpec
+	}{
+		{"generated first boot", recipe.WindowsSpec{
+			Domain:    &recipe.DomainSpec{Blob: "PC-042.txt"},
+			Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{{Drivers: true}}},
+		}},
+		{"a hand-written script with no domain", recipe.WindowsSpec{
+			Firstboot: recipe.FirstbootSpec{Mode: "template", Template: "mine.cmd"},
+		}},
+	} {
+		if err := checkJoinCanBeDeferred(&recipe.Recipe{ID: "x", Windows: &tc.w}); err != nil {
+			t.Errorf("%s was refused: %v", tc.name, err)
+		}
+	}
+}

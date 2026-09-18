@@ -74,7 +74,7 @@ func TestWithOEMCopy(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "u.tmpl")
 	os.WriteFile(p, tmpl, 0o644)
 	base := map[string]string{"locale": "en-US", "account_mode": "local", "admin_user": "user", "admin_display_name": "User", "admin_password": "", "computer_name": "*", "edition_key": "X", "bypass_requirements": "1", "domain_account_domain": "", "domain_join": "", "domain_ou": "", "domain_password": "", "domain_user": ""}
-	for _, mode := range []string{"", "offline", "agent"} {
+	for _, mode := range []string{"", "offline", "deferred"} {
 		vars := map[string]string{}
 		for k, v := range base {
 			vars[k] = v
@@ -96,8 +96,8 @@ func TestWithOEMCopy(t *testing.T) {
 		// An agent-applied join puts nothing in the answer file at all, so the
 		// copy is the only specialize command and there is nothing after it to
 		// renumber.
-		if mode == "agent" && len(cmds) != 1 {
-			t.Errorf("agent: the answer file should carry no join: %v", cmds)
+		if mode == "deferred" && len(cmds) != 1 {
+			t.Errorf("deferred: the answer file should carry no join: %v", cmds)
 		}
 		if mode == "offline" && len(cmds) < 2 {
 			t.Errorf("an offline join should still sign the machine in automatically: %v", cmds)

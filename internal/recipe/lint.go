@@ -94,6 +94,18 @@ func (r *Recipe) Lint() []Finding {
 	// one: Setup carries on into a workgroup, the machine looks perfectly
 	// installed, and nobody notices until someone tries a domain login.
 	if d := w.Domain; d.Enabled() {
+		// The same defect the offline join was moved out of Setup to avoid.
+		// Not proven on a credentialed join -- nothing here has run one since
+		// -- but it is the same mechanism, and a machine that strands is worth
+		// a sentence before a stick is written rather than after.
+		if !d.Offline() && strings.EqualFold(firstbootAccountMode(r), "local") {
+			warnf("windows.domain uses a join account, so Windows Setup performs the join — and a PC " +
+				"that joins a domain during Setup will not sign a local account in automatically " +
+				"afterwards, which is how this build runs its first boot. Expect it to stop at a " +
+				"sign-in screen with no drivers and no programs. An offline join " +
+				"(windows.domain.blob) is applied at first boot instead and does not have this " +
+				"problem; a machine somebody signs into by hand does not either")
+		}
 		if !d.Offline() {
 			// Cleartext is not a choice here. The PlainText/base64 obfuscation
 			// that local-account passwords can use does not exist for this
@@ -140,4 +152,14 @@ func (r *Recipe) Lint() []Finding {
 		}
 	}
 	return out
+}
+
+// firstbootAccountMode is what the recipe's answer file was told about signing
+// in: "local" means the machine signs itself in to run first boot, which is
+// the case that a domain join during Setup breaks.
+func firstbootAccountMode(r *Recipe) string {
+	if r.Windows == nil || r.Windows.Unattend == nil {
+		return ""
+	}
+	return r.Windows.Unattend.Vars["account_mode"]
 }

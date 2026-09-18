@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -30,8 +31,8 @@ rem dsky-agent.json beside it. Edit the recipe, not this file.
 //
 // The fallback is the point: a build that cannot use the agent produces the
 // media it produced last week, not broken media.
-// agentDomainMode is what the answer file is told when the agent will do the
-// join: nothing. No Provisioning element, no Credentials, no join at all --
+// deferredDomainMode is what the answer file is told when the join happens at
+// first boot rather than during Setup: nothing. No Provisioning element, no Credentials, no join at all --
 // Setup installs Windows into a workgroup and OOBE runs on a machine that is
 // not yet a domain member.
 //
@@ -58,8 +59,8 @@ rem dsky-agent.json beside it. Edit the recipe, not this file.
 // whenever they also sign themselves in. Nothing here fixes that; it is
 // recorded in the plan doc as its own question.
 const (
-	agentDomainMode = "agent"
-	agentODJName    = "dsky-odj.txt"
+	deferredDomainMode = "deferred"
+	agentODJName       = recipe.DomainBlobFile
 )
 
 func agentCovers(r *recipe.Recipe) (bool, string) {
@@ -242,3 +243,29 @@ func agentInstallers(w *recipe.WindowsSpec, refFiles map[string]string) []agent.
 // AgentMedia reports whether media built from this recipe carries the agent,
 // so the tool can name the right check for the machine.
 func AgentMedia(r *recipe.Recipe) (bool, string) { return agentCovers(r) }
+
+// checkJoinCanBeDeferred refuses the one recipe shape whose domain join cannot
+// be moved out of Windows Setup.
+//
+// The join has to happen at first boot: a PC that joins a domain during Setup
+// will not sign a local account in automatically afterwards, so its first boot
+// never runs and it stops at a sign-in screen with no drivers and no programs.
+// Whichever thing runs first boot applies it -- the agent as its first step, or
+// the generated script before anything else. A hand-written first-boot script
+// is neither, and DSKY will not edit a script somebody else wrote, so the build
+// stops here and names the command they need rather than handing back media
+// that strands the machine.
+func checkJoinCanBeDeferred(r *recipe.Recipe) error {
+	w := r.Windows
+	if w == nil || !w.Domain.Offline() || w.Firstboot.Mode != "template" {
+		return nil
+	}
+	return fmt.Errorf("compose: %s joins a domain and has a hand-written first-boot script "+
+		"(windows.firstboot.mode: template), and those two cannot be combined. The join has to be "+
+		"applied by first boot rather than by Windows Setup -- a PC that joins during Setup will not "+
+		"sign a local account in automatically, so it stops at a sign-in screen with nothing "+
+		"installed -- and DSKY cannot add that to a script it did not write. Either let DSKY generate "+
+		"the first-boot script (windows.firstboot.mode: generate), or apply the join from your own "+
+		"script with: djoin /requestodj /loadfile %%WINDIR%%\\Setup\\Scripts\\%s /windowspath "+
+		"%%WINDIR%% /localos, and restart afterwards", r.ID, recipe.DomainBlobFile)
+}

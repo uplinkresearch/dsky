@@ -128,7 +128,7 @@
       </Identification>
     </component>
     {{end}}
-    {{if and (ne .Vars.domain_mode "") (ne .Vars.domain_mode "agent")}}
+    {{if and (ne .Vars.domain_mode "") (ne .Vars.domain_mode "deferred")}}
     <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64"
                publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <RunSynchronous>
