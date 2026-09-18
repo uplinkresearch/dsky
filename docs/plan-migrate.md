@@ -103,6 +103,73 @@ Windows first, and the schema is OS-neutral on purpose (`apps[].source_kind`,
 `settings[].apply` keyed by target OS) so a Linux scanner can be added without
 reshaping the file.
 
+## The full pass, on real machines, and the three bugs it found
+
+Every milestone was proven in pieces. This is the whole thing end to end: scan
+the lab's Windows 10 client, resolve, review and approve, build media, boot a
+new machine from it, and verify the result against the plan.
+
+It worked — after three defects that only an end-to-end run could have found.
+All three had passed every unit test, and two of them had passed a lab run of
+their own milestone.
+
+**1. The agent refused its own manifest, and said so to nobody.** The new
+machine installed, signed itself in, and stopped: no programs, no settings, no
+domain join, no log, and the join file still sitting unused. Nothing anywhere
+said why. Running first boot by hand gave the answer in one line —
+`json: unknown field "settings"` — because the agent embedded in that media had
+been compiled before the runner added settings, and `parseManifest` disallows
+unknown fields.
+
+The stale agent was operator error (the agent is compiled separately and
+embedded; DSKY was rebuilt and it was not). The silence was the defect, and it
+was worse than the cause: every other failure this agent can have is written
+down, and the one that stops everything kept quiet. It now writes the reason
+where first boot is logged, before exiting. `build-agent.sh` records a hash of
+what it built from and a test fails when the agent's sources have moved since,
+so the staleness cannot reach media again.
+
+**2. A machine with one of anything failed the scan.** PowerShell 5.1 turns a
+one-element array into a scalar, so a section holding exactly one thing arrives
+as an object where the parser wants an array. This script's header has warned
+about that since it was written; the warning had been applied to the lists
+inside each section and not to the sections themselves — `apps`, `printers`,
+`mapped_drives`, `settings`, `profiles` and `unsigned_drivers`, all of them. It
+survived because the machine it was written against had several of everything.
+The first machine with a single user profile broke it, and that is every
+freshly built PC and plenty of real ones: one printer and one user is not
+unusual in a practice, it is typical.
+
+**3. Verify called a setting that had not happened yet a fault.** It reported
+two per-user settings as wrong on a machine where nothing was. Those are staged
+to run at somebody's first sign-in — the whole point of the `at-sign-in` state
+the runner records — and verify compared them like any other value. It now
+recognises them, counts them separately, and does not report a machine as
+needing a hand when the only outstanding things are waiting for a person. A
+report that cries wolf where nothing is wrong is one people stop opening.
+
+**What the pass proved, on the machines:**
+
+```
+scan    WINDOWS-47P2TPF — 6 applications, 10 settings, 2 printers, lab.dsky.local
+        (and it refused to run without administrator rights first, as it should)
+resolve 3 placed, 2 left to Windows, 1 with nowhere to install from
+review  USMT blocker accepted — the plan now says the files will NOT be copied
+build   2 programs, joins lab.dsky.local from NEWDESK01-odj.txt
+boot    OK domain / OK Drivers / OK Removing preinstalled extras /
+        OK Installing programs / OK settings / ! printers — 2m3s
+        "Statements has no address, so it cannot be added here"
+verify  NEWDESK01, in lab.dsky.local — 1 of 3 programs here,
+        2 settings waiting for the person who will use it to sign in,
+        7-Zip 24.08 missing but 7-Zip 26.03 (x64) here (100% alike)
+```
+
+The printer failure is the honest path working: a queue with no address cannot
+be added, and the machine says which one and why rather than reporting success.
+The 7-Zip near miss is version drift — the plan captured 24.08 and winget
+installs 26.03 — offered as a mapping-table alias so the next machine resolves
+it without anybody noticing.
+
 ## What M6 built
 
 **Verifying** is the one reading taken from the finished machine by something

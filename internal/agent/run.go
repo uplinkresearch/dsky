@@ -174,7 +174,7 @@ func Apply(dir string, opts RunOptions) (int, error) {
 		}
 		a.UI.Finished(step, len(a.J.Failures())-before)
 		a.State.Finish(step)
-		a.writeResult(machine, start, false)
+		a.writeResult(recordName(machine), start, false)
 		// A restart is taken between steps, with the finished step
 		// recorded, so the machine comes back and carries on at the next
 		// one rather than repeating this one.
@@ -183,7 +183,7 @@ func Apply(dir string, opts RunOptions) (int, error) {
 		}
 	}
 
-	a.writeResult(machine, start, true)
+	a.writeResult(recordName(machine), start, true)
 
 	if failures := a.J.Failures(); len(failures) > 0 {
 		a.J.Info("", "finished in %s with %d problem(s): %s",
@@ -454,4 +454,17 @@ func noteUnreadableManifest(dir string, cause error) {
 	fmt.Fprintf(f, "[%s]   If that says \"unknown field\", this agent is older than the build that "+
 		"made this media: rebuild DSKY's agent (./build-agent.sh) and build the media again.\r\n",
 		time.Now().Format("2006-01-02 15:04:05"))
+}
+
+// recordName is which machine the record is about.
+//
+// The screen says "QEMU Standard PC" or "HP EliteBook 840 G8", because that is
+// what somebody standing at a bench recognises. A record read later, next to a
+// plan naming NEWDESK01, needs the name: a folder of records that all say
+// "HP EliteBook 840 G8" identifies nothing.
+func recordName(fallback string) string {
+	if h, err := os.Hostname(); err == nil && h != "" {
+		return h
+	}
+	return fallback
 }
