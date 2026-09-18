@@ -205,6 +205,7 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /api/apps/remove", s.auth(s.handleAppRemove))
 	mux.HandleFunc("GET /api/workspace/defaults", s.auth(s.handleWorkspaceDefaults))
 	mux.HandleFunc("POST /api/workspace/new", s.auth(s.handleNewWorkspace))
+	mux.HandleFunc("GET /api/devices", s.auth(s.handleDevices))
 	mux.HandleFunc("GET /api/disks", s.auth(s.handleDisks))
 	mux.HandleFunc("POST /api/disks/prepare", s.auth(s.handleDiskPrepare))
 	mux.HandleFunc("POST /api/build", s.auth(s.handleBuild))
@@ -569,6 +570,24 @@ func deviceInfoOf(d device.Device) deviceInfo {
 		Flashable: d.Flashable(), System: d.System,
 		Mounts: d.Mounts, Confirm: d.SizeConfirmation(),
 	}
+}
+
+// handleDevices is the connected drives on their own.
+//
+// /api/state carries them too, but it also walks both catalogs, stats the
+// library and can reach the network — far too much to ask every few seconds,
+// and the page asks every few seconds now. The activity panel is on screen
+// the whole time, and a lamp that says a stick is connected has to go out
+// when the stick is pulled; polling the cheap list is what makes that true
+// without a full refresh behind it.
+func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
+	out := []deviceInfo{}
+	if devs, err := device.List(r.Context()); err == nil {
+		for _, d := range devs {
+			out = append(out, deviceInfoOf(d))
+		}
+	}
+	writeJSON(w, 200, map[string]any{"devices": out})
 }
 
 func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
