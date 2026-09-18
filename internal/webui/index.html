@@ -708,7 +708,6 @@
     transition: transform .1s, box-shadow .1s, background-color .12s; }
   .cmdkey:hover { background-color: var(--key-hover); border-color: #efecd2;
     border-right-color: #8c9177; border-bottom-color: #82856a; }
-  .cmdkey .keynum { opacity: .6; }
   .cmdkey[aria-current="page"] { transform: translateY(1px); color: #ece8d7;
     background-color: #1b2423;
     background-image: var(--grain), linear-gradient(0deg, #51625222, #040f1033);
@@ -721,12 +720,12 @@
   .cmdkey[aria-current="page"]::before { content: ""; position: absolute;
     left: 12px; right: 12px; top: 3px; height: 2px; background: var(--accent2);
     opacity: .95; pointer-events: none; }
-  .cmdkey[aria-current="page"] .keynum { color: var(--accent2); opacity: 1; }
   .cmdkey:active { transform: translateY(2px);
     box-shadow: inset 0 2px 5px #273c204d, 0 1px 0 #e7e4c444; }
+  /* Narrow: the keys give up their padding before they give up their words,
+     and wrap to a second row rather than shrink to something unreadable. */
   @media (max-width: 760px) {
     .cmdkey { min-width: 0; padding: 9px 10px; }
-    .cmdkey .keylegend { display: none; }
   }
 
   /* ── Dialogs ───────────────────────────────────────────────────────────────
@@ -1543,15 +1542,18 @@ function editPayload(a) {
 // Which door is open is UI state and nothing else: no panel is unmounted, no
 // request is cancelled, and a job started behind one door keeps running and
 // keeps reporting from Activity, which every door shows.
-// The screens, in the order their keys sit on the panel. The number is on the
-// key because position is what gets learned: "02" is in the same place every
-// time, and a key you can find without reading is a key you stop reading.
+// The screens, in the order their keys sit on the panel. The legend is the
+// whole of the key: the word is what is being looked for, and a number in
+// front of it is one more thing to read past on the way to it.
 const DOORS = {
-  install:  { key: "01", legend: "Install",    name: "Install an operating system" },
-  payload:  { key: "02", legend: "Payload",    name: "Payload" },
-  clone:    { key: "03", legend: "Copy",       name: "Copy a drive" },
-  disks:    { key: "04", legend: "Disks",      name: "Disk utility" },
-  advanced: { key: "05", legend: "Workspaces", name: "Workspaces and sources" },
+  install:  { legend: "Install", name: "Install an operating system" },
+  payload:  { legend: "Payload", name: "Payload" },
+  clone:    { legend: "Copy",    name: "Copy a drive" },
+  disks:    { legend: "Disks",   name: "Disk utility" },
+  // MASTER on the key, "Workspaces and sources" in its tooltip and its guide:
+  // a legend wants to be one word, and the long name is still there for
+  // anyone who hovers or asks for the guide.
+  advanced: { legend: "Master",  name: "Workspaces and sources" },
 };
 const FIRST_DOOR = "install";
 let door = FIRST_DOOR;
@@ -1562,10 +1564,7 @@ function buildKeys() {
     const key = el("button", "cmdkey");
     key.dataset.door = name;
     key.title = d.name;
-    // The legend is an element rather than a bare text node so a narrow
-    // window can drop it and leave the numbers, which is the part that was
-    // learned by position anyway.
-    key.append(el("span", "keynum", d.key), el("span", "keylegend", d.legend));
+    key.textContent = d.legend;
     key.onclick = () => setDoor(name);
     bar.append(key);
   }
