@@ -208,8 +208,58 @@ func Prepare(ctx context.Context, dev device.Device, opts Options, progress func
 	if err := opts.Validate(dev); err != nil {
 		return err
 	}
+	// After Guard, because a device that should never have been offered is a
+	// different complaint from one that changed underneath. Last thing before
+	// the disk is written to, on every platform: Windows reassigns disk
+	// numbers on hotplug as readily as Linux reuses /dev/sdb.
+	if err := ConfirmSameDisk(ctx, dev); err != nil {
+		return err
+	}
 	if progress == nil {
 		progress = func(string) {}
 	}
 	return prepare(ctx, dev, opts, progress)
+}
+
+// listDevices is device.List, as a variable so a test can describe a stick
+// being swapped during the password prompt rather than need somebody to do it.
+var listDevices = device.List
+
+// ConfirmSameDisk re-identifies a disk immediately before it is written to.
+//
+// The device travels from the page to the elevated worker as JSON, and between
+// choosing it and the work starting there is a password prompt: seconds, and
+// sometimes much longer, in which somebody can unplug the stick and put
+// something else in. The kernel reuses the name. Everything downstream --
+// wipefs, sfdisk, diskpart -- takes that name and believes it.
+//
+// So the identity is checked against a fresh enumeration rather than against
+// the struct that made the trip: serial first, because that is what actually
+// names a device, then size. A disk that has become the system's since it was
+// listed is refused too, since this is the last moment anything can say no.
+//
+// Flash has carried a size cross-check against the opened handle for a while
+// (internal/flash, enumTolerance); Prepare had nothing at all.
+func ConfirmSameDisk(ctx context.Context, want device.Device) error {
+	now, err := listDevices(ctx)
+	if err != nil {
+		return fmt.Errorf("re-checking %s before writing to it: %w", want.ID, err)
+	}
+	for _, d := range now {
+		if d.ID != want.ID {
+			continue
+		}
+		switch {
+		case want.Serial != "" && d.Serial != "" && d.Serial != want.Serial:
+			return fmt.Errorf("refusing %s: it was serial %s when it was chosen and is %s now — something was unplugged and another device took the name",
+				want.ID, want.Serial, d.Serial)
+		case want.SizeBytes > 0 && d.SizeBytes > 0 && d.SizeBytes != want.SizeBytes:
+			return fmt.Errorf("refusing %s: it was %d MiB when it was chosen and is %d MiB now — something was unplugged and another device took the name",
+				want.ID, want.SizeBytes>>20, d.SizeBytes>>20)
+		case d.System:
+			return fmt.Errorf("refusing %s: it holds the running system", want.ID)
+		}
+		return nil
+	}
+	return fmt.Errorf("refusing to write to %s: it is not there any more", want.ID)
 }

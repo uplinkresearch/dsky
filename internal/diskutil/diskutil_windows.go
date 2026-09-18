@@ -109,6 +109,9 @@ func prepare(ctx context.Context, dev device.Device, opts Options, progress func
 	// The style is read again each time: a run that failed part way may
 	// already have converted the disk, and converting it twice is the very
 	// refusal this script is written to avoid.
+	if err := confirmDiskNumber(dev); err != nil {
+		return err
+	}
 	var err error
 	for attempt := 1; attempt <= 3; attempt++ {
 		if attempt > 1 {
@@ -190,6 +193,47 @@ func runDiskpart(ctx context.Context, script string) (string, error) {
 type msftDisk struct {
 	Number         uint32
 	PartitionStyle uint16 // 0 raw, 1 MBR, 2 GPT
+	SerialNumber   string
+	Size           uint64
+}
+
+// confirmDiskNumber checks that disk number N is still the device that was
+// chosen, before a script containing `clean` is written for it.
+//
+// Windows hands out disk numbers on hotplug the way Linux hands out /dev/sdb,
+// and the number travelled here inside a job that waited for a UAC prompt. The
+// Storage module is asked rather than diskpart, because diskpart's `detail
+// disk` prints in whatever language Windows was installed in and a check that
+// works only in English is not a check.
+//
+// Size is compared with a tolerance: the Storage module and the enumeration
+// that filled dev do not always agree to the byte on the same disk.
+func confirmDiskNumber(dev device.Device) error {
+	var disks []msftDisk
+	q := fmt.Sprintf("SELECT Number, SerialNumber, Size FROM MSFT_Disk WHERE Number = %d", dev.Index)
+	if err := winwmi.QueryNamespace(q, &disks, `root\Microsoft\Windows\Storage`); err != nil {
+		return fmt.Errorf("re-checking disk %d before cleaning it: %w", dev.Index, err)
+	}
+	if len(disks) == 0 {
+		return fmt.Errorf("refusing to clean disk %d: it is not there any more", dev.Index)
+	}
+	return sameDisk(dev, disks[0])
+}
+
+// sameDisk is the comparison on its own, so it can be tested without a disk.
+func sameDisk(dev device.Device, got msftDisk) error {
+	if s := strings.TrimSpace(got.SerialNumber); s != "" && dev.Serial != "" && s != dev.Serial {
+		return fmt.Errorf("refusing to clean disk %d: it was serial %s when it was chosen and is %s now — something was unplugged and another disk took the number",
+			dev.Index, dev.Serial, s)
+	}
+	const tolerance = 64 << 20
+	if got.Size > 0 && dev.SizeBytes > 0 {
+		if d := int64(got.Size) - dev.SizeBytes; d > tolerance || d < -tolerance {
+			return fmt.Errorf("refusing to clean disk %d: it was %d MiB when it was chosen and is %d MiB now — something was unplugged and another disk took the number",
+				dev.Index, dev.SizeBytes>>20, got.Size>>20)
+		}
+	}
+	return nil
 }
 
 // partitionStyle reports a disk's partition style as diskpart would convert

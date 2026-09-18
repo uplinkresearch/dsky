@@ -26,9 +26,17 @@ import (
 func partitionScript(index int, scheme, style string, styleKnown bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "select disk %d\r\n", index)
-	// Refuse to proceed if diskpart disagrees with us about what this disk
-	// is. `clean` on the wrong disk is unrecoverable.
-	fmt.Fprintf(&b, "detail disk\r\n")
+	// `detail disk` used to sit here, above `clean`, under a comment saying it
+	// would refuse to proceed if diskpart disagreed about what this disk is.
+	// It could not: both commands go into one script fed to `diskpart /s`, so
+	// clean ran whatever detail printed, and nothing read the output for a
+	// model or a size. A comment describing a check that does not exist is
+	// worse than no comment, because the next person stops looking.
+	//
+	// The check it described is real and now happens before this script is
+	// written at all -- see confirmDiskNumber, which asks the Storage module
+	// rather than parsing diskpart's own words, since those are translated and
+	// this must not depend on the language Windows is installed in.
 	fmt.Fprintf(&b, "clean\r\n")
 	switch {
 	case !styleKnown:
