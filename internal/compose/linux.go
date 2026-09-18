@@ -51,6 +51,19 @@ const (
 // media: the ISO bytes copied into an image, GRUB rewritten in place (same
 // byte length — no ISO rebuild) to boot with `autoinstall`, and a CIDATA
 // partition appended with the rendered cloud-init user-data/meta-data.
+//
+// Secure Boot does not mind, which is the thing anybody reading "rewritten in
+// place" wants to know. grub.cfg is configuration, not a signed binary: shim
+// verifies GRUB and GRUB verifies the kernel, and neither is touched here.
+// Proven rather than reasoned -- Ubuntu Server 26.04 and Ubuntu Desktop 26.04
+// both installed from DSKY media on an HP EliteBook x360 1040 G8 with Secure
+// Boot left on, 2026-09-18. Server is the one that matters, since Desktop's
+// menu is deliberately left alone and exercises none of this.
+//
+// What Secure Boot does mind is media the distribution never signed. Omarchy,
+// on the same machine and the same day, needs it turned off -- archiso ships
+// no shim, and no amount of care here changes that. The catalog says so in its
+// FirmwareNotes, and that entry was right.
 func buildLinuxAutoinstall(ctx context.Context, req Request, entry library.Entry, blob, comp string) (*Artifact, error) {
 	r := req.Recipe
 	ws := req.Workspace
