@@ -13,3 +13,9 @@ internal/agentbin/bin/*.gz
 *.img
 *.vhd
 s1-result.txt
+
+# Where test/autoinstall/vm.sh works when it is given no directory. Holds
+# ISOs, installed disks and built media -- 24 GB after a few cases, all of it
+# untracked, so `git add -A` in a repo someone has tested in tries to commit
+# the lot. (CI passes $RUNNER_TEMP/ai and never creates this.)
+/autoinstall-work/
