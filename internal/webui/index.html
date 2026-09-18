@@ -7,22 +7,38 @@
 <link rel="icon" type="image/png" href="favicon.png">
 <style>
   :root {
-    /* The Uplink Research palette, as uplinkresearch.com uses it: the same
-       near-black, the same cyan, green, gold and hot pink, so the app and the
-       site read as one company's.
+    /* Ground support hardware, not a web page: a painted olive chassis, a
+       phosphor register behind glass, and cream keycaps. The colours are the
+       "flight recorder" finish — the greens are all slightly grey and slightly
+       warm, the way enamel over aluminium goes after a few hundred hours on a
+       bench, and nothing is pure black or pure white.
 
-       Two departures, both for reading rather than looks. The site's dim grey
-       (#666680) is 3.5:1 on these panels, under the 4.5:1 that 12px text
-       needs, and 12px dim text is most of what this page says; it is lifted
-       to 5.8:1. And the pink is lightened for text and darkened for the
-       danger button, because #ff0066 carries neither white text nor the red
-       warnings on a destructive confirmation — the one screen that has to be
-       read. No scanlines, no CRT: those are the landing page's, not a tool's
-       you sit in for twenty minutes. */
-    --bg: #05050f; --panel: #0a0a1f; --panel2: #14142e; --line: #25254a;
-    --text: #c8c8d4; --dim: #8a8aa6; --accent: #00f5ff; --accent2: #ff6600;
-    --ok: #00ff41; --warn: #ffd700; --err: #ff4d88; --danger: #d6004f;
-    --on-bright: #05050f;
+       Two rules carried over from the palette this replaces, both for reading
+       rather than looks. Dim text stays above 4.5:1 on its own panel, because
+       12px dim text is most of what this page says. And the destructive red is
+       dark enough to carry white text: a confirmation to erase a disk is the
+       one screen here that has to be read. */
+    --bg: #191e20; --panel: #2a3031; --panel2: #353f3d; --line: #58615a;
+    --text: #eee9da; --dim: #b6b8ac; --accent: #a9e6a5; --accent2: #e59a63;
+    --ok: #a8dca7; --warn: #e4b566; --err: #f07d70; --danger: #8e3527;
+    --on-bright: #1c271f;
+    /* The chassis itself. Every raised edge on this page is lit from the top
+       left and shadowed at the bottom right by these three, so the panels,
+       keys and bezels all agree about where the light is. */
+    --metal: #596361; --metal-light: #77807a; --metal-dark: #111a17;
+    /* Keycaps: aged ivory plastic with a dark legend, as the real ones were. */
+    --key: #e1d9bf; --key-hover: #f0ebd2; --key-ink: #28342d;
+    /* Behind the glass. Kept well away from --panel: the register is a
+       different material and should never look like a lighter panel. */
+    --display: #0b1b10;
+    /* Painted on by script once the page is up — a still frame of monochrome
+       noise, reused as a background layer on every enamelled surface so the
+       paint has some tooth to it. Falls back to nothing, so a page that never
+       runs the script is flat rather than broken. */
+    --grain: none;
+    /* How much service the panel has seen (0–1), and how much the glass
+       catches the room. Both are read by the script that paints the wear. */
+    --wear: .45; --glass: .48;
     /* Data is set in mono: serials, sizes, partition tables, device paths,
        hashes. 931.5 lines up under 929.5 and two serials are comparable at a
        glance — function, not theme.
@@ -323,18 +339,471 @@
   #err { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
     background: var(--danger); color: #fff; padding: 9px 16px; border-radius: 8px;
     max-width: 80%; display: none; font-size: 13px; }
+
+  /* ══ The chassis ═══════════════════════════════════════════════════════════
+     Everything above lays the page out. Everything below gives it a body: a
+     painted box with a lid, screwed-down instrument panels, a register behind
+     glass, and keys you can see are keys. The rules are in the same order as
+     the ones above so the two can be read side by side.
+
+     One convention holds it together. Light comes from the top left, always.
+     A surface that stands proud of the panel is lit along its top and left
+     edge (--metal-light) and shadowed along its bottom and right
+     (--metal-dark); a surface that is recessed — the register, a dropdown, a
+     pressed key — has that reversed, with the shadow cast inwards. Nothing
+     here is decoration for its own sake: if an edge catches the light, it is
+     because that part is raised, and it is raised because you can press it. */
+
+  /* The lid. The bezel is on <body> rather than a wrapper element because a
+     wrapper with the overflow needed to clip its own corners would become the
+     scroll container, and the activity strip's `position: sticky` would then
+     stick to a box that never scrolls — the strip would simply scroll away. */
+  html { background: #101413; }
+  body { margin: 8px; min-height: calc(100vh - 16px);
+    border: 6px solid var(--metal); border-top-color: var(--metal-light);
+    border-right-color: var(--metal-dark); border-bottom-color: var(--metal-dark);
+    border-radius: 12px;
+    box-shadow: inset 0 0 0 1px #bfc8b429, 0 2px 0 #65716a, 0 6px 0 #111a17,
+      0 11px 24px #0a151044; }
+  /* The enamelled surfaces. The grain is a still frame of noise multiplied
+     into the paint, and the gradient is the room reflected off a flat panel:
+     brighter where it faces the light, falling away across the face. */
+  body, main { background-color: var(--bg);
+    background-image: var(--grain), linear-gradient(110deg, #95ac9910, transparent 25%, transparent 75%, #00000017);
+    background-blend-mode: multiply, normal; }
+  main { padding: 26px 30px 28px; }
+
+  /* ── The header plate ──────────────────────────────────────────────────── */
+  header { padding: 22px 30px 18px; gap: 17px;
+    background-color: var(--panel);
+    background-image: var(--grain), linear-gradient(100deg, #c1cabb10, transparent 50%, #00000013);
+    background-blend-mode: multiply, normal;
+    border-bottom: 1px solid var(--metal-dark);
+    box-shadow: inset 0 1px 0 #f4f0d91a; }
+  header h1 img { height: 36px; width: auto; }
+  /* The line under the logo is the one piece of trim on the page, and it is
+     the same amber as the panel numbers and the open-screen marker: the three
+     things that say "this one, here". */
+  header h1 { padding-bottom: 6px; border-bottom: 3px solid var(--accent2); }
+  /* What the machine is, set in the same typewriter face as its labels. */
+  .brandsub { font: 11px/1.65 var(--mono); letter-spacing: 1.25px;
+    text-transform: uppercase; color: var(--dim);
+    border-left: 1px solid var(--line); padding-left: 17px; }
+  /* The asset plate, riveted at both ends. Every panel in a rack this old had
+     one, and it is where the operator's name for the machine lives. */
+  .nameplate { position: relative; margin-left: auto; display: flex;
+    flex-direction: column; gap: 2px; padding: 9px 16px 10px;
+    font: 11px/1.5 var(--mono); letter-spacing: 1.25px; text-transform: uppercase;
+    color: #e5e2cb; background-color: #202b27;
+    background-image: var(--grain), linear-gradient(135deg, #e5ebd013, #0000001f);
+    border: 1px solid #1a2521; border-top-color: #839181; border-left-color: #7d897a;
+    border-radius: 2px;
+    box-shadow: 0 1px 0 #8b958735, 0 2px 3px #0b170f66, inset 0 0 0 1px #7482754f;
+    text-shadow: 0 1px 1px #132115; }
+  .nameplate span:last-child { color: #b8c1af; }
+  .nameplate::before, .nameplate::after { content: ""; position: absolute; top: 50%;
+    width: 3px; height: 3px; margin-top: -1.5px; border-radius: 50%;
+    background: #d2d3bb; box-shadow: 0 1px 1px #101b11; }
+  .nameplate::before { left: 5px; }
+  .nameplate::after { right: 5px; }
+
+  /* ── The control strip ─────────────────────────────────────────────────────
+     The row of keys under the header. It carries exactly what it carried
+     before — back, the screen's name, the version, and the three buttons —
+     but as legend and keycaps rather than as links. */
+  .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 12px 30px 16px;
+    background-color: var(--panel);
+    background-image: var(--grain), linear-gradient(0deg, #00000018, transparent 85%);
+    background-blend-mode: multiply, normal;
+    border-bottom: 1px solid var(--metal-dark);
+    box-shadow: 0 1px 0 #8f978335, inset 0 1px 0 #e9edd70b; }
+  .toolbar .spacer { flex: 1; }
+  header .doorname, .toolbar .doorname { color: var(--accent2); font: 11px/1.8 var(--mono);
+    letter-spacing: 1.3px; text-transform: uppercase; margin-left: 0;
+    border-left: 2px solid var(--accent2); padding: 2px 0 2px 9px; }
+  /* On the start screen there is no screen name, and a marker with nothing
+     beside it is just a tick of paint on the panel. */
+  .toolbar .doorname:empty { display: none; }
+  /* The update notice is the one strip that appears above everything else, so
+     it is the machine's own printed warning label: amber on a darker plate,
+     across the top of the chassis. */
+  .updbar { padding: 11px 30px; font: 12px/1.5 var(--mono); color: var(--warn);
+    background-color: #242a25;
+    background-image: var(--grain), linear-gradient(180deg, #ffe7b012, transparent 70%);
+    background-blend-mode: multiply, normal;
+    border-bottom: 1px solid var(--metal-dark);
+    box-shadow: inset 0 -3px 6px #00000033; }
+  .updbar button { font-size: 11.5px; }
+  header .ver, .toolbar .ver { font: 11px/1.4 var(--mono); letter-spacing: 1px;
+    text-transform: uppercase; color: var(--dim); margin-left: 0; }
+
+  /* ── Keys ──────────────────────────────────────────────────────────────────
+     A button is a moulded key. The plain one is the dark panel key; `primary`
+     is the ivory keycap, which is how the one key you are meant to press on a
+     screen is told apart from the ones you might. Both travel down 2px when
+     pressed and lose their drop shadow, because that is what a key does. */
+  button { position: relative; border-radius: 4px; padding: 8px 13px;
+    font-size: 12.5px; color: var(--text);
+    background-color: var(--panel2);
+    background-image: var(--grain), linear-gradient(180deg, #e8eed40d, transparent 60%);
+    background-blend-mode: multiply, normal;
+    border: 1px solid var(--metal); border-top-color: var(--metal-light);
+    border-right-width: 2px; border-right-color: var(--metal-dark);
+    border-bottom-width: 3px; border-bottom-color: var(--metal-dark);
+    box-shadow: 0 1px 0 #04170970, 1px 3px 3px #051e065c, inset 0 0 0 1px #dae6c910;
+    transition: background-color .13s, transform .1s, box-shadow .1s; }
+  button:hover { border-color: var(--metal-light); background-color: #414c46; }
+  button:active { transform: translateY(2px);
+    box-shadow: inset 0 2px 5px #0a1a0f88, 0 1px 0 #aeb69b29; }
+  button.primary { font-weight: 500; color: var(--key-ink);
+    background-color: var(--key);
+    background-image: var(--grain), radial-gradient(ellipse at 45% 0, #fffdea9e, transparent 72%), linear-gradient(0deg, #aaa07147, transparent 50%);
+    border-color: #959d85; border-top-color: #efead6; border-left-color: #d9ddc5;
+    border-bottom-color: #82856a;
+    text-shadow: 0 1px 0 #fff8dd9c; }
+  button.primary:hover { background-color: var(--key-hover); border-color: #efead6; }
+  button.danger { color: #fdeee8; background-color: var(--danger);
+    background-image: var(--grain), linear-gradient(180deg, #ffd9c81a, transparent 60%);
+    border-color: #6c2419; border-top-color: #c0705d; border-left-color: #a55643;
+    text-shadow: 0 1px 1px #3a120a; }
+  button.danger:hover { background-color: #a03d2c; }
+  button:disabled { opacity: .4; }
+  button:disabled:active { transform: none; }
+  button:focus-visible, select:focus-visible, input:focus-visible,
+  textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  /* A link is not a key. It keeps the phosphor colour and stays flat. */
+  .linkish { background: none; border: none; box-shadow: none; padding: 0;
+    color: var(--accent); }
+  .linkish:hover { background: none; border: none; color: var(--key-hover); }
+  .linkish:active { transform: none; box-shadow: none; }
+  #guideBtn { width: 32px; padding: 8px 0; }
+
+  /* ── Instrument panels ─────────────────────────────────────────────────────
+     Every section is a panel screwed to the chassis: lit along the top, three
+     millimetres proud of the paint, with its legend across the top edge. */
+  section { border: 1px solid var(--metal); border-top-color: var(--metal-light);
+    border-right-width: 2px; border-right-color: var(--metal-dark);
+    border-bottom-width: 3px; border-bottom-color: var(--metal-dark);
+    border-radius: 5px;
+    background-color: var(--panel);
+    background-image: var(--grain), linear-gradient(140deg, #e3eace08, transparent 50%, #0000000d);
+    background-blend-mode: multiply, normal;
+    box-shadow: 0 1px 0 #d6e3c319, 0 3px 3px #03130933, inset 0 0 0 1px #dae6c90c; }
+  /* Legends are printed, not typeset: mono, spaced out, and in the ink colour
+     rather than the dim one, because a label on a panel is not a footnote. */
+  section > h2 { font: 11px/1.5 var(--mono); letter-spacing: 1.5px;
+    color: var(--text); text-transform: uppercase; padding: 12px 16px;
+    background: linear-gradient(180deg, #eff3d806, #00000013);
+    border-bottom-color: var(--line); gap: 10px; }
+  section > h2 .sub { font-size: 11px; letter-spacing: .6px; text-transform: none;
+    color: var(--dim); }
+  section > h2 button { font-size: 11px; padding: 5px 10px; letter-spacing: .5px; }
+  .row:hover { background: #313b36; }
+  .row .title { font-weight: 500; letter-spacing: .2px; }
+  .empty { color: var(--dim); }
+  .picklabel, .dstlabel, label.opt > label, .opt > label, .appcat {
+    font-family: var(--mono); letter-spacing: 1px; text-transform: uppercase;
+    font-size: 11px; color: var(--dim); }
+
+  /* ── Recessed controls ─────────────────────────────────────────────────────
+     A dropdown or a text field is a window into the machine, not a surface on
+     it: dark green glass, sunk into the panel, with the highlight along the
+     bottom edge where a recess catches the light. */
+  .pick select, select, input, textarea, .wsrow input, .arm input, dialog input,
+  dialog select, dialog textarea, dialog .opt input,
+  #payloadOpts select, #payloadOpts .opt input {
+    background: linear-gradient(180deg, #19271e, #273d2c); color: #ebeedd;
+    border: 2px solid var(--line); border-top-color: #122219;
+    border-left-color: #203124; border-right-color: #7e8a70;
+    border-bottom-color: #909b7d; border-radius: 4px;
+    box-shadow: inset 0 2px 6px #0618077a, 0 1px 0 #ffffff0e; }
+  .pick select:hover, select:hover { border-bottom-color: var(--accent); }
+  .opt.check input, .dstrow input, .row input[type=checkbox] { accent-color: var(--accent); }
+  .badge { border-radius: 2px; font-family: var(--mono); letter-spacing: .5px;
+    text-transform: uppercase; font-size: 10.5px; padding: 2px 7px;
+    background: #222c27; }
+
+  /* ── The activity instrument ───────────────────────────────────────────────
+     The one part of this page that is a piece of test equipment rather than a
+     panel: a lamp box on the left saying what state the run is in, and a
+     register on the right saying how far along it is. It reads at arm's
+     length and across a bench, which is where it is read from.
+
+     Nothing here invents a status. Every lamp is lit from something the job
+     actually reported, and VERIFY PASS in particular lights only after a
+     finished run with no error — a lamp that claims a verify that did not
+     happen would be worse than no lamp at all. */
+  .activity-wrap { padding: 12px 30px 0; background: transparent; }
+  #jobsSec { background: none; border: none; box-shadow: none; }
+  #jobsSec > h2 { display: none; }
+  #jobs { padding: 0; max-height: 46vh; }
+  #jobs .row { display: block; padding: 0 0 12px; }
+  #jobs .row:hover { background: none; }
+  /* The instrument itself: a faceplate bolted down at four corners. */
+  .instrument { position: relative; isolation: isolate;
+    display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 17px;
+    padding: 23px 24px 15px; border-radius: 7px;
+    background-color: var(--panel);
+    background-image: var(--grain), radial-gradient(ellipse at 25% 10%, #fff3d519, transparent 60%), linear-gradient(175deg, transparent 75%, #77684816);
+    background-blend-mode: multiply, normal, normal;
+    border: 3px solid var(--metal); border-top-color: var(--metal-light);
+    border-right-color: var(--metal-dark); border-bottom-color: var(--metal-dark);
+    box-shadow: 0 1px 0 #a6b79d22, 0 4px 0 #0c1611, 0 5px 10px #06120949,
+      inset 0 0 0 1px #d8e7c614, inset 0 0 12px #00000010; }
+  @media (max-width: 720px) { .instrument { grid-template-columns: minmax(0, 1fr); } }
+  /* The screws. Each one is turned to its own angle, because a panel that has
+     been off the bench a few times does not have four aligned slots. */
+  .fastener { position: absolute; z-index: 2; width: 11px; height: 11px;
+    border-radius: 50%; border: 1px solid #6a7565; pointer-events: none;
+    background: conic-gradient(from 35deg, #b9c4b4, #55614f 20%, #a7b69d 45%, #e3e9d9 63%, #728169 87%, #b9c4b4);
+    box-shadow: 0 1px 1px #09130d8c, 0 0 0 2px #121d1447, 0 0 5px 1px #0000002b,
+      inset 0 1px 1px #ebefd03d; }
+  .fastener::after { content: ""; position: absolute; left: 2px; right: 2px;
+    top: 4px; height: 1.5px; border-radius: 1px; background: #34402b;
+    box-shadow: 0 1px 0 #d4ddbc8c; transform: rotate(var(--slot, 28deg)); }
+  .fastener.nw { left: 6px; top: 6px; --slot: 24deg; }
+  .fastener.ne { right: 6px; top: 6px; --slot: -12deg; }
+  .fastener.sw { left: 6px; bottom: 6px; --slot: 65deg; }
+  .fastener.se { right: 6px; bottom: 6px; --slot: 41deg; }
+
+  /* The lamp box. Sunk into the faceplate, so the lamps sit below the surface
+     and the box shades them — legible with a bench light overhead. */
+  .annunbox { display: flex; flex-direction: column; gap: 9px; padding: 10px;
+    border-radius: 3px;
+    background-color: #353e2e;
+    background-image: var(--grain), linear-gradient(110deg, #afbf8722, transparent 23%, #091b0b18);
+    background-blend-mode: multiply, normal;
+    border: 4px solid #657056; border-top-color: #9fa78a; border-left-color: #8d997b;
+    border-bottom-color: #46583e; border-right-color: #485b3f;
+    box-shadow: 0 1px 0 #e8dfbb73, 0 0 0 1px #3c4a3080, inset 0 2px 7px #10250daa,
+      inset 1px 0 4px #13220f77; }
+  .annunbox > .cap { font: 11px/1.4 var(--mono); letter-spacing: 2px;
+    text-transform: uppercase; color: #d9e0cf; text-align: center; }
+  .annunciators { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; flex: 1; }
+  /* Unlit: a grey lens with a filament behind it, not an empty hole. */
+  .lamp { position: relative; display: flex; align-items: center;
+    justify-content: center; text-align: center; min-height: 47px; padding: 6px 3px;
+    font: 500 11px/1.25 "Arial Narrow", Arial, sans-serif; letter-spacing: .3px;
+    text-transform: uppercase;
+    border-radius: 3px; border: 1px solid #8d9276;
+    border-right-color: #3b4b31; border-bottom-color: #3b4b31;
+    background: linear-gradient(145deg, #737b64, #555f4d); color: #f6f0d8;
+    box-shadow: inset 0 1px 2px #9caa862e, inset 0 -3px 5px #15281055,
+      0 1px 2px #14261099;
+    text-shadow: 0 1px 0 #24361d80; }
+  /* The reflection off the lens, which is what makes it read as glass. */
+  .lamp::after { content: ""; position: absolute; inset: 1px; border-radius: 2px;
+    pointer-events: none; opacity: calc(.3 + var(--glass));
+    background: linear-gradient(140deg, #fff5bd25, transparent 38%, transparent 85%, #101e1229); }
+  /* Lit. Green for a state that is true, amber for work in progress, red for
+     a fault — the three colours a panel like this ever used. */
+  .lamp.on { background: radial-gradient(ellipse at 48% 34%, #d6f2af, #a6d58e 68%, #8db36c);
+    border-color: #c7d995; color: #2b4124; text-shadow: 0 1px 0 #faffce61;
+    box-shadow: inset 0 0 5px #eaffb455, 0 0 8px #b5df7755, inset 0 -3px 4px #4b663739; }
+  .lamp.on.work { background: radial-gradient(ellipse at 45% 33%, #ffedb3, #e3bf6b 72%, #bb994d);
+    border-color: #e7d393; color: #4f391b; text-shadow: 0 1px 0 #fff6ba70;
+    box-shadow: inset 0 0 6px #fff2aa90, 0 0 9px #fcd37645, inset 0 -3px 4px #8a653230; }
+  .lamp.on.fault { background: radial-gradient(ellipse at 45% 33%, #ffb9a4, #e07f64 70%, #b85b42);
+    border-color: #f0b7a4; color: #4a1a10; text-shadow: 0 1px 0 #ffd8c970;
+    box-shadow: inset 0 0 6px #ffc6b490, 0 0 9px #e8836445, inset 0 -3px 4px #8a413030; }
+
+  /* The register. Glass over a dark cavity: the bezel is thick, the inside is
+     almost black, and the phosphor is the only thing in it that emits. */
+  .screen { position: relative; isolation: isolate; overflow: hidden; min-width: 0;
+    padding: 18px 20px 16px; border-radius: 9px;
+    background: var(--display);
+    background-image: radial-gradient(ellipse at 50% 45%, #1936234d, transparent 75%);
+    border: 7px solid #3f4e38; border-top-color: #263c27; border-left-color: #31452e;
+    border-bottom-color: #67785b; border-right-color: #526448;
+    box-shadow: 0 0 0 1px #8c9c7199, 0 1px 0 2px #e8e1bd47, inset 0 0 0 1px #010c02,
+      inset 0 5px 12px #000000cd, inset 0 0 28px #000000a0; }
+  /* The room, caught across the face of the glass at an angle. */
+  .screen::before { content: ""; position: absolute; inset: 0; z-index: 2;
+    pointer-events: none; opacity: var(--glass); border-radius: 2px;
+    background: linear-gradient(133deg, #e0ecd729 0, #f3fde116 11%, #f3fde105 28%, transparent 28.4%, transparent 68%, #a6b98609 85%, transparent 100%); }
+  .screen::after { content: ""; position: absolute; inset: 2px; z-index: 2;
+    pointer-events: none; border-radius: 2px;
+    box-shadow: inset 0 1px 0 #bed49e20, inset 1px 0 0 #cbd8b21a; }
+  .screen .jobline { align-items: flex-start; }
+  .screen .jobline .title { font: 13px/1.6 var(--mono); color: #bfcfba;
+    font-weight: 400; max-width: 40ch; overflow-wrap: anywhere; }
+  .screen .jobline .stage { order: -1; display: block; width: 100%;
+    font: 11px/1.4 var(--mono); letter-spacing: 1.4px; text-transform: uppercase;
+    color: var(--accent); }
+  .jobline { flex-wrap: wrap; }
+
+  /* The percentage, in seven segments. Each digit is seven bars with the
+     corners cut off them; the unlit ones stay visible, dark green on darker
+     green, because a real register shows you the segments that are off. */
+  .jobline .pct { margin-left: auto; display: flex; align-items: flex-end; gap: 4px;
+    color: var(--accent); font-weight: 400; }
+  .pct .digit { position: relative; display: inline-block; width: 30px; height: 54px;
+    flex: none; }
+  .pct .seg { position: absolute; background: #203925; }
+  .pct .seg.lit { background: var(--accent);
+    filter: drop-shadow(0 0 2px #a9e6a54a) drop-shadow(0 0 4px #a9e6a517); }
+  .pct .seg.a, .pct .seg.g, .pct .seg.d { height: 5px; width: 22px; left: 4px;
+    clip-path: polygon(13% 0, 87% 0, 100% 50%, 87% 100%, 13% 100%, 0 50%); }
+  .pct .seg.a { top: 0; }
+  .pct .seg.g { top: 24px; }
+  .pct .seg.d { bottom: 0; }
+  .pct .seg.b, .pct .seg.c, .pct .seg.e, .pct .seg.f { width: 5px; height: 23px;
+    clip-path: polygon(50% 0, 100% 13%, 100% 87%, 50% 100%, 0 87%, 0 13%); }
+  .pct .seg.b { right: 0; top: 3px; }
+  .pct .seg.c { right: 0; bottom: 3px; }
+  .pct .seg.e { left: 0; bottom: 3px; }
+  .pct .seg.f { left: 0; top: 3px; }
+  .pct .unit { font: 16px/1.4 var(--mono); color: #bfcfba; margin-bottom: 4px; }
+  /* A run with no percentage to show says so in words instead. */
+  .jobline .pct.word { align-self: center; font: 13px/1.4 var(--mono);
+    letter-spacing: 1.4px; text-transform: uppercase; }
+
+  /* The bar, and the scale printed under it. */
+  .screen .bar { height: 8px; border-radius: 0; background: #2a3b2c; margin-top: 18px; }
+  .screen .bar i { border-radius: 0; }
+  .ticks { height: 5px; margin: 5px 0 15px;
+    background: repeating-linear-gradient(to right, #7e9277 0, #7e9277 1px, transparent 1px, transparent 10%); }
+  /* Written / rate / remaining, as three labelled registers rather than a
+     run-on line. This is the row people actually watch. */
+  .screen .jobstats { display: grid; grid-template-columns: 1.35fr 1fr .8fr; gap: 15px;
+    font-size: 17px; letter-spacing: .6px; color: var(--accent); }
+  .jobstats .stat { min-width: 0; }
+  .jobstats .statlabel { display: block; font-size: 11px; letter-spacing: 1px;
+    text-transform: uppercase; color: #a4b79e; margin-bottom: 4px; }
+  .screen .jobflair { margin-top: 12px; color: #8fa189; font-style: normal;
+    font-family: var(--mono); font-size: 11.5px; }
+  .screen .jobflair::before { color: var(--accent); }
+  .screen .jobdone { margin-top: 12px; color: var(--accent); font-family: var(--mono);
+    font-size: 12px; }
+  .screen .hashline { color: #8fa189; }
+  #jobs .row.final .jobline { padding-right: 0; }
+  #jobs .dismiss { top: 10px; right: 12px; z-index: 3; padding: 2px 8px;
+    border: 1px solid var(--line); border-radius: 3px; background: #222c27;
+    box-shadow: none; }
+  #jobs .dismiss:hover { color: var(--text); background: #2e3a33; }
+  #jobs .dismiss:active { transform: none; }
+
+  /* ── The start screen ──────────────────────────────────────────────────────
+     Four panels laid out on the bench, each one the job it does. */
+  .door { border: 1px solid var(--metal); border-top-color: var(--metal-light);
+    border-right: 3px solid var(--metal-dark); border-bottom: 3px solid var(--metal-dark);
+    border-radius: 6px; padding: 22px;
+    background-color: var(--panel);
+    background-image: var(--grain), radial-gradient(ellipse at 15% 0, #f7efd020, transparent 65%), linear-gradient(170deg, transparent 70%, #72644120);
+    background-blend-mode: multiply, normal, normal;
+    box-shadow: 0 1px 0 #d5dab329, 0 4px 0 #172817, 1px 5px 7px #081d093b,
+      inset 0 0 0 1px #eee6c719; }
+  .door:hover { background-color: var(--panel2); border-top-color: var(--accent2); }
+  .door:active { transform: translateY(1px); }
+  .door-k { font-size: 18px; font-weight: 500; letter-spacing: 1px; }
+  /* "Start ›" is a key, not a caption: it is the thing being pressed. */
+  .door-go { display: inline-flex; align-items: center; gap: 7px; margin-top: 16px;
+    padding: 7px 12px; font-size: 12px; font-weight: 500; color: var(--key-ink);
+    background-color: var(--key); background-image: var(--grain);
+    background-blend-mode: multiply;
+    border: 1px solid #8a9470; border-top-color: #f7efcf; border-left-color: #e7dfbc;
+    border-right-width: 2px; border-bottom-width: 3px; border-bottom-color: #7c8866;
+    border-radius: 3px; box-shadow: 0 2px 2px #34462333; }
+  .homefoot { font-family: var(--mono); font-size: 11.5px; }
+
+  /* ── Dialogs ───────────────────────────────────────────────────────────────
+     A dialog is the same panel, lifted off the chassis and lit a little
+     harder, over a room that has gone dark behind it. */
+  dialog { border: 3px solid var(--metal); border-top-color: var(--metal-light);
+    border-right-color: var(--metal-dark); border-bottom-color: var(--metal-dark);
+    border-radius: 8px; background-color: var(--panel);
+    background-image: var(--grain), radial-gradient(ellipse at 25% 0, #fff3d515, transparent 60%);
+    background-blend-mode: multiply, normal;
+    box-shadow: 0 6px 0 #0c1611, 0 14px 40px #04100a99, inset 0 0 0 1px #d8e7c614; }
+  dialog::backdrop { background: rgba(6, 12, 9, .68); }
+  dialog h3 { font: 500 15px/1.4 inherit; letter-spacing: .6px; }
+  dialog .target { background: #222c27; border-color: var(--line); border-radius: 3px;
+    font-family: var(--mono); box-shadow: inset 0 2px 5px #00000055; }
+  dialog .facts dt { font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+    text-transform: uppercase; }
+  dialog textarea { font-family: var(--mono); }
+
+  /* ── The identity card ─────────────────────────────────────────────────────
+     The guardrail before something is erased. It keeps the recessed look of a
+     readout — this is the machine telling you what it found, not the page
+     telling you what it thinks. */
+  .idcard { background: #202a25; border-color: var(--line); border-radius: 4px;
+    box-shadow: inset 0 2px 6px #00000055; }
+  .idcard.warn { border-color: var(--warn); }
+  .idcard.stop { border-color: var(--err); }
+  .arm { background: #222c27; border-top-color: var(--metal-dark);
+    box-shadow: inset 0 3px 7px #00000055; }
+
+  /* ── The first-run guide ─────────────────────────────────────────────────── */
+  .guide-spot { box-shadow: 0 0 0 9999px rgba(8, 14, 11, .74), 0 0 0 2px var(--accent); }
+  .guide-spot.none { box-shadow: 0 0 0 9999px rgba(8, 14, 11, .74); }
+  .guide-card { border: 2px solid var(--metal-light); border-radius: 7px;
+    background-color: var(--panel);
+    background-image: var(--grain), radial-gradient(ellipse at 25% 0, #fff3d515, transparent 60%);
+    background-blend-mode: multiply, normal;
+    box-shadow: 0 5px 0 #0c1611, 0 14px 40px #04100a99; }
+  .guide-card .gstep { font-family: var(--mono); letter-spacing: 1.3px; }
+  .guide-card .gdots i { border-radius: 1px; background: #46504a; }
+  .guide-card .gdots i.on { background: var(--accent); }
+
+  /* ── Pickers ─────────────────────────────────────────────────────────────── */
+  .modelpick .chip { border-radius: 3px; border-color: var(--line);
+    background: #222c27; }
+  .modelresults { border-color: var(--line); border-radius: 4px; background: #202a25;
+    box-shadow: inset 0 2px 6px #00000055; }
+  .modelresults .modelrow.on, .modelresults .modelrow:hover { background: #2e3a33; }
+  .progpick .setbtn { border-radius: 3px; }
+  #err { border-radius: 4px; border: 1px solid #6c2419; border-top-color: #c0705d;
+    font-family: var(--mono); box-shadow: 0 4px 0 #3a120a, 0 10px 24px #04100a88; }
+
+  /* ── Wear ──────────────────────────────────────────────────────────────────
+     The patina is painted by script onto a canvas behind each surface, never
+     over it: the canvas sits at z-index -1 inside a stacking context of its
+     own, so scratches and rubbing pass under the text and nothing on this page
+     becomes harder to read for the sake of looking used. */
+  .material { position: relative; isolation: isolate; }
+  .weather { position: absolute; inset: 0; width: 100%; height: 100%;
+    display: block; pointer-events: none; z-index: -1; border-radius: inherit; }
+
+  @media (max-width: 900px) {
+    header, .toolbar { padding-left: 20px; padding-right: 20px; }
+    main { padding: 24px 20px; }
+    .activity-wrap { padding-left: 20px; padding-right: 20px; }
+    .brandsub { display: none; }
+  }
+  @media (max-width: 560px) {
+    body { border-width: 4px; margin: 4px; }
+    .nameplate { display: none; }
+    .screen .jobstats { grid-template-columns: 1fr 1fr; }
+    .pct .digit { width: 22px; height: 40px; }
+    .pct .seg.a, .pct .seg.g, .pct .seg.d { width: 16px; height: 4px; left: 3px; }
+    .pct .seg.g { top: 18px; }
+    .pct .seg.b, .pct .seg.c, .pct .seg.e, .pct .seg.f { width: 4px; height: 17px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button, .door { transition: none; }
+  }
 </style>
 </head>
 <body>
+<!-- The header is the machine's own plate: what it is on the left, whose it
+     is on the right. Nothing operable lives here — the controls are one row
+     down, where a hand reaching for the panel expects to find them. -->
 <header>
+  <h1><img src="logo.webp" alt="DSKY" width="91" height="32"></h1>
+  <div class="brandsub">Display &amp; keyboard<br>Ground support systems</div>
+  <div class="nameplate"><span>Uplink Research</span><span>Media Operations</span></div>
+</header>
+<div class="toolbar">
   <button id="backBtn" title="Back to the start" onclick="setDoor('home')" hidden>‹ Back</button>
-  <h1><img src="logo.webp" alt="DSKY" width="97" height="32"></h1>
   <span class="doorname" id="doorName"></span>
+  <span class="spacer"></span>
   <span class="ver" id="ver" title="Check for a newer release"></span>
   <button id="guideBtn" onclick="startGuide(door)" title="How this screen works" aria-label="How this screen works">?</button>
   <button id="updBtn" onclick="checkUpdate(true)" title="Ask GitHub for the newest release now">Check for updates</button>
   <button id="quitBtn" title="Stop the app" onclick="quitApp()">Quit</button>
-</header>
+</div>
 <div class="activity-wrap">
   <section id="jobsSec" hidden><h2>Activity<span class="count" id="jobsCount"></span><span class="spacer"></span><button id="jobsClear" onclick="clearFinishedJobs()" hidden>Clear finished</button></h2><div class="rows" id="jobs"></div></section>
 </div>
@@ -2380,13 +2849,23 @@ function showRate(j, ev) {
     }
     j.mark = { at: now, done: ev.done };
   }
-  const bits = [`${bytes(ev.done)} / ${bytes(ev.total)}`];
+  // Three labelled registers rather than one run-on line. The numbers are the
+  // same ones; under their own legends they can be found without reading the
+  // row, which is what somebody glancing over at a long write is doing. The
+  // first legend follows the phase, because during the read-back pass those
+  // bytes are being read, not written, and saying "written" would be a lie.
+  const regs = [[j.bar.classList.contains("verify") ? "Read back" : "Written",
+    `${bytes(ev.done)} / ${bytes(ev.total)}`]];
   if (j.rate > 0) {
-    bits.push(`${(j.rate / (1 << 20)).toFixed(1)} MB/s`);
+    regs.push(["Transfer rate", `${(j.rate / (1 << 20)).toFixed(1)} MB/s`]);
     const left = (ev.total - ev.done) / j.rate;
-    if (left > 0 && isFinite(left)) bits.push(secs(left) + " left");
+    if (left > 0 && isFinite(left)) regs.push(["Remaining", secs(left)]);
   }
-  j.stats.replaceChildren(...bits.map(b => el("span", "", b)));
+  j.stats.replaceChildren(...regs.map(([legend, value]) => {
+    const reg = el("div", "stat");
+    reg.append(el("span", "statlabel", legend), document.createTextNode(value));
+    return reg;
+  }));
 }
 
 // doneLine is the sentence this tool most wants to be able to say.
@@ -2650,11 +3129,101 @@ function quindar() {
   } catch (e) { /* as above */ }
 }
 
+// ── The activity instrument ─────────────────────────────────────────────────
+// A running job is shown the way a bench instrument would show it: a box of
+// lamps saying what state the run is in, and a register saying how far along
+// it is. Both are read at a glance from across a room, which is the distance
+// somebody waiting on a flash actually stands at.
+//
+// Every lamp is lit from something the job reported. None of them are
+// decoration, and VERIFY PASS in particular waits for a finished run that
+// reported no error — a lamp claiming a verification that never happened
+// would be worse than having no lamp at all.
+const LAMPS = [
+  ["media", "Media loaded"],
+  ["usb", "USB found"],
+  ["write", "Write active"],
+  ["read", "Read back"],
+  ["verify", "Verify pass"],
+  ["fault", "Fault"],
+];
+
+function lampBox() {
+  const box = el("div", "annunbox");
+  box.append(el("div", "cap", "Status"));
+  const grid = el("div", "annunciators");
+  const set = {};
+  for (const [key, label] of LAMPS) {
+    // Amber for work in progress and red for a fault are carried on the lamp
+    // from the start; lighting it is then only ever adding "on".
+    const tint = key === "write" ? " work" : key === "fault" ? " fault" : "";
+    const lamp = el("span", "lamp" + tint, label);
+    set[key] = lamp;
+    grid.append(lamp);
+  }
+  box.append(grid);
+  return { box, set };
+}
+
+function setLamps(j, ev) {
+  const verifying = j.bar.classList.contains("verify");
+  const done = !!ev.final;
+  const failed = done && !!ev.error;
+  const lit = {
+    media: ev.total > 0,
+    usb: (state.devices || []).some(d => d.flashable),
+    write: !done && !failed && !verifying,
+    read: !done && !failed && verifying,
+    verify: done && !failed,
+    fault: failed,
+  };
+  for (const [key, lamp] of Object.entries(j.lamps)) lamp.classList.toggle("on", !!lit[key]);
+}
+
+// Which bars make which digit. Seven segments, named a–g the way the data
+// sheets name them: a across the top, then clockwise, g through the middle.
+const SEGMENTS = {
+  "0": "abcdef", "1": "bc", "2": "abdeg", "3": "abcdg", "4": "bcfg",
+  "5": "acdfg", "6": "acdefg", "7": "abc", "8": "abcdefg", "9": "abcdfg",
+};
+
+// The unlit bars are drawn as well as the lit ones. A real register shows you
+// the segments that are off, and without them the digits lose their shape --
+// an 8 and a 0 stop being obviously different from across the bench.
+function setPct(node, value) {
+  node.classList.remove("word");
+  node.setAttribute("role", "img");
+  node.setAttribute("aria-label", value + " percent");
+  const digits = String(value).padStart(3, "0").split("").map(ch => {
+    const digit = el("span", "digit");
+    digit.setAttribute("aria-hidden", "true");
+    for (const seg of "abcdefg") {
+      digit.append(el("span", "seg " + seg + (SEGMENTS[ch].includes(seg) ? " lit" : "")));
+    }
+    return digit;
+  });
+  node.replaceChildren(...digits, el("span", "unit", "%"));
+}
+
+// Not every run has a percentage: a download of unknown length has none, and a
+// finished one has nothing left to count. Those say so in words, in the same
+// place the number would have been.
+function setWord(node, word) {
+  node.classList.add("word");
+  node.removeAttribute("role");
+  node.removeAttribute("aria-label");
+  node.replaceChildren();
+  node.textContent = word;
+}
+
 function upsertJob(ev) {
   const jobs = $("jobs");
   let j = jobEls.get(ev.job_id);
   if (!j) {
     const row = el("div", "row");
+    const face = el("div", "instrument");
+    const lamps = lampBox();
+    const screen = el("div", "screen");
     const line = el("div", "jobline");
     const title = el("span", "title", ev.title || ev.job_id);
     const stage = el("span", "stage");
@@ -2663,13 +3232,16 @@ function upsertJob(ev) {
     const bar = el("div", "bar"); bar.append(el("i"));
     const stats = el("div", "jobstats");
     const flair = el("div", "jobflair");
-    row.append(line, bar, stats, flair);
+    screen.append(line, bar, el("div", "ticks"), stats, flair);
+    face.append(lamps.box, screen);
+    row.append(face);
     jobs.prepend(row);
     // rate is sampled over a short window rather than averaged from the start:
     // a flash that stalls on a bad sector should say so while it is stalled,
     // not report the healthy average it had ten seconds ago.
-    j = { row, stage, pct, bar, stats, flair, t0: Date.now(), mark: null };
+    j = { row, screen, stage, pct, bar, stats, flair, lamps: lamps.set, t0: Date.now(), mark: null };
     jobEls.set(ev.job_id, j);
+    dressAll(row);
   }
   if (!ev.final) j.running = true;
   j.stage.textContent = ev.error ? ev.error : ev.stage;
@@ -2690,22 +3262,23 @@ function upsertJob(ev) {
     j.bar.querySelector("i").style.background = "var(--ok)";
     j.bar.classList.remove("indet");
     j.bar.querySelector("i").style.width = "100%";
-    j.pct.textContent = "done";
+    setWord(j.pct, "done");
     j.stats.replaceChildren();
-    j.row.append(doneLine(ev, Date.now() - j.t0));
+    j.screen.append(doneLine(ev, Date.now() - j.t0));
     loadState();
   } else if (ev.total > 0) {
     j.bar.classList.remove("indet");
     const pct = Math.floor(ev.done * 100 / ev.total);
     j.bar.querySelector("i").style.width = pct + "%";
-    j.pct.textContent = pct + "%";
+    setPct(j.pct, pct);
     showRate(j, ev);
   } else if (!ev.final) {
     j.bar.classList.add("indet");
-    j.pct.textContent = "";
+    setWord(j.pct, "");
     j.stats.replaceChildren();
   }
   if (ev.final && ev.error) { j.bar.classList.remove("indet"); loadState(); }
+  setLamps(j, ev);
   if (ev.final && !j.final) {
     j.final = true;
     j.row.classList.add("final");
@@ -3145,6 +3718,226 @@ function maybeStartGuide() {
   if (door !== "home" && !state.guides_seen.includes("home")) return;
   startGuide(door);
 }
+// ── Paint, and the wear on it ───────────────────────────────────────────────
+// Two things make the chassis look like something that has been used rather
+// than something that was rendered: a tooth in the paint, and the marks a few
+// hundred hours on a bench leave on it.
+//
+// Both are painted onto a canvas that sits *behind* each surface -- inset,
+// pinned at z-index -1 inside a stacking context of its own -- so scratches
+// and rubbing pass under the text and never over it. Nothing on this page is
+// made harder to read for the sake of looking used. It is drawn once per
+// surface from a fixed seed, so the same panel has the same scratches every
+// time the page opens; wear that reshuffled on each reload would read as
+// noise rather than as history.
+//
+// This is the only part of the page that is purely appearance. If the canvas
+// context is unavailable it simply does not run, and the page is flat.
+const SURFACES = "header, .toolbar, .updbar, main, section, .door, .nameplate, .instrument, .screen, .annunbox, dialog, button.primary";
+const surfaces = [];
+let paintFrame = 0;
+let paintWatcher = null;
+
+function seeded(seed) {
+  return () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+}
+
+// A 192px tile of monochrome noise, handed to the stylesheet as --grain and
+// multiplied into every enamelled surface. One tile, reused everywhere: a
+// texture this faint reads as tooth in the paint, not as a repeat.
+function grain() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 192;
+  const ctx = c.getContext("2d");
+  if (!ctx) return;
+  const img = ctx.createImageData(192, 192), rand = seeded(169);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const light = rand() > .51;
+    img.data[i] = light ? 255 : 40;
+    img.data[i + 1] = light ? 250 : 45;
+    img.data[i + 2] = light ? 226 : 28;
+    img.data[i + 3] = Math.floor(rand() * 23);
+  }
+  ctx.putImageData(img, 0, 0);
+  document.documentElement.style.setProperty("--grain", "url(" + c.toDataURL() + ")");
+}
+
+// Materials wear differently: glass collects hairlines and dust at its rim,
+// a keycap is rubbed shiny where a thumb lands, a printed plate takes less
+// than a painted panel.
+function surfaceKind(node) {
+  if (node.classList.contains("screen")) return "glass";
+  if (node.classList.contains("nameplate")) return "plate";
+  if (node.tagName === "BUTTON" && !node.classList.contains("door")) return "key";
+  return "enamel";
+}
+
+function dress(node) {
+  if (node.classList.contains("material")) return;
+  node.classList.add("material");
+  const canvas = el("canvas", "weather");
+  canvas.setAttribute("aria-hidden", "true");
+  node.append(canvas);
+  // Four screws, each turned to its own angle: a panel that has been off the
+  // bench a few times does not have four aligned slots.
+  if (node.classList.contains("instrument")) {
+    for (const corner of ["nw", "ne", "sw", "se"]) {
+      const screw = el("span", "fastener " + corner);
+      screw.setAttribute("aria-hidden", "true");
+      node.append(screw);
+    }
+  }
+  const surface = { node, canvas, kind: surfaceKind(node), seed: 1297 + surfaces.length * 701, last: "" };
+  surfaces.push(surface);
+  if (paintWatcher) paintWatcher.observe(node);
+  paint(surface);
+}
+
+function dressAll(scope) {
+  if (!paintWatcher && typeof ResizeObserver !== "undefined") {
+    paintWatcher = new ResizeObserver(repaint);
+  }
+  scope.querySelectorAll(SURFACES).forEach(dress);
+}
+
+function repaint() {
+  if (paintFrame) return;
+  paintFrame = requestAnimationFrame(() => { paintFrame = 0; surfaces.forEach(paint); });
+}
+
+function paint(surface) {
+  const { node, canvas, kind, seed } = surface;
+  const width = node.clientWidth, height = node.clientHeight;
+  if (width < 2 || height < 2) return;
+  const wear = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--wear")) || 0;
+  // Repainting an unchanged surface is the common case on every resize tick,
+  // and each repaint is a few hundred strokes.
+  const signature = [width, height, wear].join("/");
+  if (surface.last === signature) return;
+  surface.last = signature;
+  const scale = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  const c = canvas.getContext("2d");
+  if (!c) return;
+  c.scale(scale, scale);
+  if (wear === 0) return;
+  const rand = seeded(seed);
+  const line = (x, y, length, angle, colour, thickness) => {
+    c.strokeStyle = colour;
+    c.lineWidth = thickness;
+    c.beginPath();
+    c.moveTo(x, y);
+    c.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+    c.stroke();
+  };
+
+  if (kind === "glass") {
+    // Hairlines stay near the rim: the middle of a register is the part that
+    // gets read, and it is the part a cloth reaches most easily.
+    for (let i = 0; i < 9 * wear; i++) {
+      const x = width * (.64 + rand() * .32), y = rand() * 12;
+      line(x, y, 5 + rand() * 26, -.25 + rand() * .3, "rgba(191,215,155," + (.07 * wear) + ")", .45);
+    }
+    const dust = c.createLinearGradient(0, 0, 0, 7);
+    dust.addColorStop(0, "rgba(141,133,80," + (.16 * wear) + ")");
+    dust.addColorStop(1, "rgba(141,133,80,0)");
+    c.fillStyle = dust;
+    c.fillRect(0, 0, width, 7);
+    return;
+  }
+
+  // Grime gathers along the edges of a panel and thins towards the middle.
+  const edge = kind === "key" ? 5 : kind === "plate" ? 4 : 12;
+  const top = c.createLinearGradient(0, 0, 0, edge);
+  top.addColorStop(0, "rgba(66,49,21," + (.27 * wear) + ")");
+  top.addColorStop(.4, "rgba(70,55,26," + (.10 * wear) + ")");
+  top.addColorStop(1, "rgba(66,49,21,0)");
+  c.fillStyle = top;
+  c.fillRect(0, 0, width, edge);
+  const bottom = c.createLinearGradient(0, height - edge, 0, height);
+  bottom.addColorStop(0, "rgba(53,51,27,0)");
+  bottom.addColorStop(1, "rgba(53,51,27," + (.21 * wear) + ")");
+  c.fillStyle = bottom;
+  c.fillRect(0, height - edge, width, edge);
+  const sides = c.createLinearGradient(0, 0, width, 0);
+  sides.addColorStop(0, "rgba(76,55,24," + (.2 * wear) + ")");
+  sides.addColorStop(Math.min(.05, edge / width), "rgba(76,55,24,0)");
+  sides.addColorStop(Math.max(.95, 1 - edge / width), "rgba(76,55,24,0)");
+  sides.addColorStop(1, "rgba(50,49,24," + (.16 * wear) + ")");
+  c.fillStyle = sides;
+  c.fillRect(0, 0, width, height);
+
+  // Uneven rubbing across the face, kept faint: this is aged paint, not dirt.
+  for (let i = 0; i < 6; i++) {
+    const x = rand() * width, y = rand() * height;
+    const r = 15 + rand() * Math.min(width, height) * .45;
+    const stain = c.createRadialGradient(x, y, 0, x, y, r);
+    stain.addColorStop(0, "rgba(114,84,35," + (wear * (kind === "key" ? .05 : .025)) + ")");
+    stain.addColorStop(1, "rgba(114,84,35,0)");
+    c.fillStyle = stain;
+    c.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  if (kind === "key") {
+    // Where the thumb lands, the moulding is polished lighter, and the bottom
+    // edge is scuffed by the nail coming off it.
+    const rub = c.createRadialGradient(width * .45, height * .45, 0, width * .45, height * .45, width * .52);
+    rub.addColorStop(0, "rgba(255,246,206," + (.20 * wear) + ")");
+    rub.addColorStop(.65, "rgba(255,246,206," + (.035 * wear) + ")");
+    rub.addColorStop(1, "rgba(255,246,206,0)");
+    c.fillStyle = rub;
+    c.fillRect(0, 0, width, height);
+    for (let i = 0; i < 13 * wear; i++) {
+      const x = rand() * width, y = height - 2 - rand() * 5;
+      line(x, y, 2 + rand() * 10, -.06 + rand() * .1, "rgba(83,75,43," + (.18 * wear) + ")", .35 + rand() * .3);
+    }
+    return;
+  }
+
+  // Scratches run along the edges, where a panel is handled and where it is
+  // set down. Each is drawn twice: the cut, and the lit lip beside it.
+  const count = Math.ceil((width + height) * .045 * wear);
+  for (let i = 0; i < count; i++) {
+    const side = Math.floor(rand() * 4);
+    let x, y, angle;
+    if (side === 0) { x = rand() * width; y = rand() * 4; angle = rand() * .1; }
+    else if (side === 1) { x = width - rand() * 4; y = rand() * height; angle = 1.57 + rand() * .1; }
+    else if (side === 2) { x = rand() * width; y = height - rand() * 4; angle = rand() * .1; }
+    else { x = rand() * 4; y = rand() * height; angle = 1.57 + rand() * .1; }
+    const length = 1 + Math.pow(rand(), 2) * 18;
+    line(x, y, length, angle, "rgba(192,197,164," + (.48 * wear) + ")", .4 + rand() * 1.2);
+    line(x, y + .8, length * .8, angle, "rgba(246,237,198," + (.53 * wear) + ")", .45);
+  }
+  // Small flakes at the corners, where the paint has come away to the metal.
+  for (let i = 0; i < 9 * wear; i++) {
+    const right = rand() > .5, lower = rand() > .5;
+    const x = right ? width - rand() * 18 : rand() * 18;
+    const y = lower ? height - rand() * 7 : rand() * 7;
+    const size = .7 + rand() * 2.5;
+    c.fillStyle = "rgba(177,189,143,.48)";
+    c.beginPath();
+    c.moveTo(x, y);
+    c.lineTo(x + size * 2, y + .4);
+    c.lineTo(x + size * 1.3, y + size);
+    c.lineTo(x - .5, y + size * .7);
+    c.fill();
+    line(x, y + size, size * 1.2, .04, "rgba(241,231,191,.53)", .5);
+  }
+  // Sparse directional scuffs, kept to the empty margins of a panel.
+  for (let i = 0; i < Math.ceil(width / 85) * wear; i++) {
+    const x = 10 + rand() * (width - 30);
+    const y = rand() > .5 ? 5 + rand() * 8 : height - 8 - rand() * 6;
+    line(x, y, 8 + rand() * 22, -.16 + rand() * .25, "rgba(78,74,45," + (.20 * wear) + ")", .4);
+    line(x, y + 1, 5 + rand() * 18, -.12, "rgba(254,246,211," + (.31 * wear) + ")", .35);
+  }
+}
+
+grain();
+dressAll(document);
 restoreDoor();
 loadState();
 loadDisks();
