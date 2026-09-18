@@ -345,12 +345,44 @@ family should be offered, given the above:
    today with a third table and no third-party repository. It does mean a
    minimal server image growing a Flatpak stack, which may be the wrong shape
    for the machines these images are usually for.
-2. **EPEL.** The Fedora project's own companion repository for RHEL, and where
-   most of the seventeen actually live. Far less invasive than RPM Fusion and
-   near-universal in RHEL shops, but still a repository DSKY would be turning
-   on for the whole machine.
+2. **EPEL.** The Fedora project's own companion repository for RHEL. Far less
+   invasive than RPM Fusion and near-universal in RHEL shops, but still a
+   repository DSKY would be turning on for the whole machine.
 3. **The eight, and nothing else.** Honest, tiny, and arguably right for a
    minimal server install — the picker would simply be short.
+
+### What each option is actually worth (measured 2026-09-18)
+
+"EPEL is where most of the seventeen live" was an assumption, and it is wrong.
+Counted against the real repodata — AlmaLinux 10 BaseOS, AppStream, CRB and
+extras (6,944 names) and EPEL 10 Everything (25,879) — against the 25 dnf names
+`dsky apps --os fedora` actually offers:
+
+| Source | Adds | Running total of 25 |
+| --- | --- | --- |
+| AlmaLinux's own repositories | 8 | 8 |
+| \+ EPEL | 6 | 14 |
+| \+ Flathub, verified publishers only | 4 | 18 |
+| \+ vendor rpm repositories | 2 | **20** |
+
+- **EPEL adds six, not "most":** 7zip, keepassxc, openvpn, qbittorrent,
+  remmina, vlc. It does not carry a single one of the desktop programs people
+  ask for by name.
+- **Flathub covers exactly the ones EPEL misses**, and four are verified:
+  LibreOffice, GIMP, Inkscape, OBS Studio. That is the gap the desktop cares
+  about, and it needs no repository DSKY has to trust.
+- **Two more need no new mechanism at all.** Tailscale and Docker publish
+  RHEL 10 repositories (`pkgs.tailscale.com/stable/rhel/10`,
+  `download.docker.com/linux/rhel`), and DSKY already installs from vendor rpm
+  repositories — it is how Chrome, AnyDesk and TeamViewer arrive. Neither was
+  considered above.
+- **Five cannot be reached honestly.** Blender, Audacity, calibre and BleachBit
+  are on Flathub but *unverified*, and the verified-publisher rule is worth
+  more than four entries; PuTTY has no Flathub app at all.
+
+So the real choice is narrower than it looked: Flathub plus the two vendor
+repositories reaches **14 of 25 with no EPEL**, and EPEL is worth six utilities
+on top. Option 1 is not the small option — it is most of the value.
 
 Nothing here is blocked on that decision: the kickstart path is proven for the
 family either way, and a workspace recipe with `linux.kickstart` can already
