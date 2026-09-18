@@ -37,6 +37,14 @@ type App struct {
 	PerUser bool // the package only ships a per-user installer
 	Licence bool // needs a paid licence, subscription or account to be useful
 	Large   bool // a download big enough that first boot visibly waits for it
+	// Desktop: the program wants a graphical session, so a server entry does
+	// not offer it. Ubuntu Server and Fedora Server install no desktop at all
+	// -- no X, no Wayland, no GNOME -- and the picker was happily putting VLC,
+	// Chrome and GIMP on them: the packages install cleanly and then there is
+	// nothing to run them on. Anything that is only on Flathub is a desktop
+	// program by construction, and a test below keeps that true as the tables
+	// grow.
+	Desktop bool
 }
 
 // InstallsOnWindows reports whether this program can actually be put on a
@@ -57,6 +65,9 @@ func (a App) Labels() []string {
 	if a.Large {
 		out = append(out, "large download")
 	}
+	if a.Desktop {
+		out = append(out, "needs a desktop")
+	}
 	return out
 }
 
@@ -71,36 +82,36 @@ func (a App) Labels() []string {
 //
 // Microsoft Edge is left out because Windows already has it.
 var builtin = []App{
-	{ID: "chrome", Name: "Google Chrome", Category: "Browsers", Winget: "Google.Chrome"},
-	{ID: "firefox", Name: "Mozilla Firefox", Category: "Browsers", Winget: "Mozilla.Firefox"},
-	{ID: "brave", Name: "Brave", Category: "Browsers", Winget: "Brave.Brave"},
-	{ID: "opera", Name: "Opera", Category: "Browsers", Winget: "Opera.Opera"},
-	{ID: "vivaldi", Name: "Vivaldi", Category: "Browsers", Winget: "Vivaldi.Vivaldi"},
-	{ID: "librewolf", Name: "LibreWolf", Category: "Browsers", Winget: "LibreWolf.LibreWolf"},
+	{ID: "chrome", Name: "Google Chrome", Category: "Browsers", Winget: "Google.Chrome", Desktop: true},
+	{ID: "firefox", Name: "Mozilla Firefox", Category: "Browsers", Winget: "Mozilla.Firefox", Desktop: true},
+	{ID: "brave", Name: "Brave", Category: "Browsers", Winget: "Brave.Brave", Desktop: true},
+	{ID: "opera", Name: "Opera", Category: "Browsers", Winget: "Opera.Opera", Desktop: true},
+	{ID: "vivaldi", Name: "Vivaldi", Category: "Browsers", Winget: "Vivaldi.Vivaldi", Desktop: true},
+	{ID: "librewolf", Name: "LibreWolf", Category: "Browsers", Winget: "LibreWolf.LibreWolf", Desktop: true},
 
-	{ID: "zoom", Name: "Zoom", Category: "Communication", Winget: "Zoom.Zoom"},
-	{ID: "teams", Name: "Microsoft Teams", Category: "Communication", Winget: "Microsoft.Teams"},
-	{ID: "slack", Name: "Slack", Category: "Communication", Winget: "SlackTechnologies.Slack", PerUser: true},
-	{ID: "thunderbird", Name: "Mozilla Thunderbird", Category: "Communication", Winget: "Mozilla.Thunderbird"},
-	{ID: "discord", Name: "Discord", Category: "Communication", Winget: "Discord.Discord", PerUser: true},
-	{ID: "signal", Name: "Signal", Category: "Communication", Winget: "OpenWhisperSystems.Signal", PerUser: true},
-	{ID: "telegram", Name: "Telegram Desktop", Category: "Communication", Winget: "Telegram.TelegramDesktop", PerUser: true},
+	{ID: "zoom", Name: "Zoom", Category: "Communication", Winget: "Zoom.Zoom", Desktop: true},
+	{ID: "teams", Name: "Microsoft Teams", Category: "Communication", Winget: "Microsoft.Teams", Desktop: true},
+	{ID: "slack", Name: "Slack", Category: "Communication", Winget: "SlackTechnologies.Slack", PerUser: true, Desktop: true},
+	{ID: "thunderbird", Name: "Mozilla Thunderbird", Category: "Communication", Winget: "Mozilla.Thunderbird", Desktop: true},
+	{ID: "discord", Name: "Discord", Category: "Communication", Winget: "Discord.Discord", PerUser: true, Desktop: true},
+	{ID: "signal", Name: "Signal", Category: "Communication", Winget: "OpenWhisperSystems.Signal", PerUser: true, Desktop: true},
+	{ID: "telegram", Name: "Telegram Desktop", Category: "Communication", Winget: "Telegram.TelegramDesktop", PerUser: true, Desktop: true},
 	{ID: "webex", Name: "Webex", Category: "Communication", Winget: "Cisco.Webex"},
 
-	{ID: "adobereader", Name: "Adobe Acrobat Reader", Category: "Documents", Winget: "Adobe.Acrobat.Reader.64-bit"},
+	{ID: "adobereader", Name: "Adobe Acrobat Reader", Category: "Documents", Winget: "Adobe.Acrobat.Reader.64-bit", Desktop: true},
 	{ID: "office", Name: "Microsoft 365 Apps (Word, Excel, Outlook…)", Category: "Documents", Winget: "Microsoft.Office", Licence: true, Large: true},
-	{ID: "libreoffice", Name: "LibreOffice", Category: "Documents", Winget: "TheDocumentFoundation.LibreOffice"},
-	{ID: "onlyoffice", Name: "ONLYOFFICE Desktop Editors", Category: "Documents", Winget: "ONLYOFFICE.DesktopEditors"},
-	{ID: "foxitreader", Name: "Foxit PDF Reader", Category: "Documents", Winget: "Foxit.FoxitReader"},
+	{ID: "libreoffice", Name: "LibreOffice", Category: "Documents", Winget: "TheDocumentFoundation.LibreOffice", Desktop: true},
+	{ID: "onlyoffice", Name: "ONLYOFFICE Desktop Editors", Category: "Documents", Winget: "ONLYOFFICE.DesktopEditors", Desktop: true},
+	{ID: "foxitreader", Name: "Foxit PDF Reader", Category: "Documents", Winget: "Foxit.FoxitReader", Desktop: true},
 	{ID: "pdf24", Name: "PDF24 Creator", Category: "Documents", Winget: "geeksoftwareGmbH.PDF24Creator"},
-	{ID: "obsidian", Name: "Obsidian", Category: "Documents", Winget: "Obsidian.Obsidian"},
+	{ID: "obsidian", Name: "Obsidian", Category: "Documents", Winget: "Obsidian.Obsidian", Desktop: true},
 	{ID: "notion", Name: "Notion", Category: "Documents", Winget: "Notion.Notion", PerUser: true},
 	{ID: "zotero", Name: "Zotero", Category: "Documents", Winget: "DigitalScholar.Zotero"},
-	{ID: "calibre", Name: "calibre (e-books)", Category: "Documents", Winget: "calibre.calibre"},
+	{ID: "calibre", Name: "calibre (e-books)", Category: "Documents", Winget: "calibre.calibre", Desktop: true},
 
-	{ID: "bitwarden", Name: "Bitwarden", Category: "Passwords & security", Winget: "Bitwarden.Bitwarden"},
-	{ID: "1password", Name: "1Password", Category: "Passwords & security", Winget: "AgileBits.1Password", Licence: true},
-	{ID: "keepassxc", Name: "KeePassXC", Category: "Passwords & security", Winget: "KeePassXCTeam.KeePassXC"},
+	{ID: "bitwarden", Name: "Bitwarden", Category: "Passwords & security", Winget: "Bitwarden.Bitwarden", Desktop: true},
+	{ID: "1password", Name: "1Password", Category: "Passwords & security", Winget: "AgileBits.1Password", Licence: true, Desktop: true},
+	{ID: "keepassxc", Name: "KeePassXC", Category: "Passwords & security", Winget: "KeePassXCTeam.KeePassXC", Desktop: true},
 	{ID: "malwarebytes", Name: "Malwarebytes", Category: "Passwords & security", Winget: "Malwarebytes.Malwarebytes"},
 
 	{ID: "googledrive", Name: "Google Drive", Category: "Cloud storage", Winget: "Google.GoogleDrive"},
@@ -108,39 +119,39 @@ var builtin = []App{
 	{ID: "onedrive", Name: "Microsoft OneDrive", Category: "Cloud storage", Winget: "Microsoft.OneDrive"},
 	{ID: "box", Name: "Box Drive", Category: "Cloud storage", Winget: "Box.Box"},
 
-	{ID: "vlc", Name: "VLC media player", Category: "Media", Winget: "VideoLAN.VLC"},
-	{ID: "spotify", Name: "Spotify", Category: "Media", Winget: "Spotify.Spotify", PerUser: true},
-	{ID: "gimp", Name: "GIMP", Category: "Media", Winget: "GIMP.GIMP"},
-	{ID: "paintdotnet", Name: "Paint.NET", Category: "Media", Winget: "dotPDN.PaintDotNet"},
-	{ID: "obs", Name: "OBS Studio", Category: "Media", Winget: "OBSProject.OBSStudio"},
-	{ID: "audacity", Name: "Audacity", Category: "Media", Winget: "Audacity.Audacity"},
-	{ID: "handbrake", Name: "HandBrake", Category: "Media", Winget: "HandBrake.HandBrake"},
-	{ID: "inkscape", Name: "Inkscape", Category: "Media", Winget: "Inkscape.Inkscape"},
-	{ID: "blender", Name: "Blender", Category: "Media", Winget: "BlenderFoundation.Blender", Large: true},
+	{ID: "vlc", Name: "VLC media player", Category: "Media", Winget: "VideoLAN.VLC", Desktop: true},
+	{ID: "spotify", Name: "Spotify", Category: "Media", Winget: "Spotify.Spotify", PerUser: true, Desktop: true},
+	{ID: "gimp", Name: "GIMP", Category: "Media", Winget: "GIMP.GIMP", Desktop: true},
+	{ID: "paintdotnet", Name: "Paint.NET", Category: "Media", Winget: "dotPDN.PaintDotNet", Desktop: true},
+	{ID: "obs", Name: "OBS Studio", Category: "Media", Winget: "OBSProject.OBSStudio", Desktop: true},
+	{ID: "audacity", Name: "Audacity", Category: "Media", Winget: "Audacity.Audacity", Desktop: true},
+	{ID: "handbrake", Name: "HandBrake", Category: "Media", Winget: "HandBrake.HandBrake", Desktop: true},
+	{ID: "inkscape", Name: "Inkscape", Category: "Media", Winget: "Inkscape.Inkscape", Desktop: true},
+	{ID: "blender", Name: "Blender", Category: "Media", Winget: "BlenderFoundation.Blender", Large: true, Desktop: true},
 	{ID: "klite", Name: "K-Lite Codec Pack Standard", Category: "Media", Winget: "CodecGuide.K-LiteCodecPack.Standard"},
-	{ID: "irfanview", Name: "IrfanView", Category: "Media", Winget: "IrfanSkiljan.IrfanView"},
+	{ID: "irfanview", Name: "IrfanView", Category: "Media", Winget: "IrfanSkiljan.IrfanView", Desktop: true},
 	{ID: "greenshot", Name: "Greenshot", Category: "Media", Winget: "Greenshot.Greenshot"},
-	{ID: "plex", Name: "Plex", Category: "Media", Winget: "Plex.Plex"},
+	{ID: "plex", Name: "Plex", Category: "Media", Winget: "Plex.Plex", Desktop: true},
 
-	{ID: "teamviewer", Name: "TeamViewer", Category: "Remote access & VPN", Winget: "TeamViewer.TeamViewer", Licence: true},
-	{ID: "anydesk", Name: "AnyDesk", Category: "Remote access & VPN", Winget: "AnyDesk.AnyDesk", Licence: true},
+	{ID: "teamviewer", Name: "TeamViewer", Category: "Remote access & VPN", Winget: "TeamViewer.TeamViewer", Licence: true, Desktop: true},
+	{ID: "anydesk", Name: "AnyDesk", Category: "Remote access & VPN", Winget: "AnyDesk.AnyDesk", Licence: true, Desktop: true},
 	{ID: "tailscale", Name: "Tailscale", Category: "Remote access & VPN", Winget: "Tailscale.Tailscale"},
 	{ID: "wireguard", Name: "WireGuard", Category: "Remote access & VPN", Winget: "WireGuard.WireGuard"},
 	{ID: "openvpn", Name: "OpenVPN Connect", Category: "Remote access & VPN", Winget: "OpenVPNTechnologies.OpenVPN"},
-	{ID: "remotedesktop", Name: "Remote Desktop client", Category: "Remote access & VPN", Winget: "Microsoft.RemoteDesktopClient"},
+	{ID: "remotedesktop", Name: "Remote Desktop client", Category: "Remote access & VPN", Winget: "Microsoft.RemoteDesktopClient", Desktop: true},
 	{ID: "mremoteng", Name: "mRemoteNG", Category: "Remote access & VPN", Winget: "mRemoteNG.mRemoteNG"},
 
 	{ID: "sysinternals", Name: "Sysinternals Suite", Category: "IT tools", Winget: "Microsoft.Sysinternals.Suite"},
-	{ID: "wireshark", Name: "Wireshark", Category: "IT tools", Winget: "WiresharkFoundation.Wireshark"},
+	{ID: "wireshark", Name: "Wireshark", Category: "IT tools", Winget: "WiresharkFoundation.Wireshark", Desktop: true},
 	{ID: "nmap", Name: "Nmap", Category: "IT tools", Winget: "Insecure.Nmap", PerUser: true},
 	{ID: "wiztree", Name: "WizTree", Category: "IT tools", Winget: "AntibodySoftware.WizTree"},
 	{ID: "windirstat", Name: "WinDirStat", Category: "IT tools", Winget: "WinDirStat.WinDirStat"},
-	{ID: "rufus", Name: "Rufus", Category: "IT tools", Winget: "Rufus.Rufus"},
+	{ID: "rufus", Name: "Rufus", Category: "IT tools", Winget: "Rufus.Rufus", Desktop: true},
 	{ID: "cpuz", Name: "CPU-Z", Category: "IT tools", Winget: "CPUID.CPU-Z"},
 	{ID: "hwmonitor", Name: "HWMonitor", Category: "IT tools", Winget: "CPUID.HWMonitor"},
 	{ID: "hwinfo", Name: "HWiNFO", Category: "IT tools", Winget: "REALiX.HWiNFO"},
 	{ID: "crystaldiskinfo", Name: "CrystalDiskInfo", Category: "IT tools", Winget: "CrystalDewWorld.CrystalDiskInfo"},
-	{ID: "bleachbit", Name: "BleachBit", Category: "IT tools", Winget: "BleachBit.BleachBit"},
+	{ID: "bleachbit", Name: "BleachBit", Category: "IT tools", Winget: "BleachBit.BleachBit", Desktop: true},
 	// DSKY installs itself, which is less strange than it sounds: a bench
 	// machine being imaged is usually the machine that images the next one.
 	// Linux only for now — the Windows first boot installs through winget and
@@ -149,19 +160,19 @@ var builtin = []App{
 	{ID: "winmerge", Name: "WinMerge", Category: "IT tools", Winget: "WinMerge.WinMerge"},
 
 	{ID: "7zip", Name: "7-Zip", Category: "Utilities", Winget: "7zip.7zip"},
-	{ID: "notepadplusplus", Name: "Notepad++", Category: "Utilities", Winget: "Notepad++.Notepad++"},
+	{ID: "notepadplusplus", Name: "Notepad++", Category: "Utilities", Winget: "Notepad++.Notepad++", Desktop: true},
 	{ID: "powertoys", Name: "Microsoft PowerToys", Category: "Utilities", Winget: "Microsoft.PowerToys"},
 	{ID: "sharex", Name: "ShareX", Category: "Utilities", Winget: "ShareX.ShareX"},
 	{ID: "everything", Name: "Everything (instant file search)", Category: "Utilities", Winget: "voidtools.Everything"},
 	{ID: "flowlauncher", Name: "Flow Launcher", Category: "Utilities", Winget: "Flow-Launcher.Flow-Launcher", PerUser: true},
-	{ID: "qbittorrent", Name: "qBittorrent", Category: "Utilities", Winget: "qBittorrent.qBittorrent"},
+	{ID: "qbittorrent", Name: "qBittorrent", Category: "Utilities", Winget: "qBittorrent.qBittorrent", Desktop: true},
 
 	{ID: "vcredist", Name: "Visual C++ Redistributable (2015 and later, x64)", Category: "Runtimes", Winget: "Microsoft.VCRedist.2015+.x64"},
 	{ID: "dotnet8desktop", Name: ".NET 8 Desktop Runtime", Category: "Runtimes", Winget: "Microsoft.DotNet.DesktopRuntime.8"},
 	{ID: "java21", Name: "Java 21 (Eclipse Temurin JRE)", Category: "Runtimes", Winget: "EclipseAdoptium.Temurin.21.JRE"},
 	{ID: "oraclejava", Name: "Oracle Java 8", Category: "Runtimes", Winget: "Oracle.JavaRuntimeEnvironment"},
 
-	{ID: "vscode", Name: "Visual Studio Code", Category: "Development", Winget: "Microsoft.VisualStudioCode"},
+	{ID: "vscode", Name: "Visual Studio Code", Category: "Development", Winget: "Microsoft.VisualStudioCode", Desktop: true},
 	{ID: "git", Name: "Git", Category: "Development", Winget: "Git.Git"},
 	{ID: "python", Name: "Python 3", Category: "Development", Winget: "Python.Python.3.13"},
 	{ID: "powershell", Name: "PowerShell 7", Category: "Development", Winget: "Microsoft.PowerShell"},
@@ -170,13 +181,13 @@ var builtin = []App{
 	{ID: "docker", Name: "Docker Desktop", Category: "Development", Winget: "Docker.DockerDesktop", Licence: true, Large: true},
 	{ID: "githubdesktop", Name: "GitHub Desktop", Category: "Development", Winget: "GitHub.GitHubDesktop"},
 	{ID: "jetbrainstoolbox", Name: "JetBrains Toolbox", Category: "Development", Winget: "JetBrains.Toolbox", PerUser: true},
-	{ID: "postman", Name: "Postman", Category: "Development", Winget: "Postman.Postman", PerUser: true},
+	{ID: "postman", Name: "Postman", Category: "Development", Winget: "Postman.Postman", PerUser: true, Desktop: true},
 	{ID: "winscp", Name: "WinSCP", Category: "Development", Winget: "WinSCP.WinSCP"},
-	{ID: "putty", Name: "PuTTY", Category: "Development", Winget: "PuTTY.PuTTY"},
+	{ID: "putty", Name: "PuTTY", Category: "Development", Winget: "PuTTY.PuTTY", Desktop: true},
 
-	{ID: "steam", Name: "Steam", Category: "Games", Winget: "Valve.Steam"},
-	{ID: "epicgames", Name: "Epic Games Launcher", Category: "Games", Winget: "EpicGames.EpicGamesLauncher"},
-	{ID: "gog", Name: "GOG Galaxy", Category: "Games", Winget: "GOG.Galaxy"},
+	{ID: "steam", Name: "Steam", Category: "Games", Winget: "Valve.Steam", Desktop: true},
+	{ID: "epicgames", Name: "Epic Games Launcher", Category: "Games", Winget: "EpicGames.EpicGamesLauncher", Desktop: true},
+	{ID: "gog", Name: "GOG Galaxy", Category: "Games", Winget: "GOG.Galaxy", Desktop: true},
 	{ID: "eaapp", Name: "EA app", Category: "Games", Winget: "ElectronicArts.EADesktop"},
 	{ID: "ubisoftconnect", Name: "Ubisoft Connect", Category: "Games", Winget: "Ubisoft.Connect"},
 }

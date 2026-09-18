@@ -109,8 +109,10 @@ func TestProgramPickerData(t *testing.T) {
 	for _, a := range st.Apps {
 		byID[a.ID] = a
 	}
-	if a := byID["spotify"]; a.Winget != "Spotify.Spotify" || len(a.Labels) != 1 {
-		t.Errorf("spotify = %+v, want its winget id and the per-user label", a)
+	// Two labels now: Spotify installs per-user and wants a desktop, and the
+	// picker says both rather than picking one to mention.
+	if a := byID["spotify"]; a.Winget != "Spotify.Spotify" || len(a.Labels) != 2 {
+		t.Errorf("spotify = %+v, want its winget id, the per-user label and the desktop one", a)
 	}
 	if len(st.AppSets) != 3 || len(st.NotInWinget) == 0 {
 		t.Errorf("sets %d, hints %d", len(st.AppSets), len(st.NotInWinget))

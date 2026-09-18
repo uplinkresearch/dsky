@@ -139,7 +139,7 @@ func TestDownloadsListAndDelete(t *testing.T) {
 func TestFedoraRecipeDetailSaysWhatItDoes(t *testing.T) {
 	s := testServer(t)
 	h := s.handler()
-	w := post(t, h, "/api/recipes/save", `{"os_id":"fedora-44-server","name":"Lab","apps":["vlc","brave"]}`)
+	w := post(t, h, "/api/recipes/save", `{"os_id":"fedora-44-server","name":"Lab","apps":["git","nmap"]}`)
 	if w.Code != 202 {
 		t.Fatalf("save: %d %s", w.Code, w.Body)
 	}
@@ -158,14 +158,14 @@ func TestFedoraRecipeDetailSaysWhatItDoes(t *testing.T) {
 	if got := lines["Installer"]; got != "Installs by itself and erases the computer's disk" {
 		t.Errorf("Installer line: %q", got)
 	}
-	if got := lines["Install programs"]; !strings.Contains(got, "VLC") || !strings.Contains(got, "Brave") {
+	if got := lines["Install programs"]; !strings.Contains(got, "Git") || !strings.Contains(got, "Nmap") {
 		t.Errorf("Install programs line: %q", got)
 	}
 	// And it can be reopened in the dialog that made it.
 	if d.Form == nil {
 		t.Fatalf("not editable: %+v", d)
 	}
-	if strings.Join(d.Form.Apps, ",") != "vlc,brave" {
+	if strings.Join(d.Form.Apps, ",") != "git,nmap" {
 		t.Errorf("form apps %v", d.Form.Apps)
 	}
 }

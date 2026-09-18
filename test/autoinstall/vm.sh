@@ -129,7 +129,11 @@ server-26.04-programs)
   URL=$MIRROR/26.04/ubuntu-26.04.1-live-server-amd64.iso
   SHA=cc8a95cde20f6ced61a322420de00f10cc3c90ced545daa46cb9c1a117f1d927
   KIND=server PATCH=true IDENTITY=true OBSERVE=false
-  PROGRAMS=vlc,brave,obsidian,chrome,dsky SRC_ID=ubuntu-26.04-server ;;
+  # Server programs only: Ubuntu Server installs no desktop, so the picker
+  # no longer offers it VLC, Brave or Chrome. What is left covers apt, a snap
+  # and a published release; Flathub and the vendor repository are proven on
+  # desktop-26.04-programs, which is where they can actually be used.
+  PROGRAMS=git,tailscale,dsky SRC_ID=ubuntu-26.04-server ;;
 desktop-26.04-programs)
   URL=$MIRROR/26.04/ubuntu-26.04.1-desktop-amd64.iso
   SHA=601e30fbf5d97759367c632e2c33630665039b7e2158fd068403da3ccf1bda1f
@@ -169,7 +173,12 @@ fedora-44-programs)
   URL=https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-dvd-x86_64-44-1.7.iso
   SHA=85837793bfa36db6bc709b4cecd2ec116951b87d9c53c3d95eb2fac8dcf7cf1f
   KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
-  PROGRAMS=vlc,obsidian,chrome,dsky SRC_ID=fedora-44-server ;;
+  # Likewise Fedora Server. Note what this costs: fedora-44-server is the
+  # only Fedora entry that offers programs at all, so refusing desktop ones
+  # leaves Fedora with dnf and published releases and nothing else -- its
+  # Flathub and vendor-rpm paths are now unreachable from the picker, and so
+  # untested. Worth a Workstation entry one day; see docs/plan-linux-apps.md.
+  PROGRAMS=git,tailscale,dsky SRC_ID=fedora-44-server ;;
 server-26.04-two-disks)
   # The Ubuntu half of the question. Its answers say `storage: layout: direct`
   # rather than anything like clearpart --all, so subiquity is expected to
@@ -222,7 +231,7 @@ server-26.04-drivers)
   URL=$MIRROR/26.04/ubuntu-26.04.1-live-server-amd64.iso
   SHA=cc8a95cde20f6ced61a322420de00f10cc3c90ced545daa46cb9c1a117f1d927
   KIND=server PATCH=true IDENTITY=true OBSERVE=false
-  PROGRAMS=vlc SRC_ID=ubuntu-26.04-server DRIVERS=true ;;
+  PROGRAMS=git SRC_ID=ubuntu-26.04-server DRIVERS=true ;;
 *) echo "unknown case $CASE" >&2; exit 2 ;;
 esac
 PROGRAMS=${PROGRAMS:-}
@@ -772,6 +781,12 @@ if [ -n "$PROGRAMS" ]; then
     if picked chrome; then
       check "Chrome installed from Google's rpm repository" "rpm -q google-chrome-stable"
     fi
+    if picked git; then
+      check "package from Fedora's own repositories (git)" "rpm -q git"
+    fi
+    if picked tailscale; then
+      check "package from Fedora's own repositories (tailscale)" "rpm -q tailscale"
+    fi
     if picked dsky; then
       check "DSKY installed from its own release, and runs" \
         "/usr/local/bin/dsky version | grep -q '^dsky v'"
@@ -787,9 +802,17 @@ if [ -n "$PROGRAMS" ]; then
     check "Ubuntu package installed during setup (vlc)" \
       "dpkg-query -W -f='\${Status}' vlc | grep -q 'install ok installed'"
   fi
+  if picked git; then
+    check "Ubuntu package installed during setup (git)" \
+      "dpkg-query -W -f='\${Status}' git | grep -q 'install ok installed'"
+  fi
   if picked brave; then
     wait_for_snapd $((15 * 60)) || true
     check_eventually $((10 * 60)) "snap installed (brave)" "snap list brave" || true
+  fi
+  if picked tailscale; then
+    wait_for_snapd $((15 * 60)) || true
+    check_eventually $((10 * 60)) "snap installed (tailscale)" "snap list tailscale" || true
   fi
   if picked obsidian; then
     check "Flathub app installed (md.obsidian.Obsidian)" "flatpak info md.obsidian.Obsidian"
@@ -890,7 +913,31 @@ else
   check "installed system reached $target.target" "systemctl is-active $target.target"
 fi
 
-ssh_run "systemd-analyze 2>/dev/null; uname -a; lsb_release -ds" >"$W/system.txt" 2>&1 || true
+# What the installed system actually is, rather than what it was expected to
+# be. Written for every case because the questions it answers keep coming up
+# second-hand -- which kernel series, whether cloud-init is still there, who
+# manages the network -- and guessing at them from the outside is how a
+# confident wrong answer gets repeated.
+ssh_run "
+  echo '== identity'; lsb_release -ds; uname -a
+  echo '== kernel packages'
+  dpkg-query -W -f='\${Package} \${Version} \${Status}\n' 'linux-image*' 'linux-generic*' 2>/dev/null | grep -v deinstall || true
+  echo '== is a HWE kernel installed or available'
+  apt-cache policy linux-generic linux-generic-hwe-\$(lsb_release -rs) 2>/dev/null || true
+  echo '== cloud-init'
+  dpkg-query -W -f='\${Package} \${Version}\n' cloud-init 2>/dev/null || echo 'cloud-init: not installed'
+  systemctl is-enabled cloud-init.service 2>/dev/null || true
+  ls /etc/cloud/cloud.cfg.d/ 2>/dev/null || true
+  test -f /etc/cloud/cloud-init.disabled && echo 'cloud-init: disabled by flag file' || true
+  echo '== network management'
+  for u in NetworkManager systemd-networkd systemd-resolved; do
+    printf '%s: %s\n' \"\$u\" \"\$(systemctl is-active \$u 2>/dev/null)\"
+  done
+  ls /etc/netplan/ 2>/dev/null || true
+  echo '== storage layout'; lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINTS 2>/dev/null || true
+  echo '== package count'; dpkg-query -f '.\n' -W 2>/dev/null | wc -l
+  echo '== systemd-analyze'; systemd-analyze 2>/dev/null
+" >"$W/system.txt" 2>&1 || true
 ssh_run poweroff >/dev/null 2>&1 || true
 stop_vm
 exit $fail

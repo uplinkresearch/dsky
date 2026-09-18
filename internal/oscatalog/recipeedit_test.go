@@ -87,7 +87,12 @@ func TestUbuntuRecipeFormAndDelete(t *testing.T) {
 	if !ok {
 		t.Skip("no ubuntu-26.04-server in the catalog")
 	}
-	apps := []string{"vlc", "brave", "obsidian", "chrome"}
+	// Server programs: a server has no desktop, so the picker no longer
+	// offers it VLC or Chrome. An apt package and a snap -- not the release
+	// install, because the half of this test that strips the marker
+	// reconstructs the picks by matching packages, and a release leaves no
+	// package behind to match.
+	apps := []string{"git", "tailscale"}
 	if _, err := SaveRecipe(context.Background(), lib, wsDir, "lab", "Lab", e, Options{Apps: apps}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +164,7 @@ func TestFedoraRecipeFormAndDelete(t *testing.T) {
 	if !ok {
 		t.Skip("no fedora-44-server in the catalog")
 	}
-	apps := []string{"vlc", "brave", "chrome"}
+	apps := []string{"git", "nmap", "dsky"}
 	if _, err := SaveRecipe(context.Background(), lib, wsDir, "lab", "Lab", e, Options{Apps: apps}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -174,10 +179,10 @@ func TestFedoraRecipeFormAndDelete(t *testing.T) {
 
 	// Saved over with a different list: the form follows, and the old
 	// kickstart is not left beside the new one.
-	if _, err := ReplaceRecipe(context.Background(), lib, wsDir, "lab", "Lab", e, Options{Apps: []string{"vlc"}}, nil); err != nil {
+	if _, err := ReplaceRecipe(context.Background(), lib, wsDir, "lab", "Lab", e, Options{Apps: []string{"git"}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if f, err = loadForm(t, wsDir, "lab"); err != nil || !reflect.DeepEqual(f.Apps, []string{"vlc"}) {
+	if f, err = loadForm(t, wsDir, "lab"); err != nil || !reflect.DeepEqual(f.Apps, []string{"git"}) {
 		t.Errorf("after replace: %+v %v", f, err)
 	}
 	left, _ := filepath.Glob(ks + "*")
