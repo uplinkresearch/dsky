@@ -231,7 +231,15 @@ type URLResolver func(ctx context.Context, src *manifest.Source) (string, error)
 // is preserved (the blob stays cached), so pinning then re-pulling is free.
 // resolve is consulted for provider-based sources; nil restricts Pull to
 // plain-URL manifests.
-func (l *Library) Pull(ctx context.Context, src *manifest.Source, pinTOFU bool, resolve URLResolver, progress fetch.Progress) (Entry, error) {
+//
+// note hears which server the bytes are coming from and why that changed: a
+// mirror picked for being faster, a server tried again after it stopped
+// sending, the move on to the next one. It may be nil — and it was nil at
+// every call site for as long as there was anything to say, so DSKY has been
+// quietly downloading Ubuntu from kernel.org, and quietly retrying, while the
+// screen said "downloading" and nothing else. A progress bar that stops for
+// seven seconds and explains nothing is how a working program looks broken.
+func (l *Library) Pull(ctx context.Context, src *manifest.Source, pinTOFU bool, resolve URLResolver, progress fetch.Progress, note func(string)) (Entry, error) {
 	if e, err := l.Resolve(src.ID); err == nil && src.SHA256 != "" && e.SHA256 == src.SHA256 {
 		return e, nil // already present and matching
 	}
@@ -253,7 +261,7 @@ func (l *Library) Pull(ctx context.Context, src *manifest.Source, pinTOFU bool, 
 	// from some networks), because the hash below decides whether what arrived
 	// is the file. An unpinned one only ever comes from its own URL: there is
 	// nothing to catch a mirror serving something else.
-	sum, used, err := fetch.DownloadAny(ctx, pullURLs(src, url), dest, progress, nil)
+	sum, used, err := fetch.DownloadAny(ctx, pullURLs(src, url), dest, progress, note)
 	if err != nil {
 		return Entry{}, err
 	}

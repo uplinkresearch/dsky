@@ -229,3 +229,29 @@ func TestTruncationKeepsCharactersWhole(t *testing.T) {
 		t.Errorf("an over-long line was not marked as truncated:\n%q", out)
 	}
 }
+
+// A note from the download arrives as its own stage, between progress reports
+// on the one it interrupts. What matters is that it appears, that the download
+// carries on afterwards, and that nothing is left half-drawn.
+func TestDownloadNoteReadsAsItsOwnStage(t *testing.T) {
+	p, buf := newProgress(false)
+	p.report("download", 1<<20, 8<<20)
+	p.report("mirrors.edge.kernel.org stopped sending (unexpected EOF); trying it again in 2s", 0, -1)
+	p.report("download", 2<<20, 8<<20)
+	p.finish()
+
+	out := buf.String()
+	for _, want := range []string{"download...", "trying it again in 2s", "8.0 MiB"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	// The download is announced again after the interruption rather than
+	// silently resuming under the note's heading.
+	if strings.Count(out, "download...") != 2 {
+		t.Errorf("download announced %d times, want 2:\n%s", strings.Count(out, "download..."), out)
+	}
+	if strings.Contains(out, "\r") {
+		t.Errorf("carriage returns in a non-tty log:\n%q", out)
+	}
+}

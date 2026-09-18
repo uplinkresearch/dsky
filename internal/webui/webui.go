@@ -797,7 +797,7 @@ func (s *Server) ensureSources(ctx context.Context, ws *workspace.Workspace, rc 
 		}
 		if _, err := s.Lib.Pull(ctx, src, src.Provider != "", resolver, func(done, total int64) {
 			progress("downloading "+ref, done, total)
-		}); err != nil {
+		}, func(s string) { progress(s, 0, -1) }); err != nil {
 			return err
 		}
 	}

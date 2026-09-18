@@ -465,7 +465,7 @@ func ensureRef(ctx context.Context, req Request, ref string) error {
 	req.progress("downloading "+ref, 0, -1)
 	if _, err := req.Library.Pull(ctx, src, true, nil, func(done, total int64) {
 		req.progress("downloading "+ref, done, total)
-	}); err != nil {
+	}, func(s string) { req.progress(s, 0, -1) }); err != nil {
 		return fmt.Errorf("compose: could not fetch %s: %w", ref, err)
 	}
 	return nil
