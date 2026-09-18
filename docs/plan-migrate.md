@@ -169,11 +169,52 @@ because nothing after OOBE runs at all until (2) is solved. The specialize
 commands are kept: they are correct, harmless, and the next attempt needs them
 there to see what OOBE does to them.
 
-The order of work is therefore (2) first, then (1) on top of it. (2) is a
-question about why OOBE goes interactive on this path at all: it creates
-`defaultuser0` and runs `PrepareUserOOBE`, which is the flow for a person
-typing answers, despite `HideOnlineAccountScreens`, `HideEULAPage` and a
-`LocalAccount` that should leave it nothing to ask.
+**They then turned out to be one defect.** Reading the same log end to end,
+with the line numbers of all three OOBE runs, gives the whole loop:
+
+```
+02:05:32 [Shell Unattend] UserAccounts: created account 'uplink'
+02:05:32 [Shell Unattend] AutoLogon Username is 'uplink'
+02:05:33 [msoobe.exe]     Not setting autologon for new local user ... domain-joined
+02:06:36 [msoobe.exe]     PostTaskOperations with accountNeeded = 1
+02:06:36 [msoobe.exe]     Post-setup for the default account ... m_defaultAccountName = defaultuser0
+02:06:37                  image state [UNDEPLOYABLE] --> [COMPLETE]      <- OOBE finished
+02:09:21 [taskhostw.exe]  OOBE Monitor event received: 101
+02:11:21 [taskhostw.exe]  UserOOBEController::Exit() started [2]
+02:11:21                  image state [COMPLETE] --> [SPECIALIZE_RESEAL_TO_OOBE]
+02:11:44                  WinDeploy relaunches -> OOBE run 2 ... and run 3
+```
+
+The answer file is honoured: the account is created, added to Administrators,
+given its password, and named as the automatic sign-in. Then msoobe overrides
+that because the machine is domain-joined, hands the sign-in to `defaultuser0`
+to run *user* OOBE instead, and user OOBE has no flow it can complete without
+a person. `UserOOBEController::Exit() [2]` resets the image state and the
+machine reboots back into OOBE. Three times, and it would have gone on.
+
+So "Why did my PC restart?" is not a page to get past — it is the machine
+explaining a reset it will keep doing. Clicking it was never going to help.
+The single cause is **being domain-joined while OOBE runs**.
+
+(`C:\Users\uplink` being absent was a red herring and nearly sent this the
+wrong way: a profile directory is only made at first sign-in. The account was
+there all along, in the SAM. Check the SAM hive, not `C:\Users`.)
+
+**The fix has a precedent in this repository.** A by-serial batch already goes
+through OOBE *not yet joined* and applies its blob at first boot with
+`djoin /requestodj /loadfile <file> /windowspath %SystemRoot% /localos`
+(`internal/recipe/domainserial.go`), which is why that path does not hit any
+of this. A migration should join the same way: stage the blob, leave
+`AccountData` out of the answer file, and apply it once the machine is up.
+
+That also settles who does it. The generated first-boot script cannot, because
+a migration needs the agent and its manifest; so the agent grows the step, and
+`agentCovers` stops needing an exception for offline joins at all. M5 already
+had "move the domain-join check into the agent" on it — this is that work,
+arriving earlier and for a better reason. `SetupComplete.cmd` is not a
+candidate and never was: `internal/recipe/lint.go` already refuses it, because
+Windows skips it under a firmware OEM key, which is exactly the hardware a
+practice's replacement PC has.
 
 A separate finding, independent of both: this build was making a **passwordless
 local administrator that signs itself in automatically on a domain member** —
