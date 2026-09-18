@@ -222,7 +222,7 @@ func ensureSources(ctx context.Context, ws *workspace.Workspace, lib *library.Li
 		}
 		entry, err := lib.Pull(ctx, src, tofu, resolver, func(done, total int64) {
 			prog.report("download", done, total)
-		})
+		}, func(s string) { prog.report(s, 0, -1) })
 		prog.finish()
 		var unpinned *library.ErrUnpinned
 		if errors.As(err, &unpinned) {

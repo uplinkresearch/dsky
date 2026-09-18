@@ -650,6 +650,10 @@ func ensureSource(ctx context.Context, lib *library.Library, e Entry, progress f
 		if progress != nil {
 			progress("downloading "+e.Name, done, total)
 		}
+	}, func(s string) {
+		if progress != nil {
+			progress(s, 0, -1)
+		}
 	})
 	if err != nil && e.Family == Windows && e.Fido != nil {
 		// Say where DSKY looked, so a download saved somewhere else, or under

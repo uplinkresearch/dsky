@@ -33,6 +33,12 @@ func (p Progress) stage(format string, args ...any) {
 	}
 }
 
+// note carries fetch's account of which server the bytes are coming from,
+// and why that changed, into the same line the stages use.
+func (p Progress) note() func(string) {
+	return func(s string) { p.stage("%s", s) }
+}
+
 func (p Progress) bytes(stage string) func(done, total int64) {
 	return func(done, total int64) {
 		if p != nil {
@@ -200,7 +206,7 @@ func AddPack(ctx context.Context, ws *workspace.Workspace, lib *library.Library,
 	}
 	// pinTOFU is on: these manifests are written from catalog data, and feeds
 	// without a SHA-256 are verified against their SHA-1 just below.
-	entry, err := lib.Pull(ctx, src, true, nil, progress.bytes("downloading driver "+id))
+	entry, err := lib.Pull(ctx, src, true, nil, progress.bytes("downloading driver "+id), progress.note())
 	var unpinned *library.ErrUnpinned
 	if err != nil && !errors.As(err, &unpinned) {
 		return "", err
@@ -283,7 +289,7 @@ func resolve(ctx context.Context, ws *workspace.Workspace, lib *library.Library,
 		if _, err := lib.Resolve(s.ID); err == nil {
 			return nil
 		}
-		_, err := lib.Pull(ctx, s, true, nil, progress.bytes("downloading driver "+s.ID))
+		_, err := lib.Pull(ctx, s, true, nil, progress.bytes("downloading driver "+s.ID), progress.note())
 		return err
 	}
 	cache := catalog.NewCache(lib.HelpersDir())
