@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -131,7 +132,12 @@ func shorten(t *testing.T) {
 	// 600 ms a loaded Windows runner once went that long between reports on a
 	// healthy mirror and gave up on it too.
 	probeBytes, probeTimeout, stallTimeout = 256<<10, 3*time.Second, 2*time.Second
-	t.Cleanup(func() { probeBytes, probeTimeout, stallTimeout = pb, pt, st })
+	ap, rb := attemptsPerSource, retryBackoff
+	retryBackoff = []time.Duration{10 * time.Millisecond}
+	t.Cleanup(func() {
+		probeBytes, probeTimeout, stallTimeout = pb, pt, st
+		attemptsPerSource, retryBackoff = ap, rb
+	})
 }
 
 func run(t *testing.T, urls []string) (sum, used string, got []byte, notes []string, err error) {
@@ -244,5 +250,90 @@ func TestEveryCatalogISORootHasMirrors(t *testing.T) {
 				t.Errorf("%s: alternate %s does not end in the same file name", u, a)
 			}
 		}
+	}
+}
+
+// flaky drops the connection on its first n requests and serves normally after
+// that, counting what it was asked for.
+type flaky struct {
+	data    []byte
+	failFor int
+	mu      sync.Mutex
+	hits    int
+}
+
+func (f *flaky) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	f.hits++
+	fail := f.hits <= f.failFor
+	f.mu.Unlock()
+	if fail {
+		// Send some of it, then hang up: a truncated read, which is what
+		// dl.fedoraproject.org did at byte 131563792.
+		start := 0
+		if rg := r.Header.Get("Range"); strings.HasPrefix(rg, "bytes=") {
+			start, _ = strconv.Atoi(strings.SplitN(strings.TrimPrefix(rg, "bytes="), "-", 2)[0])
+		}
+		server{data: f.data, failAt: start + len(f.data)/4}.ServeHTTP(w, r)
+		return
+	}
+	server{data: f.data}.ServeHTTP(w, r)
+}
+
+func (f *flaky) count() int { f.mu.Lock(); defer f.mu.Unlock(); return f.hits }
+
+// A server having a moment is not a server that is down. This used to abandon
+// it on the first truncated read, and with no mirror behind it -- which was
+// every Linux ISO but Ubuntu's -- that ended the build.
+func TestDownloadAnyRetriesTheSameServer(t *testing.T) {
+	shorten(t)
+	data, want := testFile(2 << 20)
+	f := &flaky{data: data, failFor: 2}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+
+	sum, used, got, notes, err := run(t, []string{srv.URL + "/a.iso"})
+	if err != nil {
+		t.Fatalf("gave up on a server that works: %v (notes %v)", err, notes)
+	}
+	if used != srv.URL+"/a.iso" || sum != want || !bytes.Equal(got, data) {
+		t.Fatalf("used %s, sum ok=%v, bytes ok=%v", used, sum == want, bytes.Equal(got, data))
+	}
+	// Each try resumes rather than starting again: the probe is skipped for a
+	// single URL, so the hits are the two failures plus the one that finished.
+	if f.count() != 3 {
+		t.Errorf("%d requests, want 3 (two that broke, one that finished)", f.count())
+	}
+	if len(notes) == 0 || !strings.Contains(strings.Join(notes, " "), "trying it again") {
+		t.Errorf("nothing said about the retry: %v", notes)
+	}
+}
+
+// A 404 is an answer. Asking again three times is just slower.
+func TestDownloadAnyDoesNotRetryAMissingFile(t *testing.T) {
+	shorten(t)
+	var hits int
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits++
+		mu.Unlock()
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	_, _, _, _, err := run(t, []string{srv.URL + "/gone.iso"})
+	if err == nil {
+		t.Fatal("a 404 succeeded")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if hits != 1 {
+		t.Errorf("%d requests for a 404, want 1", hits)
+	}
+	// And the message says how many places were tried, because "every source
+	// failed" of a one-item list read as "the internet is down".
+	if !strings.Contains(err.Error(), "all 1 source(s) failed") {
+		t.Errorf("message hides the size of the list: %v", err)
 	}
 }

@@ -106,7 +106,7 @@ func DownloadAny(ctx context.Context, urls []string, dest string, progress Progr
 		if i > 0 {
 			note("continuing from " + host(u))
 		}
-		sum, err := downloadWatched(ctx, u, dest, progress)
+		err := attempt(ctx, u, dest, progress, note, &sum)
 		if err == nil {
 			return sum, u, nil
 		}
@@ -115,7 +115,62 @@ func DownloadAny(ctx context.Context, urls []string, dest string, progress Progr
 		}
 		errs = append(errs, host(u)+": "+err.Error())
 	}
-	return "", "", fmt.Errorf("fetch: every source failed: %s", strings.Join(errs, "; "))
+	// The count is spelled out because it is the thing worth knowing. This
+	// said "every source failed" of a list with one URL in it, twice, and read
+	// both times as "the internet is down" rather than "there is nowhere else
+	// to go" -- which is a different bug with a different fix.
+	return "", "", fmt.Errorf("fetch: all %d source(s) failed: %s", len(order), strings.Join(errs, "; "))
+}
+
+// Attempts per server, and how long to wait between them. Variables so tests
+// can shorten them.
+var (
+	attemptsPerSource = 3
+	retryBackoff      = []time.Duration{2 * time.Second, 5 * time.Second}
+)
+
+// attempt downloads from one server, trying again when the failure is the kind
+// that passes.
+//
+// A Fedora build died on "reading ... at byte 131563792: unexpected EOF" from
+// a server that was working a second earlier and working a second later; the
+// message DSKY printed even ended "(re-run to resume)", which is the program
+// saying it knows another go would have worked. Each try resumes from the
+// .part file rather than starting again, so a retry costs the bytes lost since
+// the last one and nothing else.
+func attempt(ctx context.Context, u, dest string, progress Progress, note func(string), sum *string) error {
+	var err error
+	for i := 0; i < attemptsPerSource; i++ {
+		if i > 0 {
+			wait := retryBackoff[min(i-1, len(retryBackoff)-1)]
+			note(fmt.Sprintf("%s stopped sending (%v); trying it again in %v", host(u), err, wait))
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(wait):
+			}
+		}
+		*sum, err = downloadWatched(ctx, u, dest, progress)
+		if err == nil || ctx.Err() != nil {
+			return err
+		}
+		if !worthRetrying(err) {
+			return err
+		}
+	}
+	return err
+}
+
+// worthRetrying reports whether another go at the same server could differ.
+// A 404 is an answer and repeating the question will not change it; a reset
+// connection, a truncated read, a timeout or a 503 are all the server having
+// a moment.
+func worthRetrying(err error) bool {
+	var se *StatusError
+	if errors.As(err, &se) {
+		return se.Code == http.StatusTooManyRequests || se.Code >= 500
+	}
+	return true
 }
 
 // downloadWatched is Download that gives up on a server that stops sending, so
