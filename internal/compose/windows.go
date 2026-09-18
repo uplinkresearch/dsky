@@ -118,6 +118,12 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 	vars := ws.MergedVars(r, req.CLIVars)
 	refFiles := map[string]string{} // source ref -> staged filename under Scripts/
 
+	// An offline join the agent performs at first boot rather than Setup in
+	// specialize. See agentODJ for why this is not the obvious way round.
+	useAgent, _ := agentCovers(r)
+	agentJoin := useAgent && w.Domain.Offline()
+	odjBase64 := ""
+
 	// Unattend.
 	if w.Unattend != nil {
 		uvars, err := overlayVars(vars, w.Unattend.Vars)
@@ -130,14 +136,24 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 		}); err != nil {
 			return nil, fmt.Errorf("compose: %w", err)
 		}
+		if agentJoin {
+			// The blob is read and validated exactly as before; what changes
+			// is who applies it. The answer file gets no join element at all,
+			// so Setup leaves the machine in a workgroup and OOBE takes the
+			// path DSKY has always shipped.
+			odjBase64 = uvars["domain_odj_blob"]
+			uvars["domain_mode"] = agentDomainMode
+		}
 		rendered, err := recipe.RenderTemplate(
 			filepath.Join(ws.Dir, filepath.FromSlash(w.Unattend.Template)),
 			recipe.Context{Org: ws.Org(), Vars: uvars, Recipe: r})
 		if err != nil {
 			return nil, err
 		}
-		if err := checkDomainRendered(rendered, w.Domain, w.Unattend.Template); err != nil {
-			return nil, err
+		if !agentJoin {
+			if err := checkDomainRendered(rendered, w.Domain, w.Unattend.Template); err != nil {
+				return nil, err
+			}
 		}
 		if rendered, err = withOEMCopy(rendered); err != nil {
 			return nil, err
@@ -147,6 +163,20 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 			return nil, err
 		}
 		stage.AddFile(p, "/autounattend.xml")
+	}
+
+	// An offline join the agent applies once the machine is up: the same file
+	// `djoin /provision` made, written the way `/savefile` writes it, because
+	// that is what `djoin /requestodj /loadfile` reads.
+	if agentJoin {
+		if odjBase64 == "" {
+			return nil, fmt.Errorf("compose: this recipe joins a domain from a single file, but no provisioning data was read from it")
+		}
+		p := filepath.Join(buildTmp, agentODJName)
+		if err := os.WriteFile(p, odjFileBytes(odjBase64), 0o600); err != nil {
+			return nil, err
+		}
+		stage.AddFile(p, path.Join(scriptsImg, agentODJName))
 	}
 
 	// Domain join by serial number: every computer's file, and the script

@@ -36,9 +36,8 @@ func TestAgentCoversOnlyWhatItCanDo(t *testing.T) {
 		t.Error("a hand-written first-boot script was replaced by the agent")
 	}
 
-	// A single offline join file is performed by Setup in specialize, long
-	// before the agent runs at first logon: the two never meet, and a
-	// migration joins a domain by definition.
+	// A single offline join file is the agent's to apply, after OOBE, on a
+	// machine that is up. A migration joins a domain by definition.
 	withDomain := base
 	withDomain.Domain = &recipe.DomainSpec{Blob: "pc.txt"}
 	if covered, why := agentCovers(&recipe.Recipe{ID: "d", Windows: &withDomain}); !covered {
@@ -126,5 +125,42 @@ func TestAgentFirstbootJustRunsTheAgent(t *testing.T) {
 		if agentFirstboot[i] > 127 {
 			t.Fatalf("non-ASCII byte in the launcher at %d", i)
 		}
+	}
+}
+
+// The join a migration needs does not go in the answer file. A machine that is
+// a domain member while OOBE runs never reaches a desktop: OOBE refuses to
+// sign a local account in on one ("Not setting autologon for new local user.
+// e.g. upgrade, domain-joined, or system-managed user"), hands the sign-in to
+// defaultuser0 for user OOBE, and user OOBE cannot finish with nobody at the
+// keyboard -- so the OOBE monitor resets the image state and reboots into OOBE,
+// for as long as anybody lets it. The agent applies the blob afterwards.
+func TestAnOfflineJoinIsTheAgentsToDoAfterOOBE(t *testing.T) {
+	r := &recipe.Recipe{ID: "front-desk", Windows: &recipe.WindowsSpec{
+		// Blob and nothing else, which is the only shape an offline join has:
+		// a domain name alongside it would make the spec credentialed.
+		Domain:    &recipe.DomainSpec{Blob: "newdesk01.txt"},
+		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{{Drivers: true}, {Debloat: true}, {Apps: true}}},
+	}}
+	m := buildManifest(r, recipe.ResolvedDrivers{}, nil, "")
+	if m.Domain == nil {
+		t.Fatal("the manifest does not carry the join, so the machine would install into a workgroup and look fine")
+	}
+	if m.Domain.File != agentODJName {
+		t.Errorf("join: %+v", m.Domain)
+	}
+	// First, not last: a machine that has to restart for the join should do
+	// it before an hour of installing programs, not after.
+	if got := strings.Join(m.Steps, ","); got != "domain,drivers,debloat,apps" {
+		t.Errorf("steps are %q", got)
+	}
+	// And with no domain there is no such step, so every recipe that worked
+	// before this still produces the manifest it did.
+	plain := &recipe.Recipe{ID: "p", Windows: &recipe.WindowsSpec{
+		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{{Drivers: true}}},
+	}}
+	if m := buildManifest(plain, recipe.ResolvedDrivers{}, nil, ""); m.Domain != nil ||
+		strings.Join(m.Steps, ",") != "drivers" {
+		t.Errorf("a build with no domain grew a join: %+v %v", m.Domain, m.Steps)
 	}
 }

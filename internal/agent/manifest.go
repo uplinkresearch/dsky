@@ -53,9 +53,10 @@ type Manifest struct {
 	Drivers Drivers  `json:"drivers"`
 	Debloat *Debloat `json:"debloat,omitempty"`
 	Apps    *Apps    `json:"apps,omitempty"`
+	Domain  *Domain  `json:"domain,omitempty"`
 
 	// Steps is the order to run in, using the recipe's own step names
-	// ("drivers", "debloat", "apps"). Unknown steps are logged and skipped
+	// ("domain", "drivers", "debloat", "apps"). Unknown steps are logged and skipped
 	// rather than failing the run.
 	Steps []string `json:"steps"`
 

@@ -262,9 +262,9 @@ var ubuntu = map[string]UbuntuSource{
 	"nodejs":     {Apt: "nodejs"},
 	// Docker Desktop is not published for Ubuntu as a package; docker.io is
 	// the engine, which is what the word "Docker" means on a Linux machine.
-	"docker": {Apt: "docker.io", Note: "installs the Docker engine, not Docker Desktop"},
-	"postman":    {Snap: "postman"},
-	"putty":      {Apt: "putty"},
+	"docker":  {Apt: "docker.io", Note: "installs the Docker engine, not Docker Desktop"},
+	"postman": {Snap: "postman"},
+	"putty":   {Apt: "putty"},
 
 	"dsky": {Release: ReleaseDSKY},
 

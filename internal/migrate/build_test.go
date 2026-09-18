@@ -103,8 +103,11 @@ func TestABuildNeedsTheJoinFileAndTheOU(t *testing.T) {
 	if p.DomainBlob != "/tmp/pc-odj.txt" {
 		t.Errorf("the join file did not reach the build: %+v", p)
 	}
-	// The blob names the computer; a second name here would break the trust
-	// the join sets up, so the build must not send one.
+	// The blob names the computer, so the build does not -- and that still
+	// holds now the agent applies it after OOBE rather than Setup applying it
+	// in specialize. Proven on a lab machine: built with no name of its own,
+	// it came back from the agent's join as NEWDESK01 in lab.dsky.local, the
+	// name its computer account was provisioned for.
 	if p.Hostname != "" {
 		t.Errorf("a hostname was sent alongside an offline join: %q", p.Hostname)
 	}

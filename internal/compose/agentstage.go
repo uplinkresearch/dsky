@@ -30,6 +30,38 @@ rem dsky-agent.json beside it. Edit the recipe, not this file.
 //
 // The fallback is the point: a build that cannot use the agent produces the
 // media it produced last week, not broken media.
+// agentDomainMode is what the answer file is told when the agent will do the
+// join: nothing. No Provisioning element, no Credentials, no join at all --
+// Setup installs Windows into a workgroup and OOBE runs on a machine that is
+// not yet a domain member.
+//
+// agentODJ is why. Applying the blob in specialize is the obvious way round
+// and it is what DSKY did, and on a machine that also has to sign itself in to
+// finish provisioning it does not work. The lab machine's own OOBE log:
+//
+//	[Shell Unattend] UserAccounts: created account 'uplink'
+//	[Shell Unattend] AutoLogon Username is 'uplink'
+//	[msoobe.exe]     Not setting autologon for new local user ... domain-joined
+//	[msoobe.exe]     PostTaskOperations with accountNeeded = 1
+//	[taskhostw.exe]  UserOOBEController::Exit() started [2]
+//	                 image state [COMPLETE] --> [SPECIALIZE_RESEAL_TO_OOBE]
+//
+// The answer file is honoured; msoobe then overrides the automatic sign-in
+// because the machine is domain-joined, hands it to defaultuser0 to run user
+// OOBE, and user OOBE cannot finish without somebody at the keyboard. The
+// monitor times out and reboots back into OOBE, over and over.
+//
+// A by-serial batch is NOT the counter-example -- I thought it was, and it is
+// worth writing down that it is not. It runs djoin in the specialize pass too
+// (internal/recipe/domainserial.go), so those machines are domain members
+// before OOBE starts, same as this was, and they are exposed to the same loop
+// whenever they also sign themselves in. Nothing here fixes that; it is
+// recorded in the plan doc as its own question.
+const (
+	agentDomainMode = "agent"
+	agentODJName    = "dsky-odj.txt"
+)
+
 func agentCovers(r *recipe.Recipe) (bool, string) {
 	w := r.Windows
 	if w == nil {
@@ -60,12 +92,9 @@ func agentCovers(r *recipe.Recipe) (bool, string) {
 		// with the migration runner, and this can be revisited then.
 		return false, "it joins a domain without a single join file"
 	}
-	// A single offline join file is no obstacle: Setup performs the join in
-	// specialize, from the blob in the unattend, long before anything runs at
-	// first logon, and the two never meet. This was refused for caution
-	// rather than conflict, and the refusal meant every migration -- which
-	// joins a domain by definition -- fell back to the generated scripts,
-	// which cannot read a migration's manifest.
+	// A single offline join file is no obstacle, because with the agent in
+	// charge the join no longer happens during Setup at all: the agent
+	// applies it at first boot instead. See agentODJ.
 	if !agentbin.Available(agentbin.AMD64) {
 		return false, "this DSKY was built without the agent"
 	}
@@ -97,6 +126,12 @@ func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []a
 			OnlyVendor: e.OnlyVendor, OnlyModel: e.OnlyModel,
 			TimeoutMinutes: recipe.ModelInstallerTimeoutMinutes,
 		})
+	}
+	if w.Domain.Offline() {
+		m.Domain = &agent.Domain{File: agentODJName}
+		// First, and before the programs: a machine that joins and then
+		// restarts should do it before an hour of installing, not after.
+		m.Steps = append([]string{agent.StepDomain}, m.Steps...)
 	}
 	if w.Debloat.Enabled() {
 		m.Debloat = &agent.Debloat{Preset: w.Debloat.Preset, Apps: recipe.DebloatApps(w.Debloat)}

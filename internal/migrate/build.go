@@ -94,9 +94,17 @@ func PlanBuild(m *Manifest, odjBlob string) (*BuildPlan, error) {
 			return nil, fmt.Errorf("this machine joins %s, so the build needs its offline join file", m.Identity.DomainFQDN)
 		}
 		p.DomainBlob = odjBlob
-		// The join file names the computer. A second name here renames the
-		// machine to something its own computer account does not match, and
-		// breaks the trust the join just established.
+		// No name from here. The blob names the computer, and it does so
+		// even though the agent now applies it after OOBE rather than Setup
+		// applying it in specialize: a lab machine built with no name of its
+		// own (the answer file's default is "*", meaning random) came back
+		// from the agent's join as NEWDESK01, in lab.dsky.local, which is the
+		// name its computer account was provisioned for.
+		//
+		// I was about to send the name from here as belt and braces, on the
+		// theory that a machine already running has to be renamed by
+		// somebody. The lab says djoin does it. Sending a name too is the
+		// untested configuration, so it does not go in.
 		p.Hostname = ""
 	}
 

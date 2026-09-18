@@ -205,7 +205,7 @@
       </RunSynchronous>
     </component>
     {{end}}
-    {{if and (ne .Vars.domain_mode "") (ne .Vars.domain_mode "by_serial")}}
+    {{if and (and (ne .Vars.domain_mode "") (ne .Vars.domain_mode "by_serial")) (ne .Vars.domain_mode "agent")}}
     <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64"
                publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <RunSynchronous>

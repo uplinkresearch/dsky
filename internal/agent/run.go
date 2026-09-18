@@ -152,6 +152,8 @@ func Apply(dir string, opts RunOptions) (int, error) {
 		before := len(a.J.Failures())
 		a.UI.Doing(step, "")
 		switch step {
+		case stepDomain:
+			a.domainStep()
 		case stepDrivers:
 			a.driversStep()
 		case stepDebloat:
