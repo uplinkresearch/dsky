@@ -215,3 +215,34 @@ func TestDownloadAnyLeavesAServerThatStopsSending(t *testing.T) {
 		t.Fatalf("took %s to give up on a silent server", time.Since(start))
 	}
 }
+
+// Every Linux ISO the catalog downloads should have somewhere else to go. The
+// Ubuntu entry existed for a year before anyone noticed the others had none,
+// and it took a truncated read from dl.fedoraproject.org to show it.
+func TestEveryCatalogISORootHasMirrors(t *testing.T) {
+	// One real URL per family, as they appear in internal/oscatalog/builtin.go.
+	for _, u := range []string{
+		"https://releases.ubuntu.com/26.04/ubuntu-26.04.1-live-server-amd64.iso",
+		"https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-dvd-x86_64-44-1.7.iso",
+		"https://repo.almalinux.org/almalinux/10/isos/x86_64/AlmaLinux-10.2-x86_64-minimal.iso",
+		"https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.2-x86_64-minimal.iso",
+	} {
+		alts := Alternates(u)
+		if len(alts) < 2 {
+			t.Errorf("%s has %d alternates; one bad minute at its origin fails the build", u, len(alts))
+			continue
+		}
+		// A mirror must carry the same path under a different root, not point
+		// back at the origin or repeat itself.
+		seen := map[string]bool{u: true}
+		for _, a := range alts {
+			if seen[a] {
+				t.Errorf("%s: duplicate or self-referential alternate %s", u, a)
+			}
+			seen[a] = true
+			if !strings.HasSuffix(a, u[strings.LastIndex(u, "/"):]) {
+				t.Errorf("%s: alternate %s does not end in the same file name", u, a)
+			}
+		}
+	}
+}

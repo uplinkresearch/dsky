@@ -25,6 +25,11 @@ import (
 // safe because the file is pinned: the library checks the SHA-256 of what
 // arrived, whichever server sent it, so a mirror that serves a different file
 // fails the pin rather than being trusted.
+// Ubuntu was the only entry here for a while, which meant every other Linux
+// ISO in the catalog had exactly one place to come from. A partial read from
+// dl.fedoraproject.org at byte 131563792 then failed a Fedora build outright,
+// reporting "every source failed" of a list with one source in it. The same
+// download from any of three mirrors would have carried on from that byte.
 var mirrorRoots = map[string][]string{
 	"https://releases.ubuntu.com/": {
 		"https://mirrors.edge.kernel.org/ubuntu-releases/",
@@ -32,6 +37,22 @@ var mirrorRoots = map[string][]string{
 		"https://mirror.us.leaseweb.net/ubuntu-releases/",
 		"https://ftp.halifax.rwth-aachen.de/ubuntu-releases/",
 		"https://mirror.aarnet.edu.au/pub/ubuntu/releases/",
+	},
+	"https://dl.fedoraproject.org/pub/fedora/linux/": {
+		"https://mirrors.kernel.org/fedora/",
+		"https://ftp.lysator.liu.se/pub/fedora/linux/",
+		"https://mirror.math.princeton.edu/pub/fedora/linux/",
+	},
+	"https://repo.almalinux.org/almalinux/": {
+		"https://mirrors.kernel.org/almalinux/",
+		"https://mirror.rackspace.com/almalinux/",
+	},
+	// download.rockylinux.org is a redirector; dl.rockylinux.org is the
+	// server it hands out, and is listed here as an ordinary mirror.
+	"https://download.rockylinux.org/pub/rocky/": {
+		"https://dl.rockylinux.org/pub/rocky/",
+		"https://mirror.rackspace.com/rocky/",
+		"https://ftp.lysator.liu.se/pub/rocky/",
 	},
 }
 
