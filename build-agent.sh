@@ -36,3 +36,18 @@ for arch in amd64 arm64; do
   rm -f "$out"
   printf 'agent %s: %s bytes\n' "$arch" "$(wc -c < "internal/agentbin/bin/dsky-agent-${arch}.exe.gz")"
 done
+
+# What the agent was built from, so a stale embedded agent is caught before it
+# reaches media rather than on a machine. See internal/agentbin/staleness_test.go.
+# LC_ALL=C, because this has to agree with the Go side in staleness_test.go and
+# Go sorts by byte. `sort` sorts by the locale's collation instead, and on
+# macOS that is a different order from glibc's -- which is why this hash and
+# the test's disagreed there and nowhere else, turning main red on one platform
+# with an error message about a stale agent that was not stale at all.
+#
+# The same reason the file list is sorted at all: two people's checkouts must
+# hash to the same thing, so the order cannot come from the filesystem or from
+# whatever locale somebody happens to have set.
+find internal/agent cmd/dsky-agent -name '*.go' ! -name '*_test.go' | LC_ALL=C sort | xargs cat |
+  sha256sum | cut -d' ' -f1 > internal/agentbin/bin/sources.sha256
+printf 'agent sources: %s\n' "$(cut -c1-12 internal/agentbin/bin/sources.sha256)"

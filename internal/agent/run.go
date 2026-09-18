@@ -363,6 +363,17 @@ func Main(args []string) error {
 		}
 		m, err := LoadManifest(filepath.Join(dir, ManifestName))
 		if err != nil {
+			// A machine whose agent cannot read its manifest is the worst
+			// thing this program can produce: it installs, signs itself in,
+			// does nothing, and leaves no trace of why. Found in the lab on a
+			// machine that looked untouched -- no log, no record, a domain
+			// join file still sitting unused beside an agent that had refused
+			// its own manifest and exited. The error went to a console at
+			// first boot, which nobody is watching.
+			//
+			// So it goes on the disk before this returns, in the file
+			// everything else about first boot is written to.
+			noteUnreadableManifest(dir, err)
 			return err
 		}
 		if m.Standalone() {
@@ -420,4 +431,27 @@ func Main(args []string) error {
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+// noteUnreadableManifest leaves the reason on the machine.
+//
+// Best effort and deliberately quiet about its own failures: this runs when
+// something has already gone wrong, and the last thing a machine needs is one
+// error hiding another.
+func noteUnreadableManifest(dir string, cause error) {
+	f, err := os.OpenFile(filepath.Join(dir, LogName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "[%s] NOTHING WAS DONE. This agent could not read %s: %v\r\n",
+		time.Now().Format("2006-01-02 15:04:05"), ManifestName, cause)
+	fmt.Fprintf(f, "[%s]   Nothing on this machine has been set up: no programs, no settings, "+
+		"no domain join. It is a plain Windows installation.\r\n", time.Now().Format("2006-01-02 15:04:05"))
+	// The one cause worth naming, because it is the one that happens: an
+	// agent built before the manifest it was handed. The build embeds the
+	// agent, so a DSKY built without rebuilding it stages an old one.
+	fmt.Fprintf(f, "[%s]   If that says \"unknown field\", this agent is older than the build that "+
+		"made this media: rebuild DSKY's agent (./build-agent.sh) and build the media again.\r\n",
+		time.Now().Format("2006-01-02 15:04:05"))
 }
