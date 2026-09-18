@@ -173,3 +173,50 @@ func TestAnAliasMatchesTheNewNameAndCarriesThePlansInstaller(t *testing.T) {
 		t.Errorf("the next machine would not resolve it: %+v ok=%v", got, ok)
 	}
 }
+
+// A setting that belongs to a person is applied at their first sign-in, so a
+// machine read before that has not got it yet. Calling those faults is how a
+// report earns a reputation for crying wolf — and it did exactly that on the
+// first machine this was run against, listing two of them as wrong on a PC
+// where nothing was.
+func TestASettingWaitingForSomebodyToSignInIsNotAFault(t *testing.T) {
+	perUser := func(key, val string) Setting {
+		return Setting{Key: key, Value: []byte(val), Apply: map[string]ApplyMethod{
+			"win11": {Method: ApplyRegistry, Ref: `HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\HideFileExt=0`},
+		}}
+	}
+	machine := func(key, val string) Setting {
+		return Setting{Key: key, Value: []byte(val), Apply: map[string]ApplyMethod{
+			"win11": {Method: ApplyPowerShell, Ref: "Set-TimeZone -Id 'Central Standard Time'"},
+		}}
+	}
+	plan := &Manifest{Settings: []Setting{
+		perUser(KeyShowExtensions, "1"),
+		machine(KeyTimezone, `"Central Standard Time"`),
+	}}
+	after := &Manifest{Settings: []Setting{
+		{Key: KeyShowExtensions, Value: []byte("0")},                 // not applied yet: nobody has signed in
+		{Key: KeyTimezone, Value: []byte(`"Pacific Standard Time"`)}, // genuinely wrong
+	}}
+	v := Verify(plan, after)
+
+	if len(v.Settings) != 1 || v.Settings[0].Key != KeyTimezone {
+		t.Errorf("the machine's own settings: %+v", v.Settings)
+	}
+	if len(v.Waiting) != 1 || v.Waiting[0].Key != KeyShowExtensions {
+		t.Errorf("a per-user setting was not recognised as waiting: %+v", v.Waiting)
+	}
+	if !strings.Contains(v.Summary(), "waiting for the person") {
+		t.Errorf("the summary does not separate them: %s", v.Summary())
+	}
+	// And a machine whose only outstanding settings are waiting ones is not
+	// reported as needing a hand.
+	ok := Verify(&Manifest{Settings: []Setting{perUser(KeyShowExtensions, "1")}},
+		&Manifest{Settings: []Setting{{Key: KeyShowExtensions, Value: []byte("0")}}})
+	if !ok.OK() {
+		t.Errorf("a machine with nothing wrong was reported as wrong: %+v", ok.Settings)
+	}
+	if len(ok.Waiting) != 1 {
+		t.Errorf("waiting: %+v", ok.Waiting)
+	}
+}

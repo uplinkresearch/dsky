@@ -33,6 +33,11 @@ type Verification struct {
 	Present  int          // asked for and found
 	Deferred int          // the plan already said these would not be installed
 	Settings []SettingDiff
+	// Waiting are settings that belong to a person rather than the machine.
+	// They are not differences and not faults: they are applied at somebody's
+	// first sign-in, so a machine read before that has not got them yet, and
+	// the person reading this may be the one who has not signed in.
+	Waiting  []SettingDiff
 	Identity []string // differences in name and domain, in plain words
 }
 
@@ -108,7 +113,8 @@ func Verify(plan, after *Manifest) *Verification {
 	}
 
 	for _, want := range plan.Settings {
-		if !want.Appliable("win11") {
+		how, ok := want.Apply["win11"]
+		if !ok || how.Method == "" {
 			continue // the plan never claimed this one would be set
 		}
 		got, ok := settingValueOf(after, want.Key)
@@ -117,9 +123,20 @@ func Verify(plan, after *Manifest) *Verification {
 			v.Settings = append(v.Settings, SettingDiff{Key: want.Key, Wanted: wanted, Found: "not read"})
 			continue
 		}
-		if !sameSettingValue(wanted, got) {
-			v.Settings = append(v.Settings, SettingDiff{Key: want.Key, Wanted: wanted, Found: got})
+		if sameSettingValue(wanted, got) {
+			continue
 		}
+		// A setting that belongs to a person is applied at their first
+		// sign-in, not when the machine is built, so a machine read before
+		// that has not got it yet -- and reporting it as wrong is how a
+		// report earns a reputation for crying wolf. Seen doing exactly that
+		// on the first machine this was run against: two per-user settings
+		// listed as faults on a PC where nothing was wrong.
+		if how.Method == ApplyRegistry && strings.HasPrefix(how.Ref, `HKCU\`) {
+			v.Waiting = append(v.Waiting, SettingDiff{Key: want.Key, Wanted: wanted, Found: got})
+			continue
+		}
+		v.Settings = append(v.Settings, SettingDiff{Key: want.Key, Wanted: wanted, Found: got})
 	}
 
 	if want, got := plan.Target.Hostname, after.Source.Hostname; want != "" && !strings.EqualFold(want, got) {
@@ -158,6 +175,9 @@ func (v *Verification) Summary() string {
 		v.Present, v.Present+len(v.Missing))}
 	if n := len(v.Settings); n > 0 {
 		parts = append(parts, fmt.Sprintf("%d setting(s) are not what the plan asked for", n))
+	}
+	if n := len(v.Waiting); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d setting(s) are waiting for the person who will use it to sign in", n))
 	}
 	if n := len(v.Identity); n > 0 {
 		parts = append(parts, fmt.Sprintf("%d thing(s) about who this machine is", n))
@@ -247,6 +267,10 @@ func VerifyReport(w io.Writer, v *Verification, version string) error {
 	}
 	for _, line := range v.Identity {
 		d.Failed = append(d.Failed, Shown{Kind: KindDomain, Name: "this machine's identity", Note: line})
+	}
+	for _, s := range v.Waiting {
+		d.Waiting = append(d.Waiting, Shown{Kind: KindSetting, Name: s.Key,
+			Note: "this belongs to a person, so it is applied at their first sign-in — this machine has " + s.Found + " until then"})
 	}
 	for _, a := range v.Extra {
 		d.Waiting = append(d.Waiting, Shown{Kind: KindApp, Name: a.DisplayName,

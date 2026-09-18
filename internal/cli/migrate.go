@@ -455,6 +455,9 @@ func migrateVerify(ctx context.Context, args []string) error {
 	for _, d := range v.Settings {
 		fmt.Printf("  %s: the plan asked for %s, this machine has %s\n", d.Key, d.Wanted, d.Found)
 	}
+	for _, d := range v.Waiting {
+		fmt.Printf("  %s: waiting — it belongs to a person and is applied at their first sign-in\n", d.Key)
+	}
 	for _, line := range v.Identity {
 		fmt.Println("  " + line)
 	}
