@@ -170,6 +170,23 @@ fedora-44-programs)
   SHA=85837793bfa36db6bc709b4cecd2ec116951b87d9c53c3d95eb2fac8dcf7cf1f
   KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
   PROGRAMS=vlc,obsidian,chrome,dsky SRC_ID=fedora-44-server ;;
+fedora-44-two-disks)
+  # Does an install erase only the disk it was meant to?
+  #
+  # Every other case gives the VM one disk, so "which one gets cleared" has
+  # never been asked -- and DSKY's own words are singular: "erases the
+  # computer's disk". The kickstart says `clearpart --all`, and Anaconda's
+  # --all means every disk it can see, not the one being installed to. A
+  # desktop with a data drive is the common shape this would meet.
+  #
+  # So: a second disk carrying recognisable bytes, and a look at whether they
+  # are still there afterwards. Pass or fail, the answer belongs in the
+  # sentence DSKY shows before it erases anything.
+  URL=https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-dvd-x86_64-44-1.7.iso
+  SHA=85837793bfa36db6bc709b4cecd2ec116951b87d9c53c3d95eb2fac8dcf7cf1f
+  KIND=server FAMILY=fedora PATCH=false IDENTITY=true OBSERVE=false
+  SRC_ID=fedora-44-server ENVGROUP=minimal-environment KSPKG=nano
+  SECOND_DISK=true ;;
 omarchy)
   # Omarchy has no unattended path: archiso boots straight into Omarchy's own
   # installer (timeout=0, menu hidden) and asks its questions there, which is
@@ -196,6 +213,7 @@ DRIVERS=${DRIVERS:-}
 # Which installer answers the media carries: Ubuntu's cloud-init autoinstall on
 # a CIDATA partition, or Anaconda's kickstart as a second initramfs.
 FAMILY=${FAMILY:-ubuntu}
+SECOND_DISK=${SECOND_DISK:-false}
 # The environment group and the extra package the hand-written CI kickstart
 # asks for. They differ per distribution: Fedora Server has a server product
 # environment and vim-enhanced on its DVD, a minimal RHEL rebuild has neither.
@@ -520,6 +538,24 @@ cp "$OVMF_VARS" "$W/vars.fd"
 rm -f "$W/target.raw"
 truncate -s 40G "$W/target.raw"
 
+# A second disk that nobody asked to be touched. The markers sit where an
+# installer would write if it took this disk too: offset 0 is the partition
+# table, 1 MiB is where a first partition usually starts, and 512 MiB is well
+# inside it. Bytes rather than a filesystem, so the check needs no mkfs, no
+# loop device and no root -- the host reads the file back afterwards.
+MARKER="DSKY-DO-NOT-TOUCH-THIS-DISK"
+declare -a MARK_AT=(0 1048576 536870912)
+declare -a EXTRA_DISKS=()
+if [ "$SECOND_DISK" = true ]; then
+  rm -f "$W/data.raw"
+  truncate -s 4G "$W/data.raw"
+  for off in "${MARK_AT[@]}"; do
+    printf '%s' "$MARKER" | dd of="$W/data.raw" bs=1 seek="$off" conv=notrunc status=none
+  done
+  say "- A second disk is attached, carrying markers at ${MARK_AT[*]}"
+  EXTRA_DISKS=(-drive "file=$W/data.raw,if=virtio,format=raw")
+fi
+
 QPID=""; MON=""
 start_vm() { # phase, extra qemu args...
   local phase=$1; shift
@@ -529,6 +565,7 @@ start_vm() { # phase, extra qemu args...
     -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
     -drive if=pflash,format=raw,file="$W/vars.fd" \
     -drive file="$W/target.raw",if=virtio,format=raw \
+    ${EXTRA_DISKS[@]+"${EXTRA_DISKS[@]}"} \
     -netdev user,id=net0,hostfwd=tcp:127.0.0.1:"$SSH_PORT"-:22 \
     -device virtio-net-pci,netdev=net0 \
     -device qemu-xhci -vga std -display none \
@@ -797,6 +834,28 @@ fi
 if [ "$IDENTITY" = true ]; then
   check "account from identity: exists (dsky)" "id dsky"
 fi
+# The second disk, if there was one. Read from the host rather than from
+# inside the installed system: if the installer took this disk, whatever is
+# mounted afterwards would be its own, and a marker found through that would
+# prove nothing.
+if [ "$SECOND_DISK" = true ]; then
+  survived=0
+  for off in "${MARK_AT[@]}"; do
+    got=$(dd if="$W/data.raw" bs=1 skip="$off" count=${#MARKER} status=none 2>/dev/null || true)
+    if [ "$got" = "$MARKER" ]; then
+      survived=$((survived + 1))
+    else
+      say "- the second disk lost its marker at byte $off"
+    fi
+  done
+  if [ "$survived" -eq "${#MARK_AT[@]}" ]; then
+    say "- ok: the second disk was left alone (all ${#MARK_AT[@]} markers intact)"
+  else
+    say "- **FAIL**: the install erased a disk it was not given — $survived of ${#MARK_AT[@]} markers left"
+    fail=1
+  fi
+fi
+
 target=multi-user
 [ "$KIND" = desktop ] && target=graphical
 if [ "$target" = graphical ]; then
