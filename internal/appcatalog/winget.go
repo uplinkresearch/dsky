@@ -84,13 +84,23 @@ func LookupWinget(ctx context.Context, id string) (string, error) {
 }
 
 func lookupWinget(ctx context.Context, id string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	name, _, err := resolveWinget(ctx, id)
+	return name, err
+}
+
+// resolveWinget walks the repository to a version folder that really holds
+// this package's manifests, and returns the id as that folder spells it
+// together with the folder's path. Two callers want different halves of the
+// same walk: the id check wants the spelling, and the offline pre-pull wants
+// the folder, because the installer manifest lives in it.
+func resolveWinget(ctx context.Context, id string) (string, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	path := "manifests/" + strings.ToLower(id[:1])
 	for _, part := range strings.Split(id, ".") {
 		entries, err := wingetTree(ctx, path)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		name, ok := "", false
 		for _, e := range entries {
@@ -100,7 +110,7 @@ func lookupWinget(ctx context.Context, id string) (string, error) {
 			}
 		}
 		if !ok {
-			return "", ErrWingetNotFound
+			return "", "", ErrWingetNotFound
 		}
 		path += "/" + name
 	}
@@ -109,7 +119,7 @@ func lookupWinget(ctx context.Context, id string) (string, error) {
 	// manifests, named after the package. Newest-looking versions first.
 	entries, err := wingetTree(ctx, path)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	// Versions nearly always start with a digit; a few packages name them
 	// otherwise, and those are tried after, since letter-named folders are
@@ -129,7 +139,7 @@ func lookupWinget(ctx context.Context, id string) (string, error) {
 	for _, v := range candidates {
 		files, err := wingetTree(ctx, path+"/"+v)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		for _, f := range files {
 			if f.Type != "blob" || !strings.HasSuffix(f.Path, ".yaml") {
@@ -141,11 +151,11 @@ func lookupWinget(ctx context.Context, id string) (string, error) {
 				name = name[:i]
 			}
 			if strings.EqualFold(name, id) {
-				return name, nil
+				return name, path + "/" + v, nil
 			}
 		}
 	}
-	return "", ErrWingetNotFound
+	return "", "", ErrWingetNotFound
 }
 
 type treeEntry struct {

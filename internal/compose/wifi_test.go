@@ -86,7 +86,7 @@ func TestManifestCarriesTheNetworkButNotTheKey(t *testing.T) {
 			{Drivers: true}, {Apps: true},
 		}},
 	}}
-	m := buildManifest(r, recipe.ResolvedDrivers{}, nil, "", migrateParts{})
+	m := buildManifest(r, recipe.ResolvedDrivers{}, nil, nil, "", migrateParts{})
 
 	if m.WiFi == nil {
 		t.Fatal("the manifest carries no network")
@@ -107,7 +107,7 @@ func TestManifestHasNoNetworkWhenNoneWasAskedFor(t *testing.T) {
 		Apps:      &recipe.AppsSpec{Winget: []string{"7zip.7zip"}},
 		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{{Drivers: true}, {Apps: true}}},
 	}}
-	m := buildManifest(r, recipe.ResolvedDrivers{}, nil, "", migrateParts{})
+	m := buildManifest(r, recipe.ResolvedDrivers{}, nil, nil, "", migrateParts{})
 	if m.WiFi != nil {
 		t.Errorf("a build with no wireless got %+v", m.WiFi)
 	}

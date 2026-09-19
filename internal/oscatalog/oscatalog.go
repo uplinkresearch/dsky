@@ -130,6 +130,20 @@ type Options struct {
 	// first boot through winget on Windows, and through the installer's own
 	// answers on Ubuntu (apt, snaps, Flathub, a vendor's repository).
 	Apps []string
+	// Offline puts the catalog programs' installers on the media instead of
+	// fetching them from the vendors at first boot, so a machine with no
+	// internet still comes out of setup with its programs on it. Windows
+	// only. The media grows by the size of the installers, and the versions
+	// are frozen on the day of the build; the agent records which packages
+	// they are and brings them up to date when the machine reaches a
+	// network. See prepull.go.
+	Offline bool
+	// prepulled and builtAt are what Offline resolved to: the downloaded
+	// installers and the moment they were downloaded. Filled by prePull
+	// before the workspace is written, the same way driver packs are
+	// resolved before the recipe that names them.
+	prepulled []appcatalog.Prepulled
+	builtAt   string
 	// ThirdPartyDrivers is "drivers for this computer" on Ubuntu, where that
 	// means the proprietary ones the kernel does not carry — NVIDIA above
 	// all. Ubuntu's installer finds and installs them itself when the answers
@@ -395,6 +409,13 @@ func SaveRecipe(ctx context.Context, lib *library.Library, wsDir, id, name strin
 	if err := checkPrograms(e, opts.Apps); err != nil {
 		return "", err
 	}
+	// A saved offline recipe pins the installers it was saved with, into the
+	// same library the recipe's other sources live in: rebuilding it next
+	// month rebuilds the machine it described, rather than quietly becoming a
+	// different one.
+	if err := prePull(ctx, lib, e, &opts, progress); err != nil {
+		return "", err
+	}
 	path := filepath.Join(wsDir, "recipes", id+".yaml")
 	if _, err := os.Stat(path); err == nil {
 		return "", fmt.Errorf("a recipe called %s already exists in this workspace — choose another name", id)
@@ -431,6 +452,9 @@ func SaveRecipe(ctx context.Context, lib *library.Library, wsDir, id, name strin
 				return "", err
 			}
 		}
+	}
+	if err := writePrepulledManifests(opts, writeIfMissing); err != nil {
+		return "", err
 	}
 	var hw []recipe.HardwareSpec
 	if e.Family == Windows {
@@ -485,6 +509,12 @@ func BuildQuick(ctx context.Context, lib *library.Library, e Entry, opts Options
 		if err := helpers.WindowsMediaToolsError(lib.HelpersDir()); err != nil {
 			return nil, err
 		}
+	}
+	// Before the operating system, because this is the step most likely to
+	// refuse: an operator who picked a Store-only program should hear about
+	// it in the first few seconds rather than after five gigabytes of Windows.
+	if err := prePull(ctx, lib, e, &opts, progress); err != nil {
+		return nil, err
 	}
 
 	if err := ensureSource(ctx, lib, e, progress); err != nil {
@@ -556,6 +586,9 @@ func BuildQuickPayload(ctx context.Context, lib *library.Library, e Entry, opts 
 	}
 	opts.defaults(e)
 	if err := checkPrograms(e, opts.Apps); err != nil {
+		return nil, err
+	}
+	if err := prePull(ctx, lib, e, &opts, progress); err != nil {
 		return nil, err
 	}
 	wsDir, err := scaffoldQuickWorkspace(lib, e, opts, nil)
@@ -753,12 +786,19 @@ func scaffoldQuickWorkspace(lib *library.Library, e Entry, opts Options, hw []re
 			}
 		}
 	}
+	// And one for each catalog program whose installer was downloaded, which
+	// is filed in the same library and staged by the same code.
+	if err := writePrepulledManifests(opts, func(rel string, data []byte) error {
+		return os.WriteFile(filepath.Join(dir, filepath.FromSlash(rel)), data, 0o644)
+	}); err != nil {
+		return "", err
+	}
 	if err := writeQuickRecipe(dir, e, opts, hw); err != nil {
 		return "", err
 	}
 	// Only keep this build's recipe so ws.Recipes() stays unambiguous.
 	pruneOtherRecipes(filepath.Join(dir, "recipes"), e.ID)
-	pruneOtherManifests(filepath.Join(dir, "manifests"), e.ID)
+	pruneOtherManifests(filepath.Join(dir, "manifests"), e.ID, prepulledIDs(opts))
 	return dir, nil
 }
 
@@ -791,13 +831,25 @@ func pruneOtherRecipes(dir, keep string) {
 // Operator-supplied installers are kept for the same reason — and, unlike a
 // driver pack, removing one would break the build outright, since the recipe
 // written moments ago refers to it by ref.
-func pruneOtherManifests(dir, keep string) {
+func pruneOtherManifests(dir, keep string, wanted map[string]bool) {
 	entries, _ := os.ReadDir(dir)
 	for _, en := range entries {
 		if en.Name() == keep+".yaml" {
 			continue
 		}
 		p := filepath.Join(dir, en.Name())
+		// A pre-pulled program's manifest belongs to the build that
+		// downloaded it, and its id is the package's, so the folder fills up
+		// with one per program anybody has ever picked. That was not merely
+		// untidy: workspace.Load validates every manifest in the folder, so
+		// one left by an earlier DSKY -- written before winget ids with a
+		// plus in them were filed under a legal name -- failed every later
+		// build of anything, for a package the build was not using.
+		if id, ok := strings.CutSuffix(en.Name(), ".yaml"); ok &&
+			strings.HasPrefix(id, prepulledPrefix) && !wanted[id] {
+			os.Remove(p)
+			continue
+		}
 		if b, err := os.ReadFile(p); err == nil {
 			if strings.Contains(string(b), "kind: driver-pack") ||
 				strings.Contains(string(b), "kind: payload") {
@@ -972,8 +1024,21 @@ target:
 		steps += "      - debloat\n"
 	}
 	pkgs, customApps := opts.resolvedApps()
+	// An offline build carries the catalog programs' installers instead of
+	// naming them for winget, so the winget list is deliberately empty: a
+	// machine that has both would install each program twice, the second time
+	// over the network it does not have.
+	offPayload, offSteps, offRecord := offlineAppsYAML(opts)
 	appsBlock := ""
-	if len(pkgs) > 0 {
+	switch {
+	case offRecord != "":
+		var b strings.Builder
+		b.WriteString("  apps:\n")
+		fmt.Fprintf(&b, "    built_at: %q\n", opts.builtAt)
+		b.WriteString("    offline:\n")
+		b.WriteString(offRecord)
+		appsBlock = b.String()
+	case len(pkgs) > 0:
 		var b strings.Builder
 		b.WriteString("  apps:\n    winget:\n")
 		for _, p := range pkgs {
@@ -987,9 +1052,14 @@ target:
 	// the network and these do not: if the machine is offline, the agent that
 	// matters still lands.
 	payloadBlock := ""
-	if len(customApps) > 0 {
+	if len(customApps) > 0 || offPayload != "" {
 		var p, s strings.Builder
 		p.WriteString("  payload:\n")
+		// The pre-pulled catalog programs first, then the operator's own: the
+		// installer that matters most to an MSP is theirs, and it lands last
+		// so nothing the catalog installs can overwrite a setting it makes.
+		p.WriteString(offPayload)
+		s.WriteString(offSteps)
 		for _, c := range customApps {
 			fmt.Fprintf(&p, "    - { ref: %s }\n", c.SourceID())
 			verb := "exe"
@@ -1028,9 +1098,11 @@ target:
 		domainBlock = fmt.Sprintf("  domain:\n    blob: %q\n", filepath.ToSlash(opts.DomainBlob))
 	}
 	// Staged GPU driver packages run past a gigabyte each, so driver media
-	// outgrows the 8 GiB stick a bare Windows ISO fits on.
+	// outgrows the 8 GiB stick a bare Windows ISO fits on. So does a set of
+	// pre-pulled programs: Chrome alone is 160 MB, and the point of an
+	// offline build is that somebody picked a lot of them.
 	minStick := "8GiB"
-	if len(hw) > 0 {
+	if len(hw) > 0 || len(opts.prepulled) > 0 {
 		minStick = "16GiB"
 	}
 	return fmt.Sprintf(`version: 1

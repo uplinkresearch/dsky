@@ -420,7 +420,7 @@ func TestCustomAppManifestSurvivesPruning(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "old-os.yaml"), []byte("id: old-os\nkind: os-image\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pruneOtherManifests(dir, "windows-11")
+	pruneOtherManifests(dir, "windows-11", nil)
 	if _, err := os.Stat(man); err != nil {
 		t.Error("the staged installer's manifest was pruned — the build would fail on an unresolved ref")
 	}

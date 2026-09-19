@@ -1122,7 +1122,12 @@ type installRequest struct {
 	// the programs are the only part that shows it.
 	WiFiSSID     string `json:"wifi_ssid"`
 	WiFiPassword string `json:"wifi_password"`
-	ISO          string `json:"iso"`
+	// Offline downloads those programs now and puts them on the media, so a
+	// machine with no internet still comes out of setup with them on it --
+	// the other answer to the same problem, for a machine with no network to
+	// join at all.
+	Offline bool   `json:"offline"`
+	ISO     string `json:"iso"`
 	// DomainBlob is a file from `djoin /provision`: an offline domain join
 	// for one computer.
 	DomainBlob string `json:"domain_blob"`
@@ -1183,6 +1188,12 @@ func (s *Server) installOptions(ctx context.Context, req installRequest) (oscata
 	if err := oscatalog.CheckPrograms(e, req.Apps); err != nil {
 		return e, oscatalog.Options{}, err
 	}
+	if req.Offline && e.Family != oscatalog.Windows {
+		// Ubuntu and Fedora install their programs through the installer's
+		// own answers, which is the distro's package manager over the
+		// network. There is nothing here to put on the media instead.
+		return e, oscatalog.Options{}, fmt.Errorf("putting the programs on the media is a Windows option; %s installs its own", e.Name)
+	}
 	blob := strings.TrimSpace(req.DomainBlob)
 	if blob != "" {
 		if e.Family != oscatalog.Windows {
@@ -1212,6 +1223,7 @@ func (s *Server) installOptions(ctx context.Context, req installRequest) (oscata
 		Edition: req.Edition, AccountMode: req.AccountMode,
 		Debloat: req.Debloat, BypassRequirement: req.BypassRequirement,
 		Hardware: hw, Models: models, Apps: req.Apps, ThirdPartyDrivers: thirdParty,
+		Offline:    req.Offline,
 		DomainBlob: blob,
 		AdminUser:  strings.TrimSpace(req.AdminUser), AdminPassword: req.AdminPassword,
 		WiFiSSID: ssid, WiFiPassword: req.WiFiPassword,

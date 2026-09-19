@@ -236,6 +236,25 @@ type AppsSpec struct {
 	// Scope "machine" installs for all users where the package allows it
 	// (default); "user" installs only for the first account.
 	Scope string `yaml:"scope,omitempty"`
+	// Offline records the catalog programs whose installers were downloaded
+	// when the media was built and ride on it, rather than being fetched
+	// from the vendor at first boot. They install as ordinary payload -- a
+	// pre-pulled Chrome is staged and run exactly like an operator's own MSI
+	// -- so nothing here installs anything. This is the record of which
+	// winget package each of those files is, which is what lets the machine
+	// be brought up to date once it has the internet.
+	Offline []OfflineApp `yaml:"offline,omitempty"`
+	// BuiltAt is when the media was made, in RFC 3339. It is the age of
+	// every version in Offline, and the only honest thing to show somebody
+	// asking whether a machine built from this stick is current.
+	BuiltAt string `yaml:"built_at,omitempty"`
+}
+
+// OfflineApp ties one staged installer back to the winget package it is.
+type OfflineApp struct {
+	ID      string `yaml:"id"`                // Google.Chrome
+	Version string `yaml:"version,omitempty"` // what the media carries
+	Ref     string `yaml:"ref"`               // the payload source holding the file
 }
 
 // Enabled reports whether the spec actually installs anything.
@@ -273,6 +292,14 @@ type WiFiSpec struct {
 
 // Enabled reports whether a wireless network was configured.
 func (w *WiFiSpec) Enabled() bool { return w != nil && strings.TrimSpace(w.SSID) != "" }
+
+// OfflineApps are the pre-pulled programs, or nothing.
+func (a *AppsSpec) OfflineApps() []OfflineApp {
+	if a == nil {
+		return nil
+	}
+	return a.Offline
+}
 
 // DebloatSpec strips consumer junk at first boot while keeping the media
 // itself official (update- and activation-safe): provisioned-app removal
@@ -644,6 +671,24 @@ func (r *Recipe) Validate() error {
 		for i, p := range r.Windows.Payload {
 			if (p.Ref == "") == (p.Path == "") {
 				return fail("windows.payload[%d] needs exactly one of ref or path", i)
+			}
+		}
+		// An offline record names a file on the media and the winget package
+		// it is. A record for something nothing stages would have a machine
+		// reporting a program it never got, and trying to update it: worse
+		// than not recording it, because it reads as an answer.
+		staged := map[string]bool{}
+		for _, p := range r.Windows.Payload {
+			staged[p.Ref] = true
+		}
+		for i, o := range r.Windows.Apps.OfflineApps() {
+			switch {
+			case o.ID == "":
+				return fail("windows.apps.offline[%d] needs the winget id of the program it is", i)
+			case o.Ref == "":
+				return fail("windows.apps.offline[%d] (%s) needs the payload ref that carries its installer", i, o.ID)
+			case !staged[o.Ref]:
+				return fail("windows.apps.offline[%d] (%s) names %s, which windows.payload does not carry", i, o.ID, o.Ref)
 			}
 		}
 		for i, d := range r.Windows.DriverPacks {

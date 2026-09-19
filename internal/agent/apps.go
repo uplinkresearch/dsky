@@ -143,6 +143,10 @@ func (a *Agent) appsStep() {
 		a.UI.Detail(in.File)
 		a.runInstaller(in)
 	}
+	// Programs that came off the media rather than from the vendor are as old
+	// as the media. This records which they are and brings them up to date if
+	// the machine can reach the internet, or leaves something that will.
+	a.catchUpStep()
 	// Every installer above may have dropped an icon on the desktop.
 	a.tidyDesktop()
 }

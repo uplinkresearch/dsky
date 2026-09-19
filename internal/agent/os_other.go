@@ -20,6 +20,10 @@ func (a *Agent) ensureResume() error { return nil }
 
 func (a *Agent) clearResume() {}
 
+func (a *Agent) armCatchUp() {}
+
+func (a *Agent) clearCatchUp() {}
+
 func (a *Agent) disarmAutoLogon() {}
 
 func (a *Agent) restart(reason string) error { return nil }

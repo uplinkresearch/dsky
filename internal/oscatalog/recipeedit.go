@@ -28,6 +28,18 @@ type RecipeForm struct {
 	Debloat           string   `json:"debloat,omitempty"`
 	BypassRequirement bool     `json:"bypass_requirement,omitempty"`
 	Apps              []string `json:"apps"`
+	// Offline is the recipe carrying its programs' installers rather than
+	// naming them for winget. The dialog shows it as a tick beside the
+	// program picker.
+	Offline bool `json:"offline,omitempty"`
+	// prepulled and builtAt are what that tick resolved to when the recipe
+	// was saved, read back out of the recipe and the manifests beside it.
+	// They are not sent to the page: it has no use for a hash, and changing
+	// the program list re-downloads anyway. They exist so the round-trip
+	// check below compares the recipe against itself rather than against a
+	// recipe with the downloads missing.
+	prepulled []appcatalog.Prepulled
+	builtAt   string
 	// ThirdPartyDrivers is Ubuntu's "drivers for this computer": its
 	// installer puts on the proprietary ones it finds. Nothing is staged, so
 	// unlike Hardware below it is a choice the dialog shows and can change.
@@ -135,17 +147,29 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 	}
 	if w.Apps != nil {
 		for _, pkg := range w.Apps.Winget {
-			id := appcatalog.WingetPrefix + pkg
-			for _, a := range appcatalog.Catalog() {
-				if a.Winget != "" && strings.EqualFold(a.Winget, pkg) {
-					id = a.ID
-					break
-				}
-			}
-			f.Apps = append(f.Apps, id)
+			f.Apps = append(f.Apps, catalogIDFor(pkg))
 		}
 	}
+	// An offline recipe carries the catalog programs' installers as payload.
+	// Those refs are read back from the record beside them, not from the
+	// operator's own installers, and the programs they stand for go into the
+	// picker as the catalog programs they are.
+	offline, err := offlinePrograms(wsDir, w)
+	if err != nil {
+		return notEditable(err.Error())
+	}
+	fromOffline := map[string]bool{}
+	for _, p := range offline {
+		fromOffline[p.SourceID()] = true
+		f.Apps = append(f.Apps, catalogIDFor(p.WingetID))
+	}
+	if len(offline) > 0 {
+		f.Offline, f.prepulled, f.builtAt = true, offline, w.Apps.BuiltAt
+	}
 	for _, p := range w.Payload {
+		if fromOffline[p.Ref] {
+			continue
+		}
 		c, ok := customBySource(p.Ref)
 		if p.Path != "" || !ok {
 			return notEditable("it carries files that are not installers added in DSKY")
@@ -171,7 +195,8 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 func sameAsDialog(r *recipe.Recipe, f RecipeForm, e Entry) error {
 	opts := Options{Edition: f.Edition, AccountMode: f.AccountMode, Debloat: f.Debloat,
 		BypassRequirement: f.BypassRequirement, Apps: f.Apps,
-		ThirdPartyDrivers: f.ThirdPartyDrivers, WiFiSSID: f.WiFiSSID}
+		ThirdPartyDrivers: f.ThirdPartyDrivers, WiFiSSID: f.WiFiSSID,
+		Offline: f.Offline, prepulled: f.prepulled, builtAt: f.builtAt}
 	if f.WiFiPassword {
 		// Only whether there is one matters here: the recipe says
 		// "${var:wifi_password}" either way, and the value never reaches it.
@@ -414,4 +439,71 @@ func DownloadedImages(lib *library.Library) []Downloaded {
 		}
 	}
 	return out
+}
+
+// catalogIDFor is the picker's id for a winget package: the program's own id
+// where the list has it, and the typed "winget:Publisher.Package" form where
+// it does not.
+func catalogIDFor(pkg string) string {
+	for _, a := range appcatalog.Catalog() {
+		if a.Winget != "" && strings.EqualFold(a.Winget, pkg) {
+			return a.ID
+		}
+	}
+	return appcatalog.WingetPrefix + pkg
+}
+
+// offlinePrograms reads a saved offline build back out of the recipe: which
+// winget package each staged installer is, from the record, and how to run it,
+// from the manifest beside it and the step that runs it.
+//
+// It is read back rather than downloaded again on purpose. Opening a recipe in
+// the dialog must not touch the network -- somebody renaming a recipe should
+// not be made to wait for a hundred megabytes, and must not silently get a
+// newer Chrome than the recipe was saved with.
+func offlinePrograms(wsDir string, w *recipe.WindowsSpec) ([]appcatalog.Prepulled, error) {
+	recs := w.Apps.OfflineApps()
+	if len(recs) == 0 {
+		return nil, nil
+	}
+	staged := map[string]bool{}
+	for _, p := range w.Payload {
+		staged[p.Ref] = true
+	}
+	args := map[string][]string{}
+	for _, s := range w.Firstboot.Steps {
+		switch {
+		case s.MSI != nil && s.MSI.Ref != "":
+			args[s.MSI.Ref] = s.MSI.Args
+		case s.Exe != nil && s.Exe.Ref != "":
+			args[s.Exe.Ref] = s.Exe.Args
+		}
+	}
+	var out []appcatalog.Prepulled
+	for _, r := range recs {
+		if !staged[r.Ref] {
+			return nil, fmt.Errorf("it records %s as being on the media, and nothing stages it", r.ID)
+		}
+		b, err := os.ReadFile(filepath.Join(wsDir, "manifests", r.Ref+".yaml"))
+		if err != nil {
+			return nil, fmt.Errorf("it records %s as being on the media, and its manifest is missing", r.ID)
+		}
+		var src struct {
+			Format   string `yaml:"format"`
+			SHA256   string `yaml:"sha256"`
+			Filename string `yaml:"filename"`
+		}
+		if err := yaml.Unmarshal(b, &src); err != nil {
+			return nil, fmt.Errorf("%s's manifest could not be read: %v", r.ID, err)
+		}
+		p := appcatalog.Prepulled{
+			WingetID: r.ID, Version: r.Version, SHA256: src.SHA256,
+			Filename: src.Filename, Format: src.Format, Args: args[r.Ref],
+		}
+		if p.SourceID() != r.Ref {
+			return nil, fmt.Errorf("%s is staged as %s, which is not the name DSKY files it under", r.ID, r.Ref)
+		}
+		out = append(out, p)
+	}
+	return out, nil
 }

@@ -195,17 +195,29 @@ func TestWingetIDsLive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network")
 	}
+	checked := 0
 	for _, a := range builtin {
 		if a.Winget == "" {
 			continue
 		}
 		got, err := LookupWinget(context.Background(), a.Winget)
 		switch {
+		case errors.Is(err, ErrWingetUnchecked):
+			// GitHub's hourly limit, or no network. Nothing is known about
+			// this id either way, and reporting that as a bad id is how a
+			// green test turns red for a reason that has nothing to do with
+			// the catalog. The run stops here: once the limit is reached
+			// every id after this one says the same thing.
+			if checked == 0 {
+				t.Skipf("winget's package list could not be reached: %v", err)
+			}
+			t.Skipf("checked %d ids, then ran out of GitHub requests: %v", checked, err)
 		case err != nil:
 			t.Errorf("%s: %s: %v", a.ID, a.Winget, err)
 		case got != a.Winget:
 			t.Errorf("%s: winget spells it %s, the list has %s", a.ID, got, a.Winget)
 		default:
+			checked++
 			t.Logf("%s: %s: ok", a.ID, a.Winget)
 		}
 	}

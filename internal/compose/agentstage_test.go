@@ -69,7 +69,7 @@ func TestManifestCarriesTheRecipe(t *testing.T) {
 		Args []string
 	}{File: "sp142792.exe", Dir: "hp", Args: []string{"-pdf", "-e", "-s", `-f"{dir}"`}})
 
-	m := buildManifest(r, drivers, nil, "verify.ps1", migrateParts{})
+	m := buildManifest(r, drivers, nil, nil, "verify.ps1", migrateParts{})
 	b, err := json.Marshal(m)
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +137,7 @@ func TestAnOfflineJoinIsTheAgentsToDoAfterOOBE(t *testing.T) {
 		Domain:    &recipe.DomainSpec{Blob: "newdesk01.txt"},
 		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{{Drivers: true}, {Debloat: true}, {Apps: true}}},
 	}}
-	m := buildManifest(r, recipe.ResolvedDrivers{}, nil, "", migrateParts{})
+	m := buildManifest(r, recipe.ResolvedDrivers{}, nil, nil, "", migrateParts{})
 	if m.Domain == nil {
 		t.Fatal("the manifest does not carry the join, so the machine would install into a workgroup and look fine")
 	}
@@ -154,7 +154,7 @@ func TestAnOfflineJoinIsTheAgentsToDoAfterOOBE(t *testing.T) {
 	plain := &recipe.Recipe{ID: "p", Windows: &recipe.WindowsSpec{
 		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{{Drivers: true}}},
 	}}
-	if m := buildManifest(plain, recipe.ResolvedDrivers{}, nil, "", migrateParts{}); m.Domain != nil ||
+	if m := buildManifest(plain, recipe.ResolvedDrivers{}, nil, nil, "", migrateParts{}); m.Domain != nil ||
 		strings.Join(m.Steps, ",") != "drivers" {
 		t.Errorf("a build with no domain grew a join: %+v %v", m.Domain, m.Steps)
 	}
@@ -201,5 +201,69 @@ func TestAJoinThatCanBeDeferredIsAllowed(t *testing.T) {
 		if err := checkJoinCanBeDeferred(&recipe.Recipe{ID: "x", Windows: &tc.w}); err != nil {
 			t.Errorf("%s was refused: %v", tc.name, err)
 		}
+	}
+}
+
+// An offline build hands the agent installers and no package ids. Two things
+// have to survive that: the apps step must still be in the manifest (nothing
+// else runs the installers), and each file must still be tied to the winget
+// package it is, or the machine has a pile of programs nothing can account
+// for and no way to bring them up to date.
+func TestAnOfflineBuildKeepsTheAppsStepAndTheRecordOfWhatItInstalled(t *testing.T) {
+	r := &recipe.Recipe{ID: "offline", Windows: &recipe.WindowsSpec{
+		Apps: &recipe.AppsSpec{
+			BuiltAt: "2026-09-19T10:00:00Z",
+			Offline: []recipe.OfflineApp{
+				{ID: "Google.Chrome", Version: "153.0.8010.53", Ref: "winget-google.chrome"},
+				{ID: "Gone.Missing", Version: "1.0", Ref: "winget-gone.missing"},
+			},
+		},
+		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{
+			{Drivers: true},
+			{MSI: &recipe.RunItem{Ref: "winget-google.chrome"}},
+		}},
+	}}
+	refFiles := map[string]string{"winget-google.chrome": "chrome64.msi"}
+	m := buildManifest(r, recipe.ResolvedDrivers{}, agentInstallers(r.Windows, refFiles),
+		agentOfflineApps(r.Windows, refFiles), "", migrateParts{})
+
+	if got := strings.Join(m.Steps, ","); got != "drivers,apps" {
+		t.Fatalf("steps = %q; without an apps step nothing runs the installers", got)
+	}
+	if len(m.Apps.Winget) != 0 {
+		t.Errorf("an offline build still asks winget for %v, over a network it has not got", m.Apps.Winget)
+	}
+	if len(m.Apps.Installers) != 1 || m.Apps.Installers[0].File != "chrome64.msi" {
+		t.Errorf("installers = %+v", m.Apps.Installers)
+	}
+	// One record, not two: a ref that never got staged must not be recorded,
+	// or the machine tries to update a program it never received.
+	if len(m.Apps.Offline) != 1 {
+		t.Fatalf("offline record = %+v", m.Apps.Offline)
+	}
+	got := m.Apps.Offline[0]
+	if got.ID != "Google.Chrome" || got.Version != "153.0.8010.53" || got.File != "chrome64.msi" {
+		t.Errorf("record = %+v", got)
+	}
+	if m.Apps.BuiltAt != "2026-09-19T10:00:00Z" {
+		t.Errorf("the media's age did not reach the machine: %q", m.Apps.BuiltAt)
+	}
+}
+
+// The defect this work found: a recipe with only the operator's own installer
+// and no winget packages produced a manifest whose steps were "drivers", with
+// installers no step ever reached. The agent took somebody's RMM installer to
+// a machine and quietly did not install it.
+func TestInstallersRunWhenNoWingetPackageWasChosen(t *testing.T) {
+	r := &recipe.Recipe{ID: "own", Windows: &recipe.WindowsSpec{
+		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{
+			{Drivers: true},
+			{MSI: &recipe.RunItem{Ref: "app-agent"}},
+		}},
+	}}
+	m := buildManifest(r, recipe.ResolvedDrivers{}, agentInstallers(r.Windows, map[string]string{"app-agent": "agent.msi"}),
+		nil, "", migrateParts{})
+	if got := strings.Join(m.Steps, ","); got != "drivers,apps" {
+		t.Fatalf("steps = %q, so agent.msi is staged and never run", got)
 	}
 }

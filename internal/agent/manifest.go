@@ -169,6 +169,23 @@ type Apps struct {
 	// agent and run after the winget packages: they need no network, so if
 	// the machine is offline the one that matters still lands.
 	Installers []Installer `json:"installers,omitempty"`
+	// Offline names the catalog programs whose installers were downloaded
+	// when the media was built and ride on it, rather than being fetched
+	// from the vendor at first boot. They install as Installers above --
+	// this is the record of which winget package each one is, so the machine
+	// can be brought up to date once it has the internet. See catchup.go.
+	Offline []OfflineApp `json:"offline,omitempty"`
+	// BuiltAt is when the media was made, which is how old every version in
+	// Offline is.
+	BuiltAt string `json:"built_at,omitempty"`
+}
+
+// OfflineApp ties one staged installer back to the winget package it is, so a
+// machine that came off a stick can be caught up later.
+type OfflineApp struct {
+	ID      string `json:"id"`                // Google.Chrome
+	Version string `json:"version,omitempty"` // what the media carries
+	File    string `json:"file,omitempty"`    // its name on the media
 }
 
 // WiFi is the wireless network to join at first boot. The credential itself

@@ -286,6 +286,40 @@ staged network drivers are for. Some packages only install for the first
 account that signs in; the list says which. Programs winget doesn't have, such
 as RustDesk, go in with `dsky apps add` and ride on the stick.
 
+### Programs with no internet
+
+A lot of machines are not online when they are set up. Where there is a
+network and no ethernet port, `--wifi` joins it at first boot and the programs
+come from the vendors as usual. Where there is no network at all — the site's
+is the thing being replaced, the van has none — `--offline` downloads the
+installers now, on the computer building the stick, and puts them on it:
+
+```
+dsky install windows-11 --apps chrome,7zip,keepassxc --offline
+```
+
+What goes on the stick is the file winget's own manifest names, checked
+against the hash in that manifest — not the vendor's "latest" link. That
+matters twice: it is the only thing standing between a fleet and an installer
+that arrived over somebody's coffee-shop connection, and it is what keeps the
+machine upgradeable, because the Add/Remove Programs entry the real installer
+writes is what `winget upgrade` matches the package against later.
+
+Anything the program needs first goes on too — LibreOffice and KeePassXC both
+want a Visual C++ runtime, and there is nothing on an offline machine to fetch
+it. A program that genuinely cannot ride on a stick stops the build and says
+which and why: Microsoft Store packages have no installer file, Sysinternals
+and Paint.NET ship as archives winget unpacks itself, Discord's manifest gives
+no way to install it without somebody clicking through a wizard. Of the ninety
+or so built-in programs, eighty-six can go on a stick.
+
+The versions are frozen on the day the stick is built, and the machine knows
+it. It writes down what it was built with in
+`C:\ProgramData\DSKY\offline-programs.json`, and if it has the internet at
+first boot after all it updates them there and then. If it does not, it leaves
+`update-programs.cmd` beside that record and a task that runs it at every
+sign-in until everything is current, then takes itself away.
+
 ### Programs on Ubuntu
 
 The same picker, and the same `--apps`, for Ubuntu Server 24.04 and 26.04 and

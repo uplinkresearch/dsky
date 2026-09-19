@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/uplinkresearch/dsky/internal/appcatalog"
@@ -19,6 +20,11 @@ func TestBuiltinTableIDsLive(t *testing.T) {
 	for _, p := range prereqPackages {
 		got, err := appcatalog.LookupWinget(context.Background(), p.ref)
 		switch {
+		case errors.Is(err, appcatalog.ErrWingetUnchecked):
+			// GitHub's hourly limit, or no network: nothing is known about
+			// this id either way, and calling that a bad id turns the test
+			// red for a reason that has nothing to do with the table.
+			t.Skipf("winget's package list could not be reached: %v", err)
 		case err != nil:
 			t.Errorf("%s (%s): %v", p.name, p.ref, err)
 		case got != p.ref:

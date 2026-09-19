@@ -101,7 +101,8 @@ func agentCovers(r *recipe.Recipe) (bool, string) {
 
 // buildManifest turns what compose already resolved into the agent's
 // instructions. Nothing is decided here that was not decided by the recipe.
-func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []agent.Installer, verifyScript string, mig migrateParts) *agent.Manifest {
+func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []agent.Installer,
+	offline []agent.OfflineApp, verifyScript string, mig migrateParts) *agent.Manifest {
 	w := r.Windows
 	m := &agent.Manifest{
 		Version:      agent.ManifestVersion,
@@ -165,6 +166,7 @@ func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []a
 		m.Apps = &agent.Apps{Scope: recipe.AppsScope(w.Apps), Installers: payload}
 		if w.Apps != nil {
 			m.Apps.Winget = w.Apps.Winget
+			m.Apps.Offline, m.Apps.BuiltAt = offline, w.Apps.BuiltAt
 		}
 	}
 	return m
@@ -208,6 +210,16 @@ func firstbootStepNames(r *recipe.Recipe) []string {
 		case s.Debloat:
 			add("debloat")
 		case s.Apps:
+			add("apps")
+		case s.MSI != nil && s.MSI.Ref != "", s.Exe != nil && s.Exe.Ref != "":
+			// The operator's own installers are run by the apps step, and
+			// nothing in the recipe names that step for them: a recipe with
+			// an RMM agent and no winget packages produced a manifest whose
+			// steps were "drivers,debloat", carrying installers no step ever
+			// reached. Found while wiring the offline pre-pull, which
+			// produces exactly that shape -- installers and no package ids --
+			// on every build. The agent would have taken an operator's own
+			// agent installer to a machine and quietly not installed it.
 			add("apps")
 		}
 	}
@@ -303,6 +315,26 @@ func agentInstallers(w *recipe.WindowsSpec, refFiles map[string]string) []agent.
 			}
 		}
 		out = append(out, agent.Installer{File: name, Args: args, MSI: msi})
+	}
+	return out
+}
+
+// agentOfflineApps ties each pre-pulled installer back to the winget package
+// it is, using the staged filename compose has just decided. The agent keeps
+// this on the machine so the programs can be brought up to date later; see
+// internal/agent/catchup.go.
+//
+// A ref with no staged file is dropped rather than recorded: a record naming
+// a file that is not on the media would have the machine trying to update a
+// program it never got.
+func agentOfflineApps(w *recipe.WindowsSpec, refFiles map[string]string) []agent.OfflineApp {
+	var out []agent.OfflineApp
+	for _, o := range w.Apps.OfflineApps() {
+		file := refFiles[o.Ref]
+		if file == "" {
+			continue
+		}
+		out = append(out, agent.OfflineApp{ID: o.ID, Version: o.Version, File: file})
 	}
 	return out
 }

@@ -335,3 +335,39 @@ func TestWingetDisplayHintIsSafeInARegex(t *testing.T) {
 		}
 	}
 }
+
+// A record of what the media carries has to match what the media carries. One
+// for a file nothing stages would have the machine reporting a program it
+// never got, and trying to update it afterwards -- worse than recording
+// nothing, because it reads as an answer.
+func TestAnOfflineRecordMustNameSomethingOnTheMedia(t *testing.T) {
+	base := func() *Recipe {
+		return &Recipe{
+			Version: 1, ID: "r", Name: "R",
+			OS:     OSSpec{Type: OSWindows, Source: "windows-11", SourceMode: SourceISO},
+			Flash:  FlashSpec{Verify: "readback-sha256"},
+			Target: TargetSpec{Scheme: "mbr", Filesystem: "fat32", Boot: "uefi-only", Size: "auto"},
+			Windows: &WindowsSpec{
+				Unattend:  &UnattendSpec{Template: "t.tmpl"},
+				Firstboot: FirstbootSpec{Mode: "generate"},
+				Payload:   []PayloadItem{{Ref: "winget-google.chrome"}},
+				Apps: &AppsSpec{Offline: []OfflineApp{
+					{ID: "Google.Chrome", Version: "153.0", Ref: "winget-google.chrome"},
+				}},
+			},
+		}
+	}
+	if err := base().Validate(); err != nil {
+		t.Fatalf("a recipe whose record matches its payload was refused: %v", err)
+	}
+	r := base()
+	r.Windows.Apps.Offline[0].Ref = "winget-somethingelse"
+	if err := r.Validate(); err == nil {
+		t.Error("a record naming a file the media does not carry was accepted")
+	}
+	r = base()
+	r.Windows.Apps.Offline[0].ID = ""
+	if err := r.Validate(); err == nil {
+		t.Error("a record with no winget id was accepted, so nothing could ever update it")
+	}
+}

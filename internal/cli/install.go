@@ -73,6 +73,10 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 		"\"dell:OptiPlex 7010\" (repeatable; one stick can carry several models)")
 	apps := fs.String("apps", "", "programs to install with the operating system, on Windows, Ubuntu and\n"+
 		"Fedora Server (see `dsky apps`, and `dsky apps --os ubuntu|fedora`)")
+	offline := fs.Bool("offline", false, "Windows: download those programs now and put them on the stick, so the\n"+
+		"machine installs them with no internet at all. The stick grows by the\n"+
+		"size of the installers and their versions are frozen on today's date;\n"+
+		"the machine updates them itself once it reaches a network.")
 	domainBlob := fs.String("domain-blob", "", "Windows: join a domain using a blob from\n"+
 		"`djoin /provision` (one machine per blob). A credentialed join belongs\n"+
 		"in a workspace recipe, so its password is not left in shell history.")
@@ -200,7 +204,12 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 				return fmt.Errorf("%s: %w", pkg, err)
 			}
 		}
-		if len(pkgs) > 0 {
+		if len(pkgs) > 0 && *offline {
+			fmt.Printf("Will download %d program(s) now and put them on the stick: %s\n",
+				len(pkgs), strings.Join(pkgs, ", "))
+			fmt.Println("  The machine installs them with no internet. Their versions are today's,")
+			fmt.Println("  and the machine updates them itself once it reaches a network.")
+		} else if len(pkgs) > 0 {
 			fmt.Printf("Will install %d program(s) with winget at first boot: %s\n",
 				len(pkgs), strings.Join(pkgs, ", "))
 		}
@@ -211,6 +220,12 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 		}
 	}
 
+	if *offline && e.Family != oscatalog.Windows {
+		// Ubuntu and Fedora install their programs from the installer's own
+		// answers, which is the distro's package manager over the network.
+		// There is nothing here to put on the stick instead.
+		return fmt.Errorf("--offline is a Windows option; %s installs its programs through its own installer", e.Name)
+	}
 	if *domainBlob != "" {
 		if e.Family != oscatalog.Windows {
 			return fmt.Errorf("--domain-blob is a Windows option")
@@ -226,7 +241,7 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 	prog := &stageProgress{}
 	art, err := oscatalog.BuildQuick(ctx, lib, e, oscatalog.Options{
 		Edition: *edition, AccountMode: *account, Debloat: *debloat, BypassRequirement: *bypass,
-		Hardware: hw, Apps: appIDs, ThirdPartyDrivers: thirdParty,
+		Hardware: hw, Apps: appIDs, ThirdPartyDrivers: thirdParty, Offline: *offline,
 		DomainBlob: *domainBlob,
 		AdminUser:  *adminUser, AdminPassword: adminPass,
 		WiFiSSID: strings.TrimSpace(*wifiSSID), WiFiPassword: wifiPass,

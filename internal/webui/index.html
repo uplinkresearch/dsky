@@ -2382,7 +2382,7 @@ function driverOpt() {
 // list: the server checks winget has it first. And a search for something
 // winget does not carry, such as RustDesk, says so and offers Add installer.
 const WINGET_ID = /^[A-Za-z0-9][A-Za-z0-9+_-]*(\.[A-Za-z0-9+_-]+)+$/;
-function appsOpt(target = "windows") {
+function appsOpt(target = "windows", onChange = null) {
   // "linux" here means any of the Linux targets: what differs between them is
   // which flag on the program says it installs, and which note to show.
   const linux = target === "ubuntu" || target === "fedora";
@@ -2460,6 +2460,7 @@ function appsOpt(target = "windows") {
       c.append(x); chips.append(c);
     }
     setNote();
+    if (onChange) onChange([...picked.keys()]);
   };
   const addApp = a => {
     if (!picked.has(a.id)) picked.set(a.id, { label: a.name, labels: appLabels(a) });
@@ -2767,7 +2768,24 @@ function openInstall(os, edit) {
       "form for it. It is not saved in a recipe.", "password");
     const dv = driverOpt();
     const df = modelPickerOpt(os);
-    const ap = appsOpt();
+    // The offline tick belongs to the program picker and means nothing
+    // without it, so it appears when something is picked and goes away again
+    // when the last program is removed.
+    const off = checkOpt("Put the installers on the stick, so this PC needs no internet");
+    off.wrap.hidden = true;
+    const offNote = el("div", "sub",
+      "The programs are downloaded now and carried on the media. The stick grows by " +
+      "the size of the installers, and their versions are today\u2019s \u2014 the PC updates " +
+      "them itself the first time it reaches a network.");
+    offNote.style.color = "var(--dim)";
+    offNote.style.marginTop = "4px";
+    off.wrap.append(offNote);
+    const ap = appsOpt("windows", ids => {
+      off.wrap.hidden = !ids.length;
+      // Cleared as it goes, not just hidden: a tick nobody can see is a tick
+      // nobody meant, and it would still be in what the page sends.
+      if (!ids.length) off.set(false);
+    });
     const dj = domainOpt();
     const bp = checkOpt("Skip TPM / Secure Boot / RAM checks (older or virtual hardware)");
     // A recipe is not tied to one downloaded file or one computer's domain
@@ -2784,7 +2802,7 @@ function openInstall(os, edit) {
         ws.wrap.querySelector("input").value = saved.wifi_ssid;
         if (saved.wifi_password) wp.wrap.querySelector("input").placeholder = "enter it again to keep this network";
       }
-      bp.set(saved.bypass_requirement); ap.set(saved.apps);
+      bp.set(saved.bypass_requirement); ap.set(saved.apps); off.set(!!saved.offline);
       if ((saved.hardware || []).length) {
         const names = saved.hardware.map(h => h.vendor ? (h.vendor + " " + (h.model || "")).trim() : (h.hwids || []).length + " devices");
         keep = checkOpt("Keep the drivers already in this recipe: " + names.join(", "));
@@ -2793,7 +2811,7 @@ function openInstall(os, edit) {
     }
     opts.append(ed.wrap, am.wrap, au.wrap, aw.wrap, db.wrap);
     if (keep) opts.append(keep.wrap);
-    opts.append(ws.wrap, wp.wrap, dv.wrap, df.wrap, ap.wrap);
+    opts.append(ws.wrap, wp.wrap, dv.wrap, df.wrap, ap.wrap, off.wrap);
     if (!editing) opts.append(dj.wrap);
     opts.append(bp.wrap);
     if (iso) opts.append(iso.wrap);
@@ -2802,7 +2820,7 @@ function openInstall(os, edit) {
       edition: ed.get(), account_mode: am.get(), debloat: db.get(),
       admin_user: au.get(), admin_password: aw.get(),
       wifi_ssid: ws.get(), wifi_password: wp.get(),
-      drivers: dv.get(), drivers_for: df.get(), apps: ap.get(), domain_blob: dj.get(),
+      drivers: dv.get(), drivers_for: df.get(), apps: ap.get(), offline: off.get(), domain_blob: dj.get(),
       bypass_requirement: bp.get(), iso: iso ? iso.get() : "", keep_drivers: keep ? keep.get() : false,
     });
   } else {

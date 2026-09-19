@@ -65,6 +65,38 @@ func (a *Agent) clearResume() {
 	}
 }
 
+// armCatchUp registers the task that retries the program updates at every
+// sign-in until they are all current.
+//
+// It runs as the person using the machine, with their highest token, for the
+// same reason the resume task does: winget arrives as a per-user package and
+// there is no winget for SYSTEM to run.
+func (a *Agent) armCatchUp() {
+	script := filepath.Join(dskyStateDir(), catchUpScript)
+	if _, err := os.Stat(script); err != nil {
+		a.J.Info(stepCatchUp, "no update script to arm: %v", err)
+		return
+	}
+	user := os.Getenv("USERDOMAIN") + `\` + os.Getenv("USERNAME")
+	xmlPath := filepath.Join(os.TempDir(), "dsky-catchup-task.xml")
+	if err := os.WriteFile(xmlPath, utf16LE(catchUpTaskXML(user, script)), 0o644); err != nil {
+		a.J.FailDetail(stepCatchUp, "could not write the update task", err.Error())
+		return
+	}
+	defer os.Remove(xmlPath)
+	if r := run(2*time.Minute, "schtasks", "/create", "/tn", catchUpTask, "/xml", xmlPath, "/f"); !r.ok() {
+		a.J.FailDetail(stepCatchUp, "could not register the update task", trimOut(r.Out))
+		return
+	}
+	a.J.Info(stepCatchUp, "this PC has no internet yet, so the programs from the media are as old as the media. "+
+		"They will be updated at the next sign-in after it is connected, or by running %s", script)
+}
+
+// clearCatchUp takes the task away once every program is current.
+func (a *Agent) clearCatchUp() {
+	run(2*time.Minute, "schtasks", "/delete", "/tn", catchUpTask, "/f")
+}
+
 // disarmAutoLogon takes away the automatic sign-in the answer file set up for
 // provisioning, and the password it stored to do it.
 //
