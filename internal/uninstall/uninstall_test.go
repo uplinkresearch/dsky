@@ -3,6 +3,7 @@ package uninstall
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -157,10 +158,28 @@ func TestEverySelfItemIsRemoved(t *testing.T) {
 	if len(errs) != 0 {
 		t.Fatalf("errors: %v", errs)
 	}
+	// Both self items acted on, and both reported. That is the bug, and it is
+	// the same on every platform.
 	if len(removed) != 3 {
 		t.Errorf("removed %d of 3: %v", len(removed), removed)
 	}
-	for _, path := range []string{prog, alias, other} {
+	for _, want := range []string{prog, alias, other} {
+		if !slices.Contains(removed, want) {
+			t.Errorf("%s is missing from what was reported removed: %v", filepath.Base(want), removed)
+		}
+	}
+
+	// Whether the files have gone yet is where the platforms differ, and the
+	// first version of this test asserted the Unix answer on both. Windows
+	// cannot delete a running program, so removeSelf hands the job to a
+	// detached command that waits for this process to exit first: the file is
+	// still there when Run returns, by design. SelfIsDeferred is that
+	// difference, already stated for the callers that have to word it.
+	gone := []string{prog, alias, other}
+	if SelfIsDeferred {
+		gone = []string{other}
+	}
+	for _, path := range gone {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Errorf("%s is still there after uninstall", filepath.Base(path))
 		}
