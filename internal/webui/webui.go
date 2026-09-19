@@ -1467,6 +1467,14 @@ func (s *Server) handleSaveRecipe(w http.ResponseWriter, r *http.Request) {
 		if created != "" {
 			msg += " — in a new workspace, " + created
 		}
+		// A recipe does not carry passwords, so saying only "saved" leaves
+		// somebody to discover at build time that it cannot be built. Said
+		// here, while they are still looking at the dialog that asked for
+		// them.
+		if needs := oscatalog.VarsRecipeNeeds(ws.Dir, id); len(needs) > 0 {
+			msg += ". Before this builds, put " + strings.Join(needs, " and ") +
+				" in vars.local.yaml beside it: a recipe keeps passwords out of itself on purpose"
+		}
 		job.Finish(msg)
 	}()
 	writeJSON(w, 202, map[string]string{"job_id": job.ID, "workspace_created": created})

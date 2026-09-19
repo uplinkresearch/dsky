@@ -116,6 +116,15 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 	defer os.RemoveAll(buildTmp)
 
 	vars := ws.MergedVars(r, req.CLIVars)
+	// Everything the recipe asks the workspace for and does not get, said
+	// once and all together. Expanding the values one at a time reports the
+	// first of them and stops, so a recipe short of two values took two
+	// builds to find that out -- and an empty password was never reported at
+	// all, because an empty string expands perfectly well. See
+	// recipe.NeededVars.
+	if missing := recipe.NeededVars(r, vars); len(missing) > 0 {
+		return nil, fmt.Errorf("compose: %s", recipe.NeededVarsError(missing))
+	}
 	refFiles := map[string]string{} // source ref -> staged filename under Scripts/
 
 	// An offline join is applied at first boot, never by Setup in specialize.

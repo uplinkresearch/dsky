@@ -17,6 +17,7 @@ import (
 	"github.com/uplinkresearch/dsky/internal/appcatalog"
 	"github.com/uplinkresearch/dsky/internal/library"
 	"github.com/uplinkresearch/dsky/internal/recipe"
+	"github.com/uplinkresearch/dsky/internal/workspace"
 )
 
 // RecipeForm is a saved recipe read back into the choices the install dialog
@@ -506,4 +507,28 @@ func offlinePrograms(wsDir string, w *recipe.WindowsSpec) ([]appcatalog.Prepulle
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// VarsRecipeNeeds lists what a saved recipe cannot be built without: the
+// values it references and the workspace does not supply.
+//
+// It is asked right after saving, because a recipe that keeps passwords out of
+// itself -- which is the whole point of keeping them out -- is a recipe that
+// will not build until somebody puts them somewhere. The dialog said "saved"
+// and nothing else, and the next thing anybody heard was a build refusing to
+// start, naming a file they had never opened.
+//
+// Reading the recipe back rather than working from the options it was saved
+// from, because the recipe on disk is what a build will read, and it is
+// already loaded back at this point to prove it parses.
+func VarsRecipeNeeds(wsDir, id string) []string {
+	ws, err := workspace.Load(wsDir)
+	if err != nil {
+		return nil
+	}
+	r, err := ws.Recipe(id)
+	if err != nil {
+		return nil
+	}
+	return recipe.NeededVars(r, ws.MergedVars(r, nil))
 }
