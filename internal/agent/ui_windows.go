@@ -185,18 +185,26 @@ type win32Window struct {
 
 var theWindow *win32Window
 
-// The Uplink Research palette the portal uses, in GDI's 0x00BBGGRR order:
-// --bg #05050f, --text #c8c8d4, --dim #8a8aa6, --ok #00ff41, --err #ff4d88,
-// --accent #00f5ff. A machine being set up should look like the tool that is
-// setting it up.
+// The palette the portal uses, in GDI's 0x00BBGGRR order: --bg #191e20,
+// --text #eee9da, --dim #b6b8ac, --ok and --accent #a9e6a5, --err #f07d70. A
+// machine being set up should look like the tool that is setting it up.
+//
+// These were the cyan-on-near-black set the portal had before it became a
+// piece of ground support hardware, and they stayed behind when it changed.
+// Nobody noticed, because the only screen they draw is on somebody else's
+// machine during a first boot — which is the screen least able to afford
+// looking like it came from a different program.
+//
+// --ok and --accent are the same phosphor now. They were distinct when green
+// meant success and cyan meant brand; here the brand is the green.
 const (
-	colBG      = 0x000F0505 // #05050f
-	colHeading = 0x00D4C8C8 // #c8c8d4
-	colBody    = 0x00D4C8C8 // #c8c8d4
-	colDim     = 0x00A68A8A // #8a8aa6
-	colOK      = 0x0041FF00 // #00ff41
-	colProblem = 0x00884DFF // #ff4d88
-	colAccent  = 0x00FFF500 // #00f5ff
+	colBG      = 0x00201E19 // #191e20
+	colHeading = 0x00DAE9EE // #eee9da
+	colBody    = 0x00DAE9EE // #eee9da
+	colDim     = 0x00ACB8B6 // #b6b8ac
+	colOK      = 0x00A5E6A9 // #a9e6a5
+	colProblem = 0x00707DF0 // #f07d70
+	colAccent  = 0x00A5E6A9 // #a9e6a5
 )
 
 // newWindow starts the window on a thread of its own and waits to hear
@@ -307,6 +315,17 @@ func (w *win32Window) create() error {
 	return nil
 }
 
+// bgColour is colBG as Go sees it. GDI stores a COLORREF as 0x00BBGGRR, so
+// the bytes come out in the opposite order to the way the constant reads.
+func bgColour() color.RGBA {
+	return color.RGBA{
+		R: uint8(colBG & 0xff),
+		G: uint8((colBG >> 8) & 0xff),
+		B: uint8((colBG >> 16) & 0xff),
+		A: 0xff,
+	}
+}
+
 // loadLogo decodes the wordmark over the window's background colour. A window
 // with no logo is a window with no logo: nothing here can stop a machine being
 // provisioned.
@@ -317,7 +336,10 @@ func (w *win32Window) loadLogo() {
 	}
 	b := img.Bounds()
 	dst := image.NewRGBA(b)
-	draw.Draw(dst, b, &image.Uniform{color.RGBA{R: 0x05, G: 0x05, B: 0x0f, A: 0xff}}, image.Point{}, draw.Src)
+	// The same colour the window is painted with, written from colBG rather
+	// than repeated by hand: the wordmark has soft edges, and flattening it
+	// over anything else leaves a rectangle of the wrong dark around it.
+	draw.Draw(dst, b, &image.Uniform{bgColour()}, image.Point{}, draw.Src)
 	draw.Draw(dst, b, img, b.Min, draw.Over)
 
 	w.logoW, w.logoH = int32(b.Dx()), int32(b.Dy())
