@@ -32,6 +32,17 @@ class Elem {
   replaceChildren(...n) { this.children = []; this.append(...n); }
   remove() { const p = this._parent; if (p) p.children = p.children.filter(c => c !== this); }
   removeChild(c) { this.children = this.children.filter(x => x !== c); return c; }
+  replaceWith(...n) {
+    const p = this._parent; if (!p) return;
+    const i = p.children.indexOf(this);
+    p.children.splice(i, 1, ...n.map(c => { const e = toNode(c); e._parent = p; return e; }));
+  }
+  insertBefore(n, ref) { const e = toNode(n); e._parent = this;
+    const i = ref ? this.children.indexOf(ref) : this.children.length;
+    this.children.splice(i < 0 ? this.children.length : i, 0, e); return e; }
+  after(...n) { const p = this._parent; if (!p) return;
+    const i = p.children.indexOf(this);
+    p.children.splice(i + 1, 0, ...n.map(c => { const e = toNode(c); e._parent = p; return e; })); }
   setAttribute(k, v) { this.attrs[k] = String(v); }
   getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
   removeAttribute(k) { delete this.attrs[k]; }
@@ -49,6 +60,7 @@ class Elem {
   querySelectorAll() { return []; }
   closest() { return new Elem("div"); }
   focus() {} blur() {} click() { this.dispatchEvent(new Ev("click")); }
+  showModal() { this.open = true; } close() { this.open = false; } show() { this.open = true; }
   scrollIntoView() {} getBoundingClientRect() { return { top: 0, left: 0, width: 100, height: 20, bottom: 20, right: 100 }; }
   // Canvas: the page checks for a context and skips its decoration when there
   // is none, which is what should happen here.

@@ -1103,9 +1103,14 @@ func (s *Server) handleFlash(w http.ResponseWriter, r *http.Request) {
 // installRequest is the Quick Install options as the page sends them, shared
 // by installing, setting up an image, downloading, and saving a recipe.
 type installRequest struct {
-	OSID              string   `json:"os_id"`
-	Edition           string   `json:"edition"`
-	AccountMode       string   `json:"account_mode"`
+	OSID        string `json:"os_id"`
+	Edition     string `json:"edition"`
+	AccountMode string `json:"account_mode"`
+	// AdminUser and AdminPassword are the local account an unattended install
+	// creates. The password is used for this build and not written down: it
+	// is not saved into a recipe, and not kept anywhere on this machine.
+	AdminUser         string   `json:"admin_user"`
+	AdminPassword     string   `json:"admin_password"`
 	Debloat           string   `json:"debloat"`
 	BypassRequirement bool     `json:"bypass_requirement"`
 	Drivers           bool     `json:"drivers"`
@@ -1186,6 +1191,7 @@ func (s *Server) installOptions(ctx context.Context, req installRequest) (oscata
 		Debloat: req.Debloat, BypassRequirement: req.BypassRequirement,
 		Hardware: hw, Models: models, Apps: req.Apps, ThirdPartyDrivers: thirdParty,
 		DomainBlob: blob,
+		AdminUser:  strings.TrimSpace(req.AdminUser), AdminPassword: req.AdminPassword,
 	}, nil
 }
 

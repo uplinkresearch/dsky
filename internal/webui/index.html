@@ -2119,10 +2119,10 @@ function selectOpt(label, pairs) {
   wrap.append(sel);
   return { wrap, get: () => sel.value, set: v => { if ([...sel.options].some(o => o.value === v)) sel.value = v; } };
 }
-function textOpt(label, placeholder, hint) {
+function textOpt(label, placeholder, hint, type) {
   const wrap = el("div", "opt");
   wrap.append(el("label", null, label));
-  const inp = el("input"); inp.type = "text"; inp.placeholder = placeholder || "";
+  const inp = el("input"); inp.type = type || "text"; inp.placeholder = placeholder || "";
   wrap.append(inp);
   if (hint) {
     const h = el("div", "sub", hint);
@@ -2720,6 +2720,22 @@ function openInstall(os, edit) {
     }
     const ed = selectOpt("Edition", (os.editions || ["Pro"]).map(e => [e, e]));
     const am = selectOpt("Account setup", [["local", "Local account, no setup screens"], ["oobe", "Normal Windows setup (OOBE)"]]);
+    // The account that unattended Windows creates. Without a password it is an
+    // administrator anybody who walks up to the machine can sign in as, which
+    // is fine on a bench and not fine on a PC that goes out to an office — so
+    // the field says so rather than leaving it to be discovered.
+    const au = textOpt("Administrator name", "user",
+      "The local account Windows creates. Leave blank for \u201cuser\u201d.");
+    const aw = textOpt("Administrator password", "leave blank for none",
+      "Blank means anybody at the keyboard can sign in as an administrator. " +
+      "It is not saved in a recipe.", "password");
+    // Windows asks for all of this itself when it runs its own setup, so the
+    // two fields belong to the unattended choice and disappear with it.
+    const showAccount = () => {
+      const local = am.get() === "local";
+      au.wrap.hidden = !local; aw.wrap.hidden = !local;
+    };
+    am.wrap.querySelector("select").addEventListener("change", showAccount);
     const db = selectOpt("Remove bloatware", [["standard", "Standard"], ["aggressive", "Aggressive"], ["off", "Keep everything"]]);
     const dv = driverOpt();
     const df = modelPickerOpt(os);
@@ -2732,6 +2748,7 @@ function openInstall(os, edit) {
     let keep = null;
     if (saved) {
       ed.set(saved.edition); am.set(saved.account_mode); db.set(saved.debloat);
+      if (saved.admin_user) au.wrap.querySelector("input").value = saved.admin_user;
       bp.set(saved.bypass_requirement); ap.set(saved.apps);
       if ((saved.hardware || []).length) {
         const names = saved.hardware.map(h => h.vendor ? (h.vendor + " " + (h.model || "")).trim() : (h.hwids || []).length + " devices");
@@ -2739,14 +2756,16 @@ function openInstall(os, edit) {
         keep.set(true);
       }
     }
-    opts.append(ed.wrap, am.wrap, db.wrap);
+    opts.append(ed.wrap, am.wrap, au.wrap, aw.wrap, db.wrap);
     if (keep) opts.append(keep.wrap);
     opts.append(dv.wrap, df.wrap, ap.wrap);
     if (!editing) opts.append(dj.wrap);
     opts.append(bp.wrap);
     if (iso) opts.append(iso.wrap);
+    showAccount();
     getOpts = () => ({
       edition: ed.get(), account_mode: am.get(), debloat: db.get(),
+      admin_user: au.get(), admin_password: aw.get(),
       drivers: dv.get(), drivers_for: df.get(), apps: ap.get(), domain_blob: dj.get(),
       bypass_requirement: bp.get(), iso: iso ? iso.get() : "", keep_drivers: keep ? keep.get() : false,
     });

@@ -164,3 +164,121 @@ func trimNode(s string) string {
 	}
 	return s
 }
+
+// The Install dialog can set the administrator's name and password, and the
+// password is never saved into a recipe.
+//
+// Without these the portal could only ever build Windows with the default
+// account and no password at all — an administrator anybody at the keyboard
+// can sign in as — while the command line could set both.
+func TestTheInstallDialogCanSetTheAdministratorAccount(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("no node on this machine")
+	}
+	page, err := os.ReadFile("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var src strings.Builder
+	for _, m := range regexp.MustCompile(`(?s)<script[^>]*>(.*?)</script>`).FindAllStringSubmatch(string(page), -1) {
+		src.WriteString(m[1] + "\n")
+	}
+	shim, err := os.ReadFile(filepath.Join("testdata", "pageload.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	file := filepath.Join(dir, "page.js")
+	if err := os.WriteFile(file, []byte(string(shim)+"\n"+src.String()+"\n"+accountDriver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fixture, _ := json.Marshal(map[string]any{"/api/state": pageFixture()})
+	out, err := exec.Command(node, file, string(fixture)).CombinedOutput()
+	if err != nil {
+		t.Fatalf("the dialog did not build:\n%s", trimNode(string(out)))
+	}
+	var got struct {
+		Fields   []string `json:"fields"`
+		Password string   `json:"password"`
+		User     string   `json:"user"`
+		Masked   bool     `json:"masked"`
+		Error    string   `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(lastLine(string(out))), &got); err != nil {
+		t.Fatalf("unreadable:\n%s", trimNode(string(out)))
+	}
+	if got.Error != "" {
+		t.Fatalf("the dialog threw: %s", got.Error)
+	}
+	for _, want := range []string{"Administrator name", "Administrator password"} {
+		if !contains(got.Fields, want) {
+			t.Errorf("the dialog has no %q field: %v", want, got.Fields)
+		}
+	}
+	// What is typed has to reach the build, or the fields are decoration.
+	if got.User != "reception" || got.Password != "s3cret" {
+		t.Errorf("the account did not reach the build request: user=%q password=%q", got.User, got.Password)
+	}
+	// A password on screen in clear text, in an office, is a password read
+	// over somebody's shoulder.
+	if !got.Masked {
+		t.Error("the password field shows what is typed")
+	}
+}
+
+func contains(all []string, want string) bool {
+	for _, s := range all {
+		if strings.Contains(s, want) {
+			return true
+		}
+	}
+	return false
+}
+
+const accountDriver = `
+(() => {
+  const out = { fields: [], user: "", password: "", masked: false, error: "" };
+  try {
+    state = JSON.parse(process.argv[2])["/api/state"];
+    const os = { id: "windows-11", name: "Windows 11", family: "windows", editions: ["Pro"] };
+    openInstall(os);
+    const dlg = document.getElementById("instOpts");
+    const labels = [], inputs = [];
+    const walk = e => {
+      if (e.tagName === "LABEL") labels.push(e.textContent);
+      if (e.tagName === "INPUT") inputs.push(e);
+      (e.children || []).forEach(walk);
+    };
+    walk(dlg);
+    out.fields = labels;
+    // Type into them the way somebody would.
+    const named = want => {
+      let found = null;
+      const scan = e => {
+        if ((e.children || []).some(c => c.tagName === "LABEL" && (c.textContent || "").includes(want))) found = e;
+        (e.children || []).forEach(scan);
+      };
+      scan(dlg);
+      if (!found) throw new Error("no field labelled " + want);
+      const inp = (found.children || []).find(c => c.tagName === "INPUT");
+      if (!inp) throw new Error(want + " has no input");
+      return inp;
+    };
+    const u = named("Administrator name"), p = named("Administrator password");
+    out.masked = p.type === "password";
+    u.value = "reception"; p.value = "s3cret";
+    // What the page would send. Pressing the button is the only way to see it:
+    // the dialog keeps its options to itself, which is as it should be.
+    let sent = null;
+    const realApi = api;
+    api = (path, body) => { if (path === "/api/install") sent = body; return Promise.resolve({}); };
+    document.getElementById("instSetup").onclick();
+    api = realApi;
+    if (!sent) throw new Error("pressing Set up image sent nothing");
+    out.user = sent.admin_user || "";
+    out.password = sent.admin_password || "";
+  } catch (e) { out.error = (e && e.message) || String(e); }
+  console.log(JSON.stringify(out));
+})();
+`

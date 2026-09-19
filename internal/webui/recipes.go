@@ -202,6 +202,13 @@ func (s *Server) handleRecipeUpdate(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 400, "a domain join file is for one computer, so it is not saved into a recipe")
 		return
 	}
+	// The name is worth keeping; the password is not ours to keep. A recipe is
+	// a file that lives in a workspace and goes into version control, and a
+	// password in one outlives every machine it was ever used for.
+	if req.AdminPassword != "" {
+		httpErr(w, 400, "an administrator password is not saved into a recipe — set it when you build")
+		return
+	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		name = rc.Name
