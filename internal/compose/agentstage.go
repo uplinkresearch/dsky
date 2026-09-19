@@ -170,6 +170,27 @@ func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []a
 	return m
 }
 
+// wlanProfile renders the wireless profile that goes on the media, with the
+// passphrase resolved.
+//
+// The recipe holds "${var:wifi_password}" and the value arrives at build time,
+// the same route the administrator's password and a domain join's credentials
+// take. Rendering straight from the spec instead put the literal text
+// "${var:wifi_password}" on the stick as the network's key -- and that is not
+// a build failure but a working profile with the wrong password in it, so the
+// machine installs perfectly, never joins, downloads nothing, and says
+// nothing. Caught by reading a built image; no unit test could have, because
+// every one of them passed a real passphrase in.
+func wlanProfile(w *recipe.WiFiSpec, vars map[string]string) (string, error) {
+	pass, err := recipe.ExpandVars(w.Password, vars)
+	if err != nil {
+		return "", fmt.Errorf("compose: windows.wifi.password: %w", err)
+	}
+	resolved := *w
+	resolved.Password = pass
+	return recipe.GenerateWLANProfile(&resolved), nil
+}
+
 // firstbootStepNames is the recipe's step order in the agent's words.
 func firstbootStepNames(r *recipe.Recipe) []string {
 	var out []string

@@ -38,6 +38,43 @@ func TestNoWiFiStepWithoutANetwork(t *testing.T) {
 	}
 }
 
+// The bug a built image caught and no unit test had: the recipe holds
+// "${var:wifi_password}", and rendering the profile straight from the spec put
+// that text on the stick as the network's key. Windows accepts such a profile
+// -- it is a valid document with a valid passphrase in it -- so there is no
+// build failure and no error on the machine. It simply never authenticates,
+// downloads nothing, and installs no programs.
+func TestTheProfileCarriesThePassphraseAndNotItsName(t *testing.T) {
+	spec := &recipe.WiFiSpec{SSID: "Uplink 5G", Password: "${var:wifi_password}"}
+	got, err := wlanProfile(spec, map[string]string{"wifi_password": "correct-horse-battery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "${var:") {
+		t.Errorf("the profile carries an unexpanded variable:\n%s", got)
+	}
+	if !strings.Contains(got, "<keyMaterial>correct-horse-battery</keyMaterial>") {
+		t.Errorf("the passphrase is not in the profile:\n%s", got)
+	}
+	// The spec itself is left alone: it belongs to the recipe, which is built
+	// from more than once.
+	if spec.Password != "${var:wifi_password}" {
+		t.Errorf("the recipe's own spec was rewritten to %q", spec.Password)
+	}
+}
+
+// A passphrase nobody supplied stops the build. Media that installs with a
+// placeholder for a password is the failure this rule exists to prevent.
+func TestAMissingPassphraseStopsTheBuild(t *testing.T) {
+	_, err := wlanProfile(&recipe.WiFiSpec{SSID: "Uplink", Password: "${var:wifi_password}"}, nil)
+	if err == nil {
+		t.Fatal("a build with no passphrase was allowed")
+	}
+	if !strings.Contains(err.Error(), "wifi_password") {
+		t.Errorf("the error does not name what is missing: %v", err)
+	}
+}
+
 // The manifest tells the agent which network to join, and carries the name of
 // the staged profile rather than the passphrase: the manifest is logged and
 // read freely on the imaged machine.

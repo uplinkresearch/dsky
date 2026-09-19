@@ -271,8 +271,12 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 	// internet is one it has to be told about. Staged for both first-boot
 	// paths: the agent imports it, and the generated script does too.
 	if w.WiFi.Enabled() {
+		profile, err := wlanProfile(w.WiFi, vars)
+		if err != nil {
+			return nil, err
+		}
 		wfPath := filepath.Join(buildTmp, recipe.WLANProfileName)
-		if err := os.WriteFile(wfPath, []byte(recipe.GenerateWLANProfile(w.WiFi)), 0o600); err != nil {
+		if err := os.WriteFile(wfPath, []byte(profile), 0o600); err != nil {
 			return nil, err
 		}
 		stage.AddFile(wfPath, path.Join(scriptsImg, recipe.WLANProfileName))
