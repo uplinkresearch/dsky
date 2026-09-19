@@ -298,13 +298,26 @@ func hashFileWithProgress(path string, report func(done, total int64)) (string, 
 	return hex.EncodeToString(h.Sum(nil)), st.Size(), nil
 }
 
-func minStickBytes(r *recipe.Recipe) int64 {
-	if r.Target.MinStick == "" {
-		return 0
+// minStickBytes is the smallest stick this build may be written to: what the
+// recipe asks for, and never less than the image itself.
+//
+// The recipe's figure is a guess made before the image exists, and it has been
+// wrong in the direction that matters. Windows 11 25H2 composes to about 8.9
+// GiB on its own, against a recipe that says 8 GiB -- so the check that exists
+// to stop somebody writing to a stick that cannot hold the image was passing
+// exactly that stick, and the write failed part way through instead. Staging
+// programs for an offline install makes the image bigger again.
+//
+// size is the composed image; zero where the caller does not have it yet.
+func minStickBytes(r *recipe.Recipe, size int64) int64 {
+	var n int64
+	if r.Target.MinStick != "" {
+		if v, err := recipe.ParseSize(r.Target.MinStick); err == nil {
+			n = v
+		}
 	}
-	n, err := recipe.ParseSize(r.Target.MinStick)
-	if err != nil {
-		return 0
+	if size > n {
+		return size
 	}
 	return n
 }

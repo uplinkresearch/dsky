@@ -11,6 +11,7 @@ import (
 	"github.com/uplinkresearch/dsky/internal/fsimg"
 	"github.com/uplinkresearch/dsky/internal/library"
 	"github.com/uplinkresearch/dsky/internal/manifest"
+	"github.com/uplinkresearch/dsky/internal/recipe"
 	"github.com/uplinkresearch/dsky/internal/workspace"
 )
 
@@ -234,4 +235,30 @@ func readImageFile(t *testing.T, imgPath, filePath string) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// The stick check exists so nobody writes an image to a device that cannot
+// hold it. It was reading the recipe's guess, made before the image existed,
+// and Windows 11 25H2 composes to about 8.9 GiB against a recipe that says 8
+// GiB -- so the check passed exactly the stick it is there to refuse, and the
+// write failed part way through instead.
+func TestTheStickMinimumIsNeverSmallerThanTheImage(t *testing.T) {
+	r := &recipe.Recipe{Target: recipe.TargetSpec{MinStick: "8GiB"}}
+	const eightGiB = 8 << 30
+	if got := minStickBytes(r, 0); got != eightGiB {
+		t.Errorf("with no image size, min = %d, want the recipe's %d", got, int64(eightGiB))
+	}
+	if got := minStickBytes(r, 4<<30); got != eightGiB {
+		t.Errorf("a small image lowered the recipe's minimum to %d", got)
+	}
+	const nineGiB = 9 << 30
+	if got := minStickBytes(r, nineGiB); got != nineGiB {
+		t.Errorf("min = %d for a %d-byte image; an 8 GB stick would be accepted and then run out",
+			got, int64(nineGiB))
+	}
+	// A recipe with no figure at all still refuses a stick too small for the
+	// image, which it never did before.
+	if got := minStickBytes(&recipe.Recipe{}, nineGiB); got != nineGiB {
+		t.Errorf("min = %d with no recipe figure", got)
+	}
 }

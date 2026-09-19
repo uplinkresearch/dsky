@@ -375,7 +375,7 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 
 	a := &Artifact{
 		RecipeID: r.ID, Kind: "image", Path: imgPath, Size: size, SHA256: sum,
-		InputsKey: key, Verify: r.Flash.Verify, MinStick: minStickBytes(r),
+		InputsKey: key, Verify: r.Flash.Verify, MinStick: minStickBytes(r, size),
 		CreatedAt: nowUTC(), Tool: toolVersion(),
 	}
 	return a, a.save()

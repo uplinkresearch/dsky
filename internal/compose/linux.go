@@ -135,7 +135,7 @@ func buildLinuxAutoinstall(ctx context.Context, req Request, entry library.Entry
 	}
 	art := &Artifact{
 		RecipeID: r.ID, Kind: "image", Path: imgPath, Size: size, SHA256: sum,
-		InputsKey: key, Verify: r.Flash.Verify, MinStick: minStickBytes(r),
+		InputsKey: key, Verify: r.Flash.Verify, MinStick: minStickBytes(r, size),
 		CreatedAt: nowUTC(), Tool: toolVersion(),
 	}
 	return art, art.save()
@@ -621,7 +621,7 @@ func buildLinuxKickstart(ctx context.Context, req Request, entry library.Entry, 
 	}
 	art := &Artifact{
 		RecipeID: r.ID, Kind: "image", Path: imgPath, Size: size, SHA256: sum,
-		InputsKey: key, Verify: r.Flash.Verify, MinStick: minStickBytes(r),
+		InputsKey: key, Verify: r.Flash.Verify, MinStick: minStickBytes(r, size),
 		CreatedAt: nowUTC(), Tool: toolVersion(),
 	}
 	return art, art.save()

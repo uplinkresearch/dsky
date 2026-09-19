@@ -41,10 +41,17 @@ func buildRaw(ctx context.Context, req Request) (*Artifact, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A compressed image's file size is not the size it writes to a stick,
+	// so only an uncompressed one can raise the minimum; for the rest the
+	// recipe's figure stands, as it always has.
+	var written int64
+	if comp == "" || comp == "none" {
+		written = st.Size()
+	}
 	a := &Artifact{
 		RecipeID: r.ID, Kind: "raw", Path: blob, Size: st.Size(),
 		SHA256: entry.SHA256, Compress: comp, InputsKey: key,
-		Verify: r.Flash.Verify, MinStick: minStickBytes(r),
+		Verify: r.Flash.Verify, MinStick: minStickBytes(r, written),
 		CreatedAt: nowUTC(), Tool: toolVersion(),
 	}
 	// Raw artifacts get no sidecar next to the blob (blobs are content-
