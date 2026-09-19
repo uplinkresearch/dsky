@@ -130,14 +130,22 @@ func dirBytes(dir string) int64 {
 // Removal continues past failures so one locked file cannot strand the rest;
 // every failure is returned.
 func Run(p *Plan, withLibrary bool) (removed []string, errs []error) {
-	var self *Item
+	// Plural. The alias is a symlink to the program, and os.Executable()
+	// resolves through it, so running either one marks *both* items as self.
+	// A single pointer kept only the last of them: `dsky uninstall` deferred
+	// dsky, then overwrote that with compose, removed compose at the end, and
+	// left the program on the machine -- reporting "Removed 5 item(s)" of six
+	// listed, with no error, because nothing had tried and failed. The count
+	// was the only clue, and counting is not something anybody does to a
+	// success message.
+	var selves []*Item
 	for i := range p.Items {
 		it := p.Items[i]
 		if it.Kind == KindLibrary && !withLibrary {
 			continue
 		}
 		if it.Self {
-			self = &p.Items[i] // last, so a failure does not strand the rest
+			selves = append(selves, &p.Items[i]) // last, so a failure strands nothing
 			continue
 		}
 		switch it.Kind {
@@ -154,12 +162,12 @@ func Run(p *Plan, withLibrary bool) (removed []string, errs []error) {
 		}
 		removed = append(removed, it.Path)
 	}
-	if self != nil {
+	for _, self := range selves {
 		if err := removeSelf(self.Path); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", self.Path, err))
-		} else {
-			removed = append(removed, self.Path)
+			continue
 		}
+		removed = append(removed, self.Path)
 	}
 	return removed, errs
 }

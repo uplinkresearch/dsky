@@ -127,3 +127,42 @@ func TestRunKeepsLibraryUnlessAsked(t *testing.T) {
 		t.Error("--purge did not remove the library")
 	}
 }
+
+// The alias is a symlink to the program, and os.Executable() resolves through
+// it, so running either marks both items as self. Keeping one pointer meant
+// the second overwrote the first: `dsky uninstall` removed compose, left dsky
+// on the machine, and said "Removed 5 item(s)" of six listed -- with no error,
+// because nothing had tried and failed. Found by uninstalling for real and
+// noticing the program still ran afterwards.
+func TestEverySelfItemIsRemoved(t *testing.T) {
+	dir := t.TempDir()
+	prog := filepath.Join(dir, "dsky")
+	alias := filepath.Join(dir, "compose")
+	for _, p := range []string{prog, alias} {
+		if err := os.WriteFile(p, []byte("x"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := filepath.Join(dir, "icon.png")
+	if err := os.WriteFile(other, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &Plan{Items: []Item{
+		{Path: prog, What: "the dsky program", Kind: KindProgram, Self: true},
+		{Path: alias, What: "the compose alias", Kind: KindProgram, Self: true},
+		{Path: other, What: "app icon", Kind: KindProgram},
+	}}
+	removed, errs := Run(p, false)
+	if len(errs) != 0 {
+		t.Fatalf("errors: %v", errs)
+	}
+	if len(removed) != 3 {
+		t.Errorf("removed %d of 3: %v", len(removed), removed)
+	}
+	for _, path := range []string{prog, alias, other} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s is still there after uninstall", filepath.Base(path))
+		}
+	}
+}
