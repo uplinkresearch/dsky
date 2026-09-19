@@ -44,7 +44,14 @@ var (
 )
 
 type lookupResult struct {
-	id  string
+	id string
+	// dir is the version folder the id was found in, which is where the
+	// installer manifest lives. Cached with the spelling because the same
+	// walk produced both: the portal checks a typed id, and an offline build
+	// then reads that package's installer manifest, and walking the
+	// repository twice for one package is a dozen API calls against a limit
+	// of 60 an hour without a token.
+	dir string
 	err error
 }
 
@@ -66,26 +73,8 @@ func LookupWinget(ctx context.Context, id string) (string, error) {
 	if !ValidWingetID(id) {
 		return "", fmt.Errorf("%q is not a winget package id (they look like Publisher.Package, such as Brave.Brave)", id)
 	}
-	key := strings.ToLower(id)
-	lookupMu.Lock()
-	if r, ok := lookupCache[key]; ok {
-		lookupMu.Unlock()
-		return r.id, r.err
-	}
-	lookupMu.Unlock()
-
-	canon, err := lookupWinget(ctx, id)
-	if err == nil || errors.Is(err, ErrWingetNotFound) {
-		lookupMu.Lock()
-		lookupCache[key] = lookupResult{canon, err}
-		lookupMu.Unlock()
-	}
+	canon, _, err := resolveWinget(ctx, id)
 	return canon, err
-}
-
-func lookupWinget(ctx context.Context, id string) (string, error) {
-	name, _, err := resolveWinget(ctx, id)
-	return name, err
 }
 
 // resolveWinget walks the repository to a version folder that really holds
@@ -94,6 +83,24 @@ func lookupWinget(ctx context.Context, id string) (string, error) {
 // same walk: the id check wants the spelling, and the offline pre-pull wants
 // the folder, because the installer manifest lives in it.
 func resolveWinget(ctx context.Context, id string) (string, string, error) {
+	key := strings.ToLower(id)
+	lookupMu.Lock()
+	if r, ok := lookupCache[key]; ok && (r.err != nil || r.dir != "") {
+		lookupMu.Unlock()
+		return r.id, r.dir, r.err
+	}
+	lookupMu.Unlock()
+	name, dir, err := walkToVersion(ctx, id)
+	if err == nil || errors.Is(err, ErrWingetNotFound) {
+		lookupMu.Lock()
+		lookupCache[key] = lookupResult{id: name, dir: dir, err: err}
+		lookupMu.Unlock()
+	}
+	return name, dir, err
+}
+
+// walkToVersion is resolveWinget without the cache.
+func walkToVersion(ctx context.Context, id string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	path := "manifests/" + strings.ToLower(id[:1])

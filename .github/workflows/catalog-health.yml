@@ -67,8 +67,19 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
+          # Both in one invocation, on purpose: the walk to a package's
+          # folder is cached per process, and the second test reads the
+          # installer manifest in the folder the first one found. Split
+          # across two runs they would walk the whole repository twice.
+          #
+          # The second is what notices an offline build quietly losing a
+          # program: a package that stops being one that can go on a stick is
+          # reported and not failed (Store packages and archives genuinely
+          # cannot), but a manifest shape the reader no longer understands
+          # fails, because that is how every program would start being
+          # refused at once.
           go test ./internal/appcatalog/ -count=1 -timeout 20m -v \
-            -run 'TestWingetIDsLive' 2>&1 | tee winget.txt
+            -run 'TestWingetIDsLive|TestPrePullableLive' 2>&1 | tee winget.txt
           # The runtimes a migration installs before everything else are not
           # in the picker's list, so they need checking too.
           go test ./internal/migrate/ -count=1 -timeout 10m -v \
@@ -99,6 +110,11 @@ jobs:
             echo '```'
             grep -E "oscatalog_test.go:[0-9]+: [a-z0-9.-]+:" result.txt | grep -v ": ok (" || true
             grep -E "appcatalog_test.go:[0-9]+: " winget.txt | grep -v ": ok$" || true
+            # A package that cannot go on a stick is reported, not failed, so
+            # it is dropped here with the successes: the summary is for what
+            # broke this week.
+            grep -E "prepulllive_test.go:[0-9]+: " winget.txt \
+              | grep -v ": ok$" | grep -v ": cannot ride on a stick: " || true
             grep -E "ubuntulive_test.go:[0-9]+: " ubuntu.txt | grep -v ": ok$" || true
             grep -E "mirrorslive_test.go:[0-9]+: " mirrors.txt || true
             echo '```'

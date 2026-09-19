@@ -41,7 +41,7 @@ func TestPrePullableLive(t *testing.T) {
 			checked++
 			var pe *PrePullError
 			errors.As(err, &pe)
-			t.Logf("%-28s cannot: %s", a.Winget, strings.Join(pe.Reasons, "; "))
+			t.Logf("%s: cannot ride on a stick: %s", a.Winget, strings.Join(pe.Reasons, "; "))
 		case err != nil:
 			checked++
 			t.Errorf("%s: its manifest could not be read at all: %v", a.Winget, err)
@@ -58,9 +58,11 @@ func TestPrePullableLive(t *testing.T) {
 				for _, p := range plan[:len(plan)-1] {
 					also = append(also, p.ID)
 				}
-				extra = "  + " + strings.Join(also, ", ")
+				extra = " (with " + strings.Join(also, ", ") + ")"
 			}
-			t.Logf("%-28s %s %-9s %s%s", a.Winget, in.Version, in.Type, in.Filename(), extra)
+			// Ends in ": ok" like the other live checks, so the weekly job's
+			// summary can drop the successes and print what rotted.
+			t.Logf("%s: %s %s %s%s: ok", a.Winget, in.Version, in.Type, in.Filename(), extra)
 		}
 	}
 	t.Logf("%d can be put on a stick, %d cannot", canGo, cannot)

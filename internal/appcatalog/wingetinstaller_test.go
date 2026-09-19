@@ -328,3 +328,65 @@ func TestSplitSwitchesKeepsQuotedPathsWhole(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+// The folder walk is a dozen API calls against a limit of sixty an hour
+// without a token, and two things do it for the same package: the portal
+// checks a typed id, and an offline build then reads that package's installer
+// manifest. Doing it twice is what makes a build of a dozen programs run out
+// of GitHub part way through.
+func TestTheFolderWalkHappensOncePerPackage(t *testing.T) {
+	var walks int
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		walks++
+		p := strings.TrimPrefix(r.URL.Path, "/git/trees/master:")
+		dirs := map[string][]treeEntry{
+			"manifests/s":                trees("Some"),
+			"manifests/s/Some":           trees("Thing"),
+			"manifests/s/Some/Thing":     trees("1.0"),
+			"manifests/s/Some/Thing/1.0": blobs("Some.Thing.installer.yaml", "Some.Thing.yaml"),
+		}
+		tree, ok := dirs[p]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"tree": tree})
+	}))
+	raw := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("PackageIdentifier: Some.Thing\nPackageVersion: \"1.0\"\nInstallerType: wix\n" +
+			"Installers:\n- Architecture: x64\n  InstallerUrl: https://example.invalid/x.msi\n  InstallerSha256: AA\n"))
+	}))
+	defer api.Close()
+	defer raw.Close()
+	oldAPI, oldRaw := WingetRepoAPI, WingetRawBase
+	WingetRepoAPI, WingetRawBase = api.URL, raw.URL
+	defer func() {
+		WingetRepoAPI, WingetRawBase = oldAPI, oldRaw
+		lookupMu.Lock()
+		lookupCache = map[string]lookupResult{}
+		lookupMu.Unlock()
+	}()
+	lookupMu.Lock()
+	lookupCache = map[string]lookupResult{}
+	lookupMu.Unlock()
+
+	ctx := context.Background()
+	if _, err := LookupWinget(ctx, "some.thing"); err != nil {
+		t.Fatal(err)
+	}
+	first := walks
+	if first == 0 {
+		t.Fatal("the id check walked nothing")
+	}
+	// The same package, spelled the way somebody typed it, then the way the
+	// manifest spells it.
+	if _, err := LookupWingetInstaller(ctx, "some.thing"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LookupWinget(ctx, "Some.Thing"); err != nil {
+		t.Fatal(err)
+	}
+	if walks != first {
+		t.Errorf("walked the repository %d times for one package, want %d", walks, first)
+	}
+}
