@@ -3,6 +3,7 @@ package helpers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -89,6 +90,11 @@ func powershellBinary(ctx context.Context) (string, error) {
 			}
 		}
 	}
+	// A pwsh that exists and will not run is worth remembering: telling
+	// somebody to install PowerShell when PowerShell is sitting on their PATH
+	// sends them round in a circle. What the thing said when it failed is
+	// usually the fix -- mise, for one, prints the exact command.
+	var brokenPath, brokenSaid string
 	seen := map[string]bool{}
 	for _, c := range candidates {
 		if seen[c] {
@@ -104,13 +110,55 @@ func powershellBinary(ctx context.Context) (string, error) {
 		if major, perr := strconv.Atoi(strings.TrimSpace(string(out))); err == nil && perr == nil && major >= 7 {
 			return c, nil
 		}
+		if brokenPath == "" {
+			brokenPath, brokenSaid = c, whyItFailed(err, string(out))
+		}
+	}
+	const orISO = "Or download the ISO in a browser from microsoft.com/software-download " +
+		"and choose it under \"Use an ISO you downloaded\" (--iso <file> with dsky install)"
+	if brokenPath != "" {
+		// Found, and not usable. Do not say "install it".
+		said := ""
+		if brokenSaid != "" {
+			said = fmt.Sprintf(" It said: %s.", brokenSaid)
+		}
+		return "", fmt.Errorf("fetching Windows on this computer needs PowerShell 7. %s is on this computer "+
+			"but does not run.%s Fix that — a version manager usually needs a version chosen, and prints how "+
+			"— or install PowerShell 7 properly (https://aka.ms/powershell). %s", brokenPath, said, orISO)
 	}
 	hint := "install it with your package manager, e.g. mise use -g powershell"
 	if runtime.GOOS == "darwin" {
 		hint = "brew install powershell"
 	}
 	return "", fmt.Errorf("fetching Windows on this computer needs PowerShell 7 (%s; https://aka.ms/powershell). "+
-		"Or download the ISO in a browser from microsoft.com/software-download and choose it under \"Use an ISO you downloaded\" (--iso <file> with dsky install)", hint)
+		"%s", hint, orISO)
+}
+
+// whyItFailed is the first useful line the thing printed, from wherever it
+// printed it. A shim's complaint is the operator's instruction: mise answers
+// "No version is set for shim: pwsh", and then tells them what to run.
+func whyItFailed(runErr error, stdout string) string {
+	var text string
+	var ee *exec.ExitError
+	if errors.As(runErr, &ee) && len(ee.Stderr) > 0 {
+		text = string(ee.Stderr)
+	}
+	if strings.TrimSpace(text) == "" {
+		text = stdout
+	}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "mise ERROR "))
+		// Version managers print their own version as a trailing line; it is
+		// not why anything failed.
+		if line == "" || strings.HasPrefix(line, "Run with") || strings.HasPrefix(line, "Version:") {
+			continue
+		}
+		if len(line) > 120 {
+			line = line[:120] + "…"
+		}
+		return line
+	}
+	return ""
 }
 
 var (
