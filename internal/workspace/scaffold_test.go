@@ -3,6 +3,7 @@ package workspace
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -95,6 +96,17 @@ func TestScaffoldedUnattendHasBothJoinPaths(t *testing.T) {
 // account every one of them could read it. Gitignored keeps it out of a
 // repository and does nothing about the machine it sits on.
 func TestTheSecretsFileIsNotWorldReadable(t *testing.T) {
+	// Windows does not decide who can read a file from the mode bits; it
+	// uses the folder's access rules, and Go reports 0666 for anything
+	// writable there whatever it was created with. So there is nothing for
+	// this to check on Windows -- which is the same reason the fix itself
+	// only means anything on Linux and macOS. Checking it anyway is testing
+	// the machine the test runs on rather than the thing being tested, and
+	// it turned CI red on one of three runners for a file that was written
+	// exactly as asked.
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes do not control access on Windows; the folder's rules do")
+	}
 	dir := t.TempDir()
 	if err := Scaffold(dir, "Test Org"); err != nil {
 		t.Fatal(err)
