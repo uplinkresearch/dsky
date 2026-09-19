@@ -379,7 +379,10 @@
     border-radius: 2px;
     box-shadow: 0 1px 0 #8b958735, 0 2px 3px #0b170f66, inset 0 0 0 1px #7482754f;
     text-shadow: 0 1px 1px #132115; }
-  .nameplate span:last-child { color: #b8c1af; }
+  /* A second line, if there is one, is the quieter half. Written as "a span
+     following a span" rather than "the last span" so a plate with one line on
+     it is the bright one rather than the dim one. */
+  .nameplate span + span { color: #b8c1af; }
   .nameplate::before, .nameplate::after { content: ""; position: absolute; top: 50%;
     width: 3px; height: 3px; margin-top: -1.5px; border-radius: 50%;
     background: #d2d3bb; box-shadow: 0 1px 1px #101b11; }
@@ -843,7 +846,11 @@
        systems", which was atmosphere and nothing else — and not even the right
        words, since the term was ground support equipment. -->
   <div class="brandsub">Display &amp; keyboard<br>Media preparation console</div>
-  <div class="nameplate"><span>Uplink Research</span><span>Media Operations</span></div>
+  <!-- Whose machine it is, and nothing else. It read "Media Operations"
+       underneath, which was a department invented to fill a second line —
+       and once the left side said "media preparation console", the header
+       was saying "media" twice across three lines. -->
+  <div class="nameplate"><span>Uplink Research</span></div>
 </header>
 <!-- The screens, as keys that are always down. There was a start screen and a
      back button: two presses to cross from one job to another, and a screen
