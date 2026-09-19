@@ -160,6 +160,8 @@ func Apply(dir string, opts RunOptions) (int, error) {
 			a.domainStep()
 		case stepDrivers:
 			a.driversStep()
+		case stepWiFi:
+			a.wifiStep()
 		case stepDebloat:
 			a.debloatStep()
 		case stepApps:

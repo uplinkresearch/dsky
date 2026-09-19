@@ -89,6 +89,20 @@ func (r *Recipe) Lint() []Finding {
 			}
 		}
 	}
+	if wf := w.WiFi; wf != nil && wf.Password != "" && !strings.Contains(wf.Password, "${var:") {
+		warnf("windows.wifi.password holds a literal passphrase — use \"${var:wifi_password}\" " +
+			"and put the value in vars.local.yaml (gitignored)")
+	}
+	// The programs come from the vendors, over the internet. A hands-off
+	// install never asks Windows' wireless question, so a machine with no
+	// cable in it and no network configured installs none of them -- and the
+	// only sign is that they are missing, days later.
+	if w.Apps.Enabled() && !w.WiFi.Enabled() && w.Unattend != nil &&
+		w.Unattend.Vars["account_mode"] == "local" {
+		warnf("this installs %d program(s) but configures no wireless network — a hands-off "+
+			"install never asks for one, so a machine with no ethernet cable will install none "+
+			"of them. Add windows.wifi, or make sure it is plugged in", len(w.Apps.Winget))
+	}
 
 	// Domain join. The failure everything here guards against is the quiet
 	// one: Setup carries on into a workgroup, the machine looks perfectly

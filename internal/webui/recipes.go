@@ -117,6 +117,15 @@ func (s *Server) describeRecipe(rc *recipe.Recipe, form *oscatalog.RecipeForm) [
 		} else {
 			add("Remove bloatware", "Keep everything")
 		}
+		// Whether the machine will have a network at first boot is the
+		// difference between the programs below arriving and not arriving, so
+		// it is said here rather than discovered afterwards on the machine.
+		switch {
+		case w.WiFi.Enabled():
+			add("Wi-Fi network", w.WiFi.SSID)
+		case w.Apps.Enabled():
+			add("Wi-Fi network", "None — this machine needs an ethernet cable to install its programs")
+		}
 		if form != nil {
 			add("Install programs", programs(form.Apps))
 		} else {

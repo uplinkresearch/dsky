@@ -158,6 +158,9 @@ func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []a
 	if w.Debloat.Enabled() {
 		m.Debloat = &agent.Debloat{Preset: w.Debloat.Preset, Apps: recipe.DebloatApps(w.Debloat)}
 	}
+	if w.WiFi.Enabled() {
+		m.WiFi = &agent.WiFi{SSID: w.WiFi.SSID, Profile: recipe.WLANProfileName}
+	}
 	if w.Apps.Enabled() || len(payload) > 0 {
 		m.Apps = &agent.Apps{Scope: recipe.AppsScope(w.Apps), Installers: payload}
 		if w.Apps != nil {
@@ -193,7 +196,26 @@ func firstbootStepNames(r *recipe.Recipe) []string {
 	if r.Windows.Apps.Enabled() {
 		add("apps")
 	}
-	return out
+	return insertWiFi(out, r.Windows.WiFi.Enabled())
+}
+
+// insertWiFi puts the wireless step immediately after the drivers, which is
+// the only place it can go: the card may have no working driver until that
+// step has run, and everything after it wants the network.
+//
+// It is not a step anybody writes in a recipe. Asking for a network and then
+// having to remember to also ask for it to be joined is a way to build media
+// that quietly does not, which is the failure this whole thing exists to stop.
+func insertWiFi(steps []string, wanted bool) []string {
+	if !wanted {
+		return steps
+	}
+	for i, s := range steps {
+		if s == "drivers" {
+			return append(steps[:i+1:i+1], append([]string{"wifi"}, steps[i+1:]...)...)
+		}
+	}
+	return append([]string{"wifi"}, steps...)
 }
 
 // alternateExtract is the other switch style a vendor has shipped, used when

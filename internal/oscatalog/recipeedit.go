@@ -32,6 +32,12 @@ type RecipeForm struct {
 	// installer puts on the proprietary ones it finds. Nothing is staged, so
 	// unlike Hardware below it is a choice the dialog shows and can change.
 	ThirdPartyDrivers bool `json:"third_party_drivers,omitempty"`
+	// WiFiSSID is the wireless network the machine joins at first boot, and
+	// WiFiPassword says only whether that network needs a passphrase. The
+	// passphrase itself is never written into a recipe, so it cannot be read
+	// back out of one: the dialog asks for it again.
+	WiFiSSID     string `json:"wifi_ssid,omitempty"`
+	WiFiPassword bool   `json:"wifi_password,omitempty"`
 	// Hardware is the driver packs already chosen. The dialog can keep them
 	// but not show them as its own pickers: they were resolved from whatever
 	// computer or models were chosen at the time.
@@ -146,6 +152,15 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 		}
 		f.Apps = append(f.Apps, c.ID)
 	}
+	if wf := w.WiFi; wf != nil {
+		// A literal passphrase means somebody wrote it in by hand. Saving
+		// from the dialog would replace it with the variable and lose the
+		// value, so the recipe stays a file rather than a form.
+		if wf.Password != "" && wf.Password != wifiPasswordVar {
+			return notEditable("its wireless passphrase is written into the recipe")
+		}
+		f.WiFiSSID, f.WiFiPassword = wf.SSID, wf.Password != ""
+	}
 	f.Hardware = w.Hardware
 	return f, sameAsDialog(r, f, e)
 }
@@ -156,7 +171,12 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 func sameAsDialog(r *recipe.Recipe, f RecipeForm, e Entry) error {
 	opts := Options{Edition: f.Edition, AccountMode: f.AccountMode, Debloat: f.Debloat,
 		BypassRequirement: f.BypassRequirement, Apps: f.Apps,
-		ThirdPartyDrivers: f.ThirdPartyDrivers}
+		ThirdPartyDrivers: f.ThirdPartyDrivers, WiFiSSID: f.WiFiSSID}
+	if f.WiFiPassword {
+		// Only whether there is one matters here: the recipe says
+		// "${var:wifi_password}" either way, and the value never reaches it.
+		opts.WiFiPassword = wifiPasswordVar
+	}
 	if e.Family == Windows {
 		opts.defaults(e)
 	}

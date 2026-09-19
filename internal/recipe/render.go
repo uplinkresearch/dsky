@@ -214,6 +214,20 @@ func GenerateFirstboot(r *Recipe, drivers ResolvedDrivers, resolveRef func(ref s
 			steps = append(steps[:at:at], append([]Step{{Debloat: true}}, steps[at:]...)...)
 		}
 	}
+	// The wireless network goes on right after the drivers, because until
+	// they are on the card may not work, and everything after this wants the
+	// network. It is never written in a recipe: `windows.wifi` asks for it,
+	// and having to also remember a step would be a way to build media that
+	// quietly never joins.
+	if w.WiFi.Enabled() {
+		at := 0
+		for i, s := range steps {
+			if s.Drivers {
+				at = i + 1
+			}
+		}
+		steps = append(steps[:at:at], append([]Step{{WiFi: true}}, steps[at:]...)...)
+	}
 	// Programs install after drivers (they need the network the NIC driver
 	// just enabled) and after debloat (so app removal cannot race a fresh
 	// install), but before agents.
@@ -312,6 +326,17 @@ func GenerateFirstboot(r *Recipe, drivers ResolvedDrivers, resolveRef func(ref s
 				line(`echo [%%date%% %%time%%] %s exited with %%errorlevel%% >> "%%LOG%%"`, exe.File)
 				line(`:exe_%d_done`, n)
 			}
+		case s.WiFi:
+			line(`rem --- join %s, so the programs below have somewhere to download from ---`, w.WiFi.SSID)
+			line(`rem user=all keeps the profile on the machine rather than in the`)
+			line(`rem profile of whoever first boot happened to sign in as.`)
+			line(`netsh wlan add profile filename="%%SCRIPTS%%\%s" user=all >> "%%LOG%%" 2>&1`, WLANProfileName)
+			logNote("netsh wlan add profile")
+			line(`netsh wlan connect name="%s" >> "%%LOG%%" 2>&1`, w.WiFi.SSID)
+			logNote("netsh wlan connect")
+			line(`rem Association and DHCP finish after netsh returns, so give them`)
+			line(`rem a moment before anything tries to download.`)
+			line(`ping -n %d 127.0.0.1 > nul`, wifiSettleSeconds+1)
 		case s.Debloat:
 			line(`rem --- debloat: strip consumer apps, ads, Copilot, widgets (preset %s) ---`, w.Debloat.Preset)
 			line(`powershell -NoProfile -ExecutionPolicy Bypass -File "%%SCRIPTS%%\debloat.ps1" >> "%%LOG%%" 2>&1`)
