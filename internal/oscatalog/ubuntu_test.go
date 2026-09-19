@@ -52,8 +52,19 @@ func TestUbuntuUserData(t *testing.T) {
 			t.Fatalf("desktop=%v: not YAML: %v\n%s", desktop, err, out)
 		}
 		a := doc.Autoinstall
-		if a.Version != 1 || a.Storage.Layout.Name != "direct" || a.Identity != nil {
+		if a.Version != 1 || a.Identity != nil {
 			t.Errorf("desktop=%v: %+v (no account may be in DSKY's answers)", desktop, a)
+		}
+		// Each edition gets the layout its own installer would choose: Ubuntu
+		// Server's guided install uses LVM, Desktop's a plain partition. DSKY
+		// said "direct" for both, which matched Desktop by accident and gave
+		// every server a disk that cannot be grown or snapshotted later.
+		wantLayout := "lvm"
+		if desktop {
+			wantLayout = "direct"
+		}
+		if a.Storage.Layout.Name != wantLayout {
+			t.Errorf("desktop=%v: storage layout %q, want %q", desktop, a.Storage.Layout.Name, wantLayout)
 		}
 		// Server asks for the account on screen; Desktop's installer asks itself.
 		if server := !desktop; server != (len(a.Interactive) == 1 && a.Interactive[0] == "identity") {

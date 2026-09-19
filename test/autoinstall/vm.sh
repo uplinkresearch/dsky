@@ -394,9 +394,15 @@ fi
     echo "    password: \"$(openssl passwd -6 -salt dskyci dsky)\""
   fi
   ssh_answers
+  # lvm, because that is what DSKY's own answers write for a server and this
+  # harness is meant to boot what a person would get. The cases that pick
+  # programs go through DSKY's answers directly; these hand-written ones
+  # have to be kept level with them by hand, which is how they drifted --
+  # a two-disk run 'proving' the layout was testing this file, not DSKY.
   echo '  storage:'
   echo '    layout:'
-  echo '      name: direct'
+  echo '      name: lvm'
+  echo '      sizing-policy: all'
   echo '  packages:'
   echo '    - hello'
   echo '  snaps:'
