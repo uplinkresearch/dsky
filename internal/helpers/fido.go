@@ -114,6 +114,17 @@ func powershellBinary(ctx context.Context) (string, error) {
 			brokenPath, brokenSaid = c, whyItFailed(err, string(out))
 		}
 	}
+	return "", noPowerShellError(brokenPath, brokenSaid)
+}
+
+// noPowerShellError is what to say when there is no PowerShell 7 to use, which
+// is two different situations and used to be one message.
+//
+// Kept apart from the search so it can be read back in a test: the search
+// itself depends on what happens to be installed on the machine running it,
+// and a message this specific is worth checking on every machine rather than
+// only on ones with nothing installed.
+func noPowerShellError(brokenPath, brokenSaid string) error {
 	const orISO = "Or download the ISO in a browser from microsoft.com/software-download " +
 		"and choose it under \"Use an ISO you downloaded\" (--iso <file> with dsky install)"
 	if brokenPath != "" {
@@ -122,7 +133,7 @@ func powershellBinary(ctx context.Context) (string, error) {
 		if brokenSaid != "" {
 			said = fmt.Sprintf(" It said: %s.", brokenSaid)
 		}
-		return "", fmt.Errorf("fetching Windows on this computer needs PowerShell 7. %s is on this computer "+
+		return fmt.Errorf("fetching Windows on this computer needs PowerShell 7. %s is on this computer "+
 			"but does not run.%s Fix that — a version manager usually needs a version chosen, and prints how "+
 			"— or install PowerShell 7 properly (https://aka.ms/powershell). %s", brokenPath, said, orISO)
 	}
@@ -130,7 +141,7 @@ func powershellBinary(ctx context.Context) (string, error) {
 	if runtime.GOOS == "darwin" {
 		hint = "brew install powershell"
 	}
-	return "", fmt.Errorf("fetching Windows on this computer needs PowerShell 7 (%s; https://aka.ms/powershell). "+
+	return fmt.Errorf("fetching Windows on this computer needs PowerShell 7 (%s; https://aka.ms/powershell). "+
 		"%s", hint, orISO)
 }
 
