@@ -374,7 +374,17 @@ autoinstall:
     allow-pw: true
   storage:
     layout:
-      name: direct
+      # lvm is what Ubuntu Server's own guided install chooses, and what a
+      # stick built from the catalog now writes, so a server built either way
+      # comes out the same. "direct" gives a plain partition instead, which is
+      # what Ubuntu Desktop does -- simpler, and cannot be grown or snapshotted
+      # later without moving the data off first.
+      name: lvm
+      # Fill the volume group. Ubuntu's default leaves about half of it spare
+      # for snapshots; on a machine being handed to somebody, a 40 GB disk
+      # showing an 18 GB root reads as a fault. Drop this line to get Ubuntu's
+      # reserve back.
+      sizing-policy: all
   packages:
     - openssh-server
   late-commands:

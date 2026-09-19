@@ -201,9 +201,29 @@ func ubuntuUserData(plan appcatalog.UbuntuPlan, desktop, thirdPartyDrivers bool,
 		w("  interactive-sections:")
 		w("    - identity")
 	}
+	// Each edition gets the layout its own installer would have chosen, so a
+	// machine DSKY built looks like one somebody installed by hand. Ubuntu
+	// Server's guided install uses LVM; Ubuntu Desktop's lays down a plain
+	// partition. DSKY said "direct" for both, which matched Desktop by
+	// accident and quietly gave every server a disk that cannot be extended,
+	// snapshotted, or have a second disk added to it later without moving the
+	// data off first -- on the edition where that is most likely to be wanted,
+	// and with nothing on screen to say a choice had been made at all.
 	w("  storage:")
 	w("    layout:")
-	w("      name: direct")
+	if desktop {
+		w("      name: direct")
+	} else {
+		w("      name: lvm")
+		// sizing-policy: all, because Ubuntu's own default leaves about half
+		// the volume group unallocated -- room to grow into or snapshot, which
+		// is a sensible thing for a server somebody administers and a puzzle
+		// on a machine somebody is handed. A 40 GB disk came back with an
+		// 18.5 GB root, and the first person to see that reports it as a
+		// fault. The group is still there, so another disk can be added and
+		// the volume extended; what is gone is the snapshot headroom.
+		w("      sizing-policy: all")
+	}
 	if thirdPartyDrivers {
 		// Ubuntu's own answer to "drivers for this computer". Linux carries
 		// its drivers in the kernel, with one exception that matters on a
