@@ -88,3 +88,34 @@ func TestScaffoldedUnattendHasBothJoinPaths(t *testing.T) {
 		t.Error("the join component is not in the specialize pass")
 	}
 }
+
+// vars.local.yaml is the one file in a workspace whose purpose is holding
+// secrets — the domain password, the administrator's, the Wi-Fi passphrase.
+// It was written 0644 like the README, so on any machine with more than one
+// account every one of them could read it. Gitignored keeps it out of a
+// repository and does nothing about the machine it sits on.
+func TestTheSecretsFileIsNotWorldReadable(t *testing.T) {
+	dir := t.TempDir()
+	if err := Scaffold(dir, "Test Org"); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(filepath.Join(dir, SecretsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode := st.Mode().Perm(); mode != 0o600 {
+		t.Errorf("%s is mode %04o, want 0600 — anybody else on this machine can read the passwords", SecretsFile, mode)
+	}
+	// Everything else is meant to be read, committed and shared, and stays
+	// as it was: a workspace somebody clones should not arrive with a
+	// README nobody else can open.
+	for _, rel := range []string{"workspace.yaml", "README.md", "recipes/example-win11.yaml"} {
+		st, err := os.Stat(filepath.Join(dir, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mode := st.Mode().Perm(); mode != 0o644 {
+			t.Errorf("%s is mode %04o, want 0644", rel, mode)
+		}
+	}
+}

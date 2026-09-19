@@ -55,7 +55,7 @@ func scaffold(dir, orgName string, examples bool) error {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(p, []byte(content), fileMode(rel)); err != nil {
 			return err
 		}
 	}
@@ -63,6 +63,24 @@ func scaffold(dir, orgName string, examples bool) error {
 }
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
+
+// SecretsFile is the one file in a workspace whose purpose is holding
+// secrets: the domain password, the administrator's, the Wi-Fi passphrase.
+// Everything else in a workspace is meant to be read, committed and shared.
+const SecretsFile = "vars.local.yaml"
+
+// fileMode is how a scaffolded file is written. The secrets file is the
+// exception: it was written 0644 like the README, so on any machine with more
+// than one account -- a shared bench, a jump box, a technician's laptop that
+// somebody else also signs in to -- every one of those accounts could read the
+// domain password out of it. Being gitignored keeps it out of a repository and
+// does nothing about the machine it sits on.
+func fileMode(rel string) os.FileMode {
+	if rel == SecretsFile {
+		return 0o600
+	}
+	return 0o644
+}
 
 func slugify(s string) string {
 	s = nonSlug.ReplaceAllString(strings.ToLower(s), "-")
