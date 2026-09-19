@@ -2742,14 +2742,29 @@ function openInstall(os, edit) {
     const aw = textOpt("Administrator password", "leave blank for none",
       "Blank means anybody at the keyboard can sign in as an administrator. " +
       "It is not saved in a recipe.", "password");
-    // Windows asks for all of this itself when it runs its own setup, so the
-    // two fields belong to the unattended choice and disappear with it.
+    // Windows asks for all of this itself when it runs its own setup, so these
+    // fields belong to the unattended choice and disappear with it. The
+    // wireless one goes with them for the same reason, and only for that
+    // reason: normal Windows setup has a network page of its own.
     const showAccount = () => {
       const local = am.get() === "local";
       au.wrap.hidden = !local; aw.wrap.hidden = !local;
+      ws.wrap.hidden = !local; wp.wrap.hidden = !local;
     };
     am.wrap.querySelector("select").addEventListener("change", showAccount);
     const db = selectOpt("Remove bloatware", [["standard", "Standard"], ["aggressive", "Aggressive"], ["off", "Keep everything"]]);
+    // A hands-off install answers Windows' setup questions in advance, and one
+    // of them is which network to join — so Windows never asks, and a laptop
+    // with no ethernet port reaches the desktop with no way to reach anything.
+    // The account, the debloat and the drivers all still work offline, so the
+    // only sign is that none of the programs arrived.
+    const ws = textOpt("Wi-Fi network (optional)", "network name",
+      "For a machine with no ethernet cable. Windows never asks for this on a " +
+      "hands-off install, so without it the programs below have nowhere to " +
+      "download from.");
+    const wp = textOpt("Wi-Fi password", "leave blank if the network is open",
+      "Stored on the USB drive in clear text — a wireless profile has no other " +
+      "form for it. It is not saved in a recipe.", "password");
     const dv = driverOpt();
     const df = modelPickerOpt(os);
     const ap = appsOpt();
@@ -2762,6 +2777,13 @@ function openInstall(os, edit) {
     if (saved) {
       ed.set(saved.edition); am.set(saved.account_mode); db.set(saved.debloat);
       if (saved.admin_user) au.wrap.querySelector("input").value = saved.admin_user;
+      // The passphrase is not in the recipe and cannot come back from one, so
+      // a network that needs one has to be given it again. Said here rather
+      // than found out by building a stick that joins nothing.
+      if (saved.wifi_ssid) {
+        ws.wrap.querySelector("input").value = saved.wifi_ssid;
+        if (saved.wifi_password) wp.wrap.querySelector("input").placeholder = "enter it again to keep this network";
+      }
       bp.set(saved.bypass_requirement); ap.set(saved.apps);
       if ((saved.hardware || []).length) {
         const names = saved.hardware.map(h => h.vendor ? (h.vendor + " " + (h.model || "")).trim() : (h.hwids || []).length + " devices");
@@ -2771,7 +2793,7 @@ function openInstall(os, edit) {
     }
     opts.append(ed.wrap, am.wrap, au.wrap, aw.wrap, db.wrap);
     if (keep) opts.append(keep.wrap);
-    opts.append(dv.wrap, df.wrap, ap.wrap);
+    opts.append(ws.wrap, wp.wrap, dv.wrap, df.wrap, ap.wrap);
     if (!editing) opts.append(dj.wrap);
     opts.append(bp.wrap);
     if (iso) opts.append(iso.wrap);
@@ -2779,6 +2801,7 @@ function openInstall(os, edit) {
     getOpts = () => ({
       edition: ed.get(), account_mode: am.get(), debloat: db.get(),
       admin_user: au.get(), admin_password: aw.get(),
+      wifi_ssid: ws.get(), wifi_password: wp.get(),
       drivers: dv.get(), drivers_for: df.get(), apps: ap.get(), domain_blob: dj.get(),
       bypass_requirement: bp.get(), iso: iso ? iso.get() : "", keep_drivers: keep ? keep.get() : false,
     });

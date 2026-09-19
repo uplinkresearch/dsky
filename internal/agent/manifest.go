@@ -54,6 +54,9 @@ type Manifest struct {
 	Debloat *Debloat `json:"debloat,omitempty"`
 	Apps    *Apps    `json:"apps,omitempty"`
 	Domain  *Domain  `json:"domain,omitempty"`
+	// WiFi is a wireless network to join before the programs are installed,
+	// for the machines that have no other way to reach them.
+	WiFi *WiFi `json:"wifi,omitempty"`
 	// Settings is what a migration asks the machine to be set to. Nothing
 	// else writes it: a plain install has no opinion about somebody's power
 	// plan or taskbar.
@@ -66,7 +69,7 @@ type Manifest struct {
 	Drives   []MappedDrive `json:"drives,omitempty"`
 
 	// Steps is the order to run in, using the recipe's own step names
-	// ("domain", "drivers", "debloat", "apps", "settings"). Unknown steps are logged and skipped
+	// ("domain", "drivers", "wifi", "debloat", "apps", "settings"). Unknown steps are logged and skipped
 	// rather than failing the run.
 	Steps []string `json:"steps"`
 
@@ -166,6 +169,16 @@ type Apps struct {
 	// agent and run after the winget packages: they need no network, so if
 	// the machine is offline the one that matters still lands.
 	Installers []Installer `json:"installers,omitempty"`
+}
+
+// WiFi is the wireless network to join at first boot. The credential itself
+// is in the staged profile rather than here, so the manifest -- which is read
+// and logged freely -- never carries the password.
+type WiFi struct {
+	// SSID is the network's name, for the log and the screen.
+	SSID string `json:"ssid"`
+	// Profile is the WLANProfile XML staged beside the agent.
+	Profile string `json:"profile"`
 }
 
 // Installer is one operator-supplied installer on the stick.

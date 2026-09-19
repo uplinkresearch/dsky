@@ -1116,7 +1116,13 @@ type installRequest struct {
 	Drivers           bool     `json:"drivers"`
 	DriversFor        string   `json:"drivers_for"`
 	Apps              []string `json:"apps"`
-	ISO               string   `json:"iso"`
+	// WiFiSSID and WiFiPassword join the machine to a wireless network at
+	// first boot. Without one, a hands-off install on a machine with no
+	// ethernet port reaches first boot with no way to download anything, and
+	// the programs are the only part that shows it.
+	WiFiSSID     string `json:"wifi_ssid"`
+	WiFiPassword string `json:"wifi_password"`
+	ISO          string `json:"iso"`
 	// DomainBlob is a file from `djoin /provision`: an offline domain join
 	// for one computer.
 	DomainBlob string `json:"domain_blob"`
@@ -1186,12 +1192,29 @@ func (s *Server) installOptions(ctx context.Context, req installRequest) (oscata
 			return e, oscatalog.Options{}, fmt.Errorf("domain join file: %w", err)
 		}
 	}
+	ssid := strings.TrimSpace(req.WiFiSSID)
+	if ssid != "" {
+		if e.Family != oscatalog.Windows {
+			return e, oscatalog.Options{}, fmt.Errorf("a wireless network is a Windows option; " +
+				"a Linux installer asks for one itself")
+		}
+		// Checked here rather than at first boot, where the only symptom of a
+		// profile Windows will not read is that no programs arrived.
+		if err := recipe.ValidateWiFi(
+			&recipe.WiFiSpec{SSID: ssid, Password: req.WiFiPassword},
+			"the Wi-Fi network name", "the Wi-Fi password",
+			func(format string, args ...any) error { return fmt.Errorf(format, args...) },
+		); err != nil {
+			return e, oscatalog.Options{}, err
+		}
+	}
 	return e, oscatalog.Options{
 		Edition: req.Edition, AccountMode: req.AccountMode,
 		Debloat: req.Debloat, BypassRequirement: req.BypassRequirement,
 		Hardware: hw, Models: models, Apps: req.Apps, ThirdPartyDrivers: thirdParty,
 		DomainBlob: blob,
 		AdminUser:  strings.TrimSpace(req.AdminUser), AdminPassword: req.AdminPassword,
+		WiFiSSID: ssid, WiFiPassword: req.WiFiPassword,
 	}, nil
 }
 

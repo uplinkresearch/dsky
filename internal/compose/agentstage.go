@@ -158,6 +158,9 @@ func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []a
 	if w.Debloat.Enabled() {
 		m.Debloat = &agent.Debloat{Preset: w.Debloat.Preset, Apps: recipe.DebloatApps(w.Debloat)}
 	}
+	if w.WiFi.Enabled() {
+		m.WiFi = &agent.WiFi{SSID: w.WiFi.SSID, Profile: recipe.WLANProfileName}
+	}
 	if w.Apps.Enabled() || len(payload) > 0 {
 		m.Apps = &agent.Apps{Scope: recipe.AppsScope(w.Apps), Installers: payload}
 		if w.Apps != nil {
@@ -165,6 +168,27 @@ func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []a
 		}
 	}
 	return m
+}
+
+// wlanProfile renders the wireless profile that goes on the media, with the
+// passphrase resolved.
+//
+// The recipe holds "${var:wifi_password}" and the value arrives at build time,
+// the same route the administrator's password and a domain join's credentials
+// take. Rendering straight from the spec instead put the literal text
+// "${var:wifi_password}" on the stick as the network's key -- and that is not
+// a build failure but a working profile with the wrong password in it, so the
+// machine installs perfectly, never joins, downloads nothing, and says
+// nothing. Caught by reading a built image; no unit test could have, because
+// every one of them passed a real passphrase in.
+func wlanProfile(w *recipe.WiFiSpec, vars map[string]string) (string, error) {
+	pass, err := recipe.ExpandVars(w.Password, vars)
+	if err != nil {
+		return "", fmt.Errorf("compose: windows.wifi.password: %w", err)
+	}
+	resolved := *w
+	resolved.Password = pass
+	return recipe.GenerateWLANProfile(&resolved), nil
 }
 
 // firstbootStepNames is the recipe's step order in the agent's words.
@@ -193,7 +217,26 @@ func firstbootStepNames(r *recipe.Recipe) []string {
 	if r.Windows.Apps.Enabled() {
 		add("apps")
 	}
-	return out
+	return insertWiFi(out, r.Windows.WiFi.Enabled())
+}
+
+// insertWiFi puts the wireless step immediately after the drivers, which is
+// the only place it can go: the card may have no working driver until that
+// step has run, and everything after it wants the network.
+//
+// It is not a step anybody writes in a recipe. Asking for a network and then
+// having to remember to also ask for it to be joined is a way to build media
+// that quietly does not, which is the failure this whole thing exists to stop.
+func insertWiFi(steps []string, wanted bool) []string {
+	if !wanted {
+		return steps
+	}
+	for i, s := range steps {
+		if s == "drivers" {
+			return append(steps[:i+1:i+1], append([]string{"wifi"}, steps[i+1:]...)...)
+		}
+	}
+	return append([]string{"wifi"}, steps...)
 }
 
 // alternateExtract is the other switch style a vendor has shipped, used when

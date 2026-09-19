@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -55,17 +56,53 @@ func (a *Agent) findWinget() string {
 	}
 }
 
+// connectTestURL is Microsoft's own connectivity endpoint: tiny, plain HTTP
+// and unauthenticated, so it answers on a machine that has just been imaged
+// and has no certificates or credentials of its own yet. A variable so tests
+// can point it somewhere they control.
+var connectTestURL = "http://www.msftconnecttest.com/connecttest.txt"
+
+// onlineDeadline is how long a freshly imaged machine is given to reach the
+// internet. Long enough for a wireless association and DHCP on a slow AP.
+var onlineDeadline = 5 * time.Minute
+
+// connectTestBody is what Microsoft's endpoint answers with. Checking it, and
+// not merely that something answered, is the whole point of the endpoint.
+//
+// A captive portal -- hotel, airport, a guest network with a terms page --
+// answers every request with its own login page, and answers it successfully.
+// A machine behind one is not on the internet, but an HTTP client cannot tell
+// the difference from the status code alone, and Go reports a 200 carrying a
+// portal's HTML exactly as it reports a 200 carrying this. Asking for a known
+// body is how Windows itself decides, and it is why this endpoint returns
+// fourteen bytes of text rather than an empty 200.
+const connectTestBody = "Microsoft Connect Test"
+
+// reachedTheInternet reports whether the machine can actually fetch something
+// from the internet, rather than whether something answered.
+func reachedTheInternet(client *http.Client) bool {
+	resp, err := client.Get(connectTestURL)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	// The real body is short; anything longer is somebody else's page.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	return err == nil && strings.Contains(string(body), connectTestBody)
+}
+
 // waitOnline waits for the machine to reach the network, because the packages
 // come from the vendors. A machine that is simply not online yet should not
 // be recorded as a pile of failures.
 func (a *Agent) waitOnline() bool {
 	client := &http.Client{Timeout: 10 * time.Second}
-	deadline := time.Now().Add(5 * time.Minute)
+	deadline := time.Now().Add(onlineDeadline)
 	announced := false
 	for {
-		resp, err := client.Get("http://www.msftconnecttest.com/connecttest.txt")
-		if err == nil {
-			resp.Body.Close()
+		if reachedTheInternet(client) {
 			return true
 		}
 		if time.Now().After(deadline) {

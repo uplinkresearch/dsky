@@ -80,6 +80,12 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 	adminPassStdin := fs.Bool("admin-password-stdin", false, "read that account's password from stdin, so the install asks nothing at all.\n"+
 		"Without it Linux stops once for an account, and Windows makes a local\n"+
 		"administrator with no password at all.")
+	wifiSSID := fs.String("wifi", "", "Windows: `network` to join at first boot, so the programs have\n"+
+		"somewhere to download from. A hands-off install never asks OOBE's\n"+
+		"wireless question, so a laptop with no ethernet port would otherwise\n"+
+		"arrive online-less and install nothing.")
+	wifiPassStdin := fs.Bool("wifi-password-stdin", false, "read that network's passphrase from stdin, so it is not left in\n"+
+		"shell history. Omit for an open network.")
 	iso := fs.String("iso", "", "use an ISO you downloaded instead of fetching it")
 	yes := fs.Bool("yes", false, "skip the typed size confirmation")
 	buildOnly := fs.Bool("build-only", false, "stop after building; do not flash")
@@ -147,9 +153,23 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 
 	// Read before anything is built, so a stick is never half-made when the
 	// answer is "you did not pipe anything in".
+	if *adminPassStdin && *wifiPassStdin {
+		return fmt.Errorf("--admin-password-stdin and --wifi-password-stdin both read stdin, " +
+			"and there is only one of it.\nPut both in a workspace recipe instead, where each has its own variable")
+	}
+	if *wifiPassStdin && strings.TrimSpace(*wifiSSID) == "" {
+		return fmt.Errorf("--wifi-password-stdin was given but --wifi was not: there is no network to join")
+	}
 	adminPass, err := readAdminPassword(os.Stdin, os.Stdout, *adminPassStdin, e)
 	if err != nil {
 		return err
+	}
+	wifiPass, err := readWiFiPassword(os.Stdin, *wifiPassStdin)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(*wifiSSID) != "" && e.Family != oscatalog.Windows {
+		return fmt.Errorf("--wifi is a Windows option; a Linux installer asks for the network itself")
 	}
 
 	var appIDs []string
@@ -209,6 +229,7 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 		Hardware: hw, Apps: appIDs, ThirdPartyDrivers: thirdParty,
 		DomainBlob: *domainBlob,
 		AdminUser:  *adminUser, AdminPassword: adminPass,
+		WiFiSSID: strings.TrimSpace(*wifiSSID), WiFiPassword: wifiPass,
 	}, prog.report)
 	prog.finish()
 	if err != nil {
@@ -301,6 +322,29 @@ func printLinuxProgramPlan(w io.Writer, e oscatalog.Entry, appIDs []string, admi
 		fmt.Fprintf(w, "  %s\n", line)
 	}
 	return nil
+}
+
+// readWiFiPassword takes the network's passphrase off stdin, for the same
+// reason the account password is taken that way.
+//
+// Nothing is said about the stick holding it in clear text, unlike the account
+// password: a Wi-Fi passphrase is shared by everyone on the network and is
+// usually printed on the router, so the warning would be noise. The profile
+// format has no other form for it either -- see recipe.GenerateWLANProfile.
+func readWiFiPassword(in io.Reader, fromStdin bool) (string, error) {
+	if !fromStdin {
+		return "", nil
+	}
+	b, err := io.ReadAll(in)
+	if err != nil {
+		return "", fmt.Errorf("reading the wireless passphrase from stdin: %w", err)
+	}
+	p := strings.Trim(string(b), "\r\n")
+	if p == "" {
+		return "", fmt.Errorf("--wifi-password-stdin was given but stdin was empty " +
+			"(leave it off for an open network)")
+	}
+	return p, nil
 }
 
 // readAdminPassword takes the account password off stdin, the way `dsky

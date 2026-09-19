@@ -172,6 +172,15 @@ type Options struct {
 	// gets an administrator's desktop on a domain member. A migration
 	// therefore asks for one.
 	AdminPassword string
+	// WiFiSSID and WiFiPassword are a wireless network the machine joins at
+	// first boot, before its programs are installed.
+	//
+	// A hands-off install answers OOBE's questions in advance, and one of
+	// them is which network to join -- so OOBE does not ask, and a laptop
+	// with no ethernet port reaches first boot with no way to download
+	// anything. The account, the debloat and the drivers all still work,
+	// which is what makes it easy to miss: only the programs are absent.
+	WiFiSSID, WiFiPassword string
 	// Settings are what a migration asks the machine to be set to. Nothing
 	// else sets them: a plain install has no opinion about somebody's power
 	// plan, and they are not saved into a recipe, because they belong to one
@@ -194,6 +203,11 @@ func adminPasswordVar(pass string) string {
 	return `"${var:admin_password}"`
 }
 
+// wifiPasswordVar is what the recipe says about the wireless passphrase: where
+// to find it, never what it is. The value arrives at build time through the
+// same in-memory channel the administrator's password uses.
+const wifiPasswordVar = "${var:wifi_password}"
+
 // quickVars are the values a quick build keeps out of its own recipe.
 //
 // Windows takes the password as it is -- its answer file stores it in clear
@@ -201,17 +215,26 @@ func adminPasswordVar(pass string) string {
 // hash instead, because its installers accept one and there is no reason to
 // leave a readable password on a stick when a hash will do.
 func quickVars(opts Options) (map[string]string, error) {
+	vars := map[string]string{}
+	// The Wi-Fi passphrase is kept out of the recipe for the same reason as
+	// the administrator's password: a recipe outlives the build, and the one
+	// in the library is the copy somebody finds.
+	if opts.WiFiPassword != "" {
+		vars["wifi_password"] = opts.WiFiPassword
+	}
 	if opts.AdminPassword == "" {
-		return nil, nil
+		if len(vars) == 0 {
+			return nil, nil
+		}
+		return vars, nil
 	}
 	hash, err := shacrypt.HashPassword(opts.AdminPassword)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]string{
-		"admin_password":      opts.AdminPassword,
-		"admin_password_hash": hash,
-	}, nil
+	vars["admin_password"] = opts.AdminPassword
+	vars["admin_password_hash"] = hash
+	return vars, nil
 }
 
 // sourceFormat is the manifest format for this entry's download. Raw images
@@ -987,6 +1010,15 @@ target:
 		payloadBlock = p.String()
 		steps += s.String()
 	}
+	// The wireless network, for a machine with no cable in it. The passphrase
+	// goes in as a variable, never as itself.
+	wifiBlock := ""
+	if ssid := strings.TrimSpace(opts.WiFiSSID); ssid != "" {
+		wifiBlock = fmt.Sprintf("  wifi:\n    ssid: %q\n", ssid)
+		if opts.WiFiPassword != "" {
+			wifiBlock += fmt.Sprintf("    password: %q\n", wifiPasswordVar)
+		}
+	}
 	// An offline-join blob is a path on this machine, so it goes in verbatim
 	// rather than being copied into the ephemeral workspace: compose reads it
 	// at build time and inlines the base64 into the answer file.
@@ -1031,7 +1063,7 @@ windows:
       bypass_requirements: "%s"
 %s  debloat:
     preset: %s
-%s%s%s  firstboot:
+%s%s%s%s  firstboot:
     mode: generate
     steps:
 %s
@@ -1042,7 +1074,7 @@ flash:
 		orDefault(opts.AdminUser, "user"), displayName(orDefault(opts.AdminUser, "user")),
 		adminPasswordVar(opts.AdminPassword),
 		orDefault(opts.Hostname, "*"),
-		opts.AccountMode, bypass, hardwareYAML(hw), preset, appsBlock, payloadBlock, domainBlock, steps)
+		opts.AccountMode, bypass, hardwareYAML(hw), preset, wifiBlock, appsBlock, payloadBlock, domainBlock, steps)
 }
 
 func orDefault(s, def string) string {

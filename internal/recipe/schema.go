@@ -82,6 +82,7 @@ type WindowsSpec struct {
 	Payload      []PayloadItem  `yaml:"payload,omitempty"`
 	Debloat      *DebloatSpec   `yaml:"debloat,omitempty"`
 	Apps         *AppsSpec      `yaml:"apps,omitempty"`
+	WiFi         *WiFiSpec      `yaml:"wifi,omitempty"`
 	Domain       *DomainSpec    `yaml:"domain,omitempty"`
 	StatusScreen *StatusScreen  `yaml:"status_screen,omitempty"`
 	Firstboot    FirstbootSpec  `yaml:"firstboot,omitempty"`
@@ -240,6 +241,39 @@ type AppsSpec struct {
 // Enabled reports whether the spec actually installs anything.
 func (a *AppsSpec) Enabled() bool { return a != nil && len(a.Winget) > 0 }
 
+// WiFiSpec joins the machine to a wireless network at first boot.
+//
+// A hands-off install and a machine that can reach the internet were mutually
+// exclusive on any laptop without an ethernet port, and nothing said so.
+// Making an install hands-off means answering OOBE's questions ahead of time,
+// and one of those questions is which network to join — so the answer file
+// sets HideWirelessSetupInOOBE, OOBE never asks, and the machine arrives at
+// first boot with no way to reach anything.
+//
+// Everything that runs offline then works perfectly: the account is created,
+// the machine is debloated, the drivers go on. Only the programs fail, because
+// winget fetches them from the vendors — and a machine that looks completely
+// installed is the last one anybody thinks to check.
+//
+// The profile is applied after the drivers step on purpose: the wireless card
+// on a fresh image may have no working driver until the staged pack goes on.
+type WiFiSpec struct {
+	SSID string `yaml:"ssid"`
+	// Password is the WPA2/WPA3 passphrase: 8-63 characters, or 64 hex digits
+	// for a raw key. Empty means an open network.
+	//
+	// It is written to the media as clear text, because that is the only form
+	// another machine can import — see GenerateWLANProfile. Use
+	// "${var:wifi_password}" and keep the value in vars.local.yaml.
+	Password string `yaml:"password,omitempty"`
+	// Hidden marks a network that does not broadcast its SSID: Windows will
+	// not find one by scanning, so the profile has to say to look for it.
+	Hidden bool `yaml:"hidden,omitempty"`
+}
+
+// Enabled reports whether a wireless network was configured.
+func (w *WiFiSpec) Enabled() bool { return w != nil && strings.TrimSpace(w.SSID) != "" }
+
 // DebloatSpec strips consumer junk at first boot while keeping the media
 // itself official (update- and activation-safe): provisioned-app removal
 // plus ad/telemetry/Copilot/widgets policies. Preset "standard" removes
@@ -344,10 +378,13 @@ type Step struct {
 	Drivers bool
 	Debloat bool
 	Apps    bool
-	Wait    time.Duration
-	MSI     *RunItem
-	Exe     *RunItem
-	Cmd     string
+	// WiFi is inserted by the renderer when windows.wifi is set, and is not
+	// something a recipe writes: see the insertion in GenerateFirstbootCmd.
+	WiFi bool
+	Wait time.Duration
+	MSI  *RunItem
+	Exe  *RunItem
+	Cmd  string
 }
 
 type RunItem struct {
@@ -590,6 +627,11 @@ func (r *Recipe) Validate() error {
 		}
 		if d := r.Windows.Domain; d != nil {
 			if err := d.validate(fail); err != nil {
+				return err
+			}
+		}
+		if w := r.Windows.WiFi; w != nil {
+			if err := ValidateWiFi(w, "windows.wifi.ssid", "windows.wifi.password", fail); err != nil {
 				return err
 			}
 		}
