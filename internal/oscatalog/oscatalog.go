@@ -746,9 +746,7 @@ func ensureSource(ctx context.Context, lib *library.Library, e Entry, progress f
 		}
 	})
 	if err != nil && e.Family == Windows && e.Fido != nil {
-		// Say where DSKY looked, so a download saved somewhere else, or under
-		// another name, is recognisably the reason.
-		return fmt.Errorf("%w. %s has not been downloaded on this computer yet, and DSKY found no Win%s_….iso in %s", err, e.Name, e.Fido.Win, strings.Join(downloadDirs(), " or "))
+		return windowsDownloadError(err, e.Name, e.Fido.Win, downloadDirs())
 	}
 	return err
 }

@@ -123,6 +123,7 @@ func DownloadAny(ctx context.Context, urls []string, dest string, progress Progr
 		order = rankBySpeed(ctx, urls, note)
 	}
 	var errs []string
+	var causes []error
 	for i, u := range order {
 		if i > 0 {
 			note("continuing from " + host(u))
@@ -135,13 +136,32 @@ func DownloadAny(ctx context.Context, urls []string, dest string, progress Progr
 			return "", "", ctx.Err()
 		}
 		errs = append(errs, host(u)+": "+err.Error())
+		causes = append(causes, err)
 	}
 	// The count is spelled out because it is the thing worth knowing. This
 	// said "every source failed" of a list with one URL in it, twice, and read
 	// both times as "the internet is down" rather than "there is nowhere else
 	// to go" -- which is a different bug with a different fix.
-	return "", "", fmt.Errorf("fetch: all %d source(s) failed: %s", len(order), strings.Join(errs, "; "))
+	return "", "", &SourcesError{
+		msg:    fmt.Sprintf("fetch: all %d source(s) failed: %s", len(order), strings.Join(errs, "; ")),
+		causes: causes,
+	}
 }
+
+// SourcesError is every source failing, and why each one did.
+//
+// The text is the same sentence it always was. What is new is that the causes
+// survive it: this used to flatten each error to a string, so a caller could
+// not tell a name that did not resolve from a server that refused, and the
+// advice on the end of the message was written for one of those and shown for
+// both.
+type SourcesError struct {
+	msg    string
+	causes []error
+}
+
+func (e *SourcesError) Error() string   { return e.msg }
+func (e *SourcesError) Unwrap() []error { return e.causes }
 
 // Attempts per server, and how long to wait between them. Variables so tests
 // can shorten them.

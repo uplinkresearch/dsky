@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -337,5 +339,36 @@ func TestDownloadAnyDoesNotRetryAMissingFile(t *testing.T) {
 	// failed" of a one-item list read as "the internet is down".
 	if !strings.Contains(err.Error(), "all 1 source(s) failed") {
 		t.Errorf("message hides the size of the list: %v", err)
+	}
+}
+
+// Every source failing used to flatten each cause to a string, so a caller
+// could not tell a name that did not resolve from a server that answered and
+// refused — and the advice printed on the end of a failed Windows download was
+// written for one of those and shown for both. The sentence is unchanged; what
+// is new is that errors.As still finds what happened.
+func TestWhyEverySourceFailedSurvivesTheMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	// A host that cannot resolve, and one that answers and refuses: the two
+	// cases the caller has to tell apart.
+	_, _, err := DownloadAny(context.Background(),
+		[]string{"https://no-such-host.invalid/x.iso", srv.URL + "/x.iso"},
+		filepath.Join(t.TempDir(), "out"), nil, nil)
+	if err == nil {
+		t.Fatal("both sources failed and the download reported success")
+	}
+	if !strings.Contains(err.Error(), "all 2 source(s) failed") {
+		t.Errorf("the sentence changed: %v", err)
+	}
+	var dns *net.DNSError
+	if !errors.As(err, &dns) {
+		t.Fatalf("errors.As found no DNS failure in %v", err)
+	}
+	if dns.Name != "no-such-host.invalid" {
+		t.Errorf("the host that did not resolve came back as %q", dns.Name)
 	}
 }
