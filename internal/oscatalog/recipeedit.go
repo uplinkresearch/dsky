@@ -133,10 +133,27 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 	// so the recipe names the edition outright and there is nothing to match
 	// a key against.
 	if ed := vars["server_edition"]; ed != "" {
-		if serverImages[ed] == 0 {
+		norm := normalizeServerEdition(ed)
+		if norm == "" {
 			return notEditable("its Windows Server edition is not one this build offers")
 		}
-		f.Edition = ed
+		// A recipe saved when Core was an edition rather than an entry names
+		// a desktop this entry may not install. Reopening it against the
+		// wrong half would silently move the machine from Server Core to a
+		// desktop, or back, so it says which entry the recipe belongs to
+		// instead.
+		core := serverEditionIsCore(ed)
+		if t := vars["server_installation_type"]; t != "" {
+			core = t == "Server Core"
+		}
+		if core != e.ServerCore {
+			want := "Server Core"
+			if !core {
+				want = "Desktop Experience"
+			}
+			return notEditable("it was saved for the " + want + " entry; open it from there")
+		}
+		f.Edition = norm
 	} else {
 		for k, v := range genericKeys {
 			if vars["edition_key"] == v {

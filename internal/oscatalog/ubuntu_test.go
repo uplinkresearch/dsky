@@ -200,11 +200,11 @@ func TestUbuntuProgramsReachTheRecipe(t *testing.T) {
 	if r := assertLoads(t, dir, fedora.ID); r.Linux != nil && r.Linux.Autoinstall != nil {
 		t.Error("Fedora was given Ubuntu's autoinstall answers")
 	}
-	if err := CheckPrograms(fedora, "", []string{"vlc"}); err == nil {
+	if err := CheckPrograms(fedora, []string{"vlc"}); err == nil {
 		t.Fatal("programs accepted for Fedora")
 	}
 	win, _ := Get("windows-11")
-	if err := CheckPrograms(win, "Pro", []string{"nosuchprogram"}); err == nil {
+	if err := CheckPrograms(win, []string{"nosuchprogram"}); err == nil {
 		t.Fatal("an unknown program accepted for Windows")
 	}
 }
@@ -259,39 +259,34 @@ func TestReleaseInstallIsPortable(t *testing.T) {
 	}
 }
 
-// A desktop program on Windows Server depends on which edition is being
+// A desktop program on Windows Server depends on which entry is being
 // installed, and the first version to offer Server got this wrong: the
 // picker refused Brave for Windows Server outright, because the rule asked
 // only whether the entry was a server. Ubuntu Server and Fedora Server
 // install no desktop whatever you ask for; Windows Server installs one for
-// Desktop Experience and none for Server Core, off the same media.
-func TestADesktopProgramFollowsTheWindowsServerEdition(t *testing.T) {
-	srv, ok := Get("windows-server-2025")
+// Desktop Experience and none for Server Core, off the same ISO.
+func TestADesktopProgramFollowsTheWindowsServerEntry(t *testing.T) {
+	desktop, ok := Get("windows-server-2025")
 	if !ok {
 		t.Skip("no windows-server-2025 in the catalog")
 	}
-	for _, edition := range []string{"Standard (Desktop Experience)", "Datacenter (Desktop Experience)"} {
-		if err := CheckPrograms(srv, edition, []string{"brave"}); err != nil {
-			t.Errorf("%s has a desktop, but Brave was refused: %v", edition, err)
-		}
+	core, ok := Get("windows-server-2025-core")
+	if !ok {
+		t.Skip("no windows-server-2025-core in the catalog")
 	}
-	for _, edition := range []string{"Standard (Server Core)", "Datacenter (Server Core)"} {
-		err := CheckPrograms(srv, edition, []string{"brave"})
-		if err == nil {
-			t.Errorf("%s has no desktop, but Brave was accepted", edition)
-			continue
-		}
-		// The way out of this one is the other edition, not dropping the
-		// program, and the message has to say so.
-		if !strings.Contains(err.Error(), "Desktop Experience") {
-			t.Errorf("%s: the refusal does not offer the edition that would work: %v", edition, err)
-		}
+	if desktop.SHA256 != core.SHA256 {
+		t.Errorf("the two entries should pin one ISO: %s vs %s", desktop.SHA256, core.SHA256)
 	}
-	// The names v0.9.0 and v0.9.1 used still decide it the same way.
-	if err := CheckPrograms(srv, "Standard", []string{"brave"}); err != nil {
-		t.Errorf("a recipe saved as plain \"Standard\" should still install Brave: %v", err)
+	if err := CheckPrograms(desktop, []string{"brave"}); err != nil {
+		t.Errorf("Desktop Experience has a desktop, but Brave was refused: %v", err)
 	}
-	if err := CheckPrograms(srv, "Standard Core", []string{"brave"}); err == nil {
-		t.Error("a recipe saved as \"Standard Core\" should still refuse Brave")
+	err := CheckPrograms(core, []string{"brave"})
+	if err == nil {
+		t.Fatal("Server Core has no desktop, but Brave was accepted")
+	}
+	// The way out of this one is the other entry, not dropping the program,
+	// and the message has to say so.
+	if !strings.Contains(err.Error(), "Desktop Experience") {
+		t.Errorf("the refusal does not point at the entry that would work: %v", err)
 	}
 }

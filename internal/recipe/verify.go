@@ -131,11 +131,16 @@ func GenerateVerifyPS(r *Recipe, drivers ResolvedDrivers, resolveRef func(ref st
 			p(`else { FAIL "expected Server %s, got: $($os.Caption)" }`, ed)
 			// Caption reads the same for Core and Desktop Experience, so the
 			// half of the choice that Caption cannot show is read here.
-			// "Standard (Server Core)" as offered now, and "Standard Core" as
-			// v0.9.0 and v0.9.1 named it in the recipes they saved.
+			// The recipe states it outright now that Server Core is an entry
+			// of its own rather than an edition. Older recipes carried it in
+			// the edition name -- "Standard Core", "Standard (Server Core)"
+			// -- and are still read that way.
 			want := "Server"
 			if strings.Contains(ed, "Core") {
 				want = "Server Core"
+			}
+			if t := w.Unattend.Vars["server_installation_type"]; t != "" {
+				want = t
 			}
 			p(`$it = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').InstallationType`)
 			p(`if ($it -eq '%s') { OK "installation type is %s as requested" }`, want, want)

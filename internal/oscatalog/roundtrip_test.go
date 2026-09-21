@@ -87,7 +87,7 @@ func TestAWindowsServerRecipeSavesAndReopens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, edition := range []string{"Standard (Desktop Experience)", "Datacenter (Server Core)"} {
+	for _, edition := range []string{"Standard", "Datacenter"} {
 		t.Run(edition, func(t *testing.T) {
 			wsDir := t.TempDir() + "/ws"
 			if err := workspace.ScaffoldEmpty(wsDir, "Acme"); err != nil {
@@ -112,8 +112,8 @@ func TestAWindowsServerRecipeSavesAndReopens(t *testing.T) {
 			if r.Windows.EICfg != nil {
 				t.Error("the saved recipe has an ei.cfg, which is client-only")
 			}
-			if got := r.Windows.Unattend.Vars["image_index"]; got != strconv.Itoa(serverImages[edition]) {
-				t.Errorf("image_index %q, want %d for %q", got, serverImages[edition], edition)
+			if got := r.Windows.Unattend.Vars["image_index"]; got != strconv.Itoa(serverImageIndex(srv, edition)) {
+				t.Errorf("image_index %q, want %d for %q", got, serverImageIndex(srv, edition), edition)
 			}
 			form, err := FormFromRecipe(wsDir, r)
 			if err != nil {

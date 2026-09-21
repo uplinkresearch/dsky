@@ -98,6 +98,15 @@ type Entry struct {
 
 	// Windows-only options.
 	Editions []string `json:"editions,omitempty"` // e.g. Pro, Home
+
+	// ServerCore marks the Windows Server entry that installs without a
+	// desktop. Desktop Experience and Server Core are separate entries
+	// rather than an option inside one, because the choice is not an
+	// edition — it decides whether the machine has a graphical session at
+	// all, cannot be changed after installation, and was a click deeper
+	// than anybody looked. Both entries pin the same ISO and differ only in
+	// which of its four images Setup installs.
+	ServerCore bool `json:"server_core,omitempty"`
 }
 
 // Options are the Quick-Install choices.
@@ -285,6 +294,13 @@ const FeatureImportOnly = "import-only"
 // feature makes such a build skip the entry instead.
 const FeatureWindowsServer = "windows-server"
 
+// FeatureWindowsServerCore marks the entries that install Server Core. A
+// build that predates them would read server_core as an unknown field, fall
+// back to the Desktop Experience image, and hand somebody a desktop they
+// deliberately did not ask for -- so those builds skip these entries and
+// keep offering the Desktop Experience ones, which they read correctly.
+const FeatureWindowsServerCore = "windows-server-core"
+
 // NeedsFido reports whether this entry's ISO is resolved through the Fido
 // helper at pull time — Microsoft's client media, which has no stable URL —
 // rather than fetched from a pinned one. Windows Server pins a URL, so it
@@ -294,14 +310,13 @@ func (e Entry) NeedsFido() bool { return e.Provider == "fido" }
 // InstallsDesktop reports whether media built from this entry leaves the
 // machine with a graphical session on it.
 //
-// For everything else this is a fact about the OS — Ubuntu Server and Fedora
-// Server install no desktop at all. Windows Server is the exception, and the
-// reason this takes an edition: Desktop Experience installs the familiar
-// Windows desktop, Server Core is the same server without one, and one ISO
-// holds both.
-func (e Entry) InstallsDesktop(edition string) bool {
+// Ubuntu Server and Fedora Server install no desktop whatever is asked of
+// them. Windows Server installs one for Desktop Experience and none for
+// Server Core, and those are separate entries, so this is a property of the
+// entry alone.
+func (e Entry) InstallsDesktop() bool {
 	if e.IsWindowsServer() {
-		return !strings.Contains(edition, "Core")
+		return !e.ServerCore
 	}
 	return e.Group() != Server
 }
@@ -313,29 +328,52 @@ func (e Entry) IsWindowsServer() bool {
 	return e.Family == Windows && e.Category == Server
 }
 
-// serverImages maps an offered edition to its image index in install.wim.
-// Microsoft ships the four images in this order on retail and evaluation
-// media alike; the names differ between the two (evaluation media appends
-// EVAL), which is why this selects by index. A wrong index still installs
+// serverImageBase is where each edition's pair of images starts in
+// install.wim: Server Core first, Desktop Experience immediately after it.
+// Microsoft ships the four in this order on retail and evaluation media
+// alike; the names differ between the two (evaluation media appends EVAL),
+// which is why this selects by index. A wrong index still installs
 // something, so the post-install check reads the edition back.
-// The names say which half of the choice is which, because "Standard" and
-// "Standard Core" do not: Desktop Experience is the server with a desktop on
-// it, Server Core is the same server without one, and the two are not
-// interchangeable after installation.
-var serverImages = map[string]int{
-	"Standard (Server Core)":          1,
-	"Standard (Desktop Experience)":   2,
-	"Datacenter (Server Core)":        3,
-	"Datacenter (Desktop Experience)": 4,
-
-	// The names v0.9.0 and v0.9.1 offered. A recipe saved then names its
-	// edition in its own vars, and must still build and still open in the
-	// dialog: these resolve to the same images.
-	"Standard Core":   1,
-	"Standard":        2,
-	"Datacenter Core": 3,
-	"Datacenter":      4,
+var serverImageBase = map[string]int{
+	"Standard":   1, // 1 Server Core, 2 Desktop Experience
+	"Datacenter": 3, // 3 Server Core, 4 Desktop Experience
 }
+
+// serverImageIndex is the image this entry and edition install. The entry
+// decides Core or Desktop Experience; the edition decides Standard or
+// Datacenter. 0 means the edition is not one this build offers.
+func serverImageIndex(e Entry, edition string) int {
+	base := serverImageBase[normalizeServerEdition(edition)]
+	if base == 0 {
+		return 0
+	}
+	if e.ServerCore {
+		return base
+	}
+	return base + 1
+}
+
+// normalizeServerEdition reduces an edition to Standard or Datacenter,
+// accepting every spelling DSKY has offered: the bare names, v0.9.2's
+// "Standard (Desktop Experience)", and v0.9.0's "Standard Core". A recipe
+// saved by any of them must still build and still open, and the half those
+// older names carried about the desktop now belongs to the entry.
+func normalizeServerEdition(edition string) string {
+	ed := strings.TrimSpace(edition)
+	if i := strings.Index(ed, " ("); i > 0 {
+		ed = ed[:i]
+	}
+	ed = strings.TrimSuffix(ed, " Core")
+	if serverImageBase[ed] == 0 {
+		return ""
+	}
+	return ed
+}
+
+// serverEditionIsCore reads the desktop half out of an edition name saved by an
+// older build, for the one case where the entry cannot say: a recipe written
+// when Core was an edition rather than an entry of its own.
+func serverEditionIsCore(edition string) bool { return strings.Contains(edition, "Core") }
 
 // ImportOnly reports whether this entry can only be supplied by hand. It
 // reads the feature list rather than inferring from an empty URL, because
@@ -439,7 +477,7 @@ var genericKeys = map[string]string{
 func checkEdition(e Entry, opts Options) error {
 	switch {
 	case e.IsWindowsServer():
-		if serverImages[opts.Edition] == 0 {
+		if serverImageIndex(e, opts.Edition) == 0 {
 			return fmt.Errorf("unknown Windows Server edition %q (have: %s)", opts.Edition, strings.Join(e.Editions, ", "))
 		}
 	case e.Family == Windows:
@@ -490,7 +528,7 @@ func SaveRecipe(ctx context.Context, lib *library.Library, wsDir, id, name strin
 	if err := checkEdition(e, opts); err != nil {
 		return "", err
 	}
-	if err := checkPrograms(e, opts.Edition, opts.Apps); err != nil {
+	if err := checkPrograms(e, opts.Apps); err != nil {
 		return "", err
 	}
 	// A saved offline recipe pins the installers it was saved with, into the
@@ -586,7 +624,7 @@ func BuildQuick(ctx context.Context, lib *library.Library, e Entry, opts Options
 		return nil, err
 	}
 	// Fail before downloading gigabytes, not after.
-	if err := checkPrograms(e, opts.Edition, opts.Apps); err != nil {
+	if err := checkPrograms(e, opts.Apps); err != nil {
 		return nil, err
 	}
 	if e.Family == Windows {
@@ -669,7 +707,7 @@ func BuildQuickPayload(ctx context.Context, lib *library.Library, e Entry, opts 
 		return nil, fmt.Errorf("%s is not Windows; a payload sets up programs on a machine that already runs Windows", e.Name)
 	}
 	opts.defaults(e)
-	if err := checkPrograms(e, opts.Edition, opts.Apps); err != nil {
+	if err := checkPrograms(e, opts.Apps); err != nil {
 		return nil, err
 	}
 	if err := prePull(ctx, lib, e, &opts, progress); err != nil {
@@ -1201,13 +1239,20 @@ target:
 		// BuildQuick rejects an edition that is not on offer, so this only
 		// clamps a caller that skipped it: index 0 is not a valid selection
 		// and would leave Setup prompting on an unattended install.
-		edition := opts.Edition
-		if serverImages[edition] == 0 {
-			edition = "Standard (Desktop Experience)"
+		edition := normalizeServerEdition(opts.Edition)
+		if edition == "" {
+			edition = "Standard"
+		}
+		// The installation type is written out rather than left to be read
+		// back off the edition name: the name no longer carries it, and the
+		// post-install check is the one place that must not guess.
+		installType := "Server"
+		if e.ServerCore {
+			installType = "Server Core"
 		}
 		eiCfg = ""
-		editionVars = fmt.Sprintf("      edition_key: \"\"\n      image_index: \"%d\"\n      server_edition: %q\n",
-			serverImages[edition], edition)
+		editionVars = fmt.Sprintf("      edition_key: \"\"\n      image_index: \"%d\"\n      server_edition: %q\n      server_installation_type: %q\n",
+			serverImageIndex(e, edition), edition, installType)
 	}
 	return fmt.Sprintf(`version: 1
 id: %s

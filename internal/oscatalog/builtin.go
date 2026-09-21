@@ -48,40 +48,58 @@ var builtin = []Entry{
 	// volume-licensing portal instead, which is what ImportFrom points at,
 	// and `--iso` takes it.
 	//
-	// Setup picks between the four images on that media by index — names
-	// carry an EVAL suffix on evaluation media, indexes do not — and the
-	// post-install check reads the edition back to catch a wrong pick.
+	// Desktop Experience and Server Core are separate entries over one ISO.
+	// They were an edition inside a single entry first, which put the only
+	// irreversible choice on the media a click deeper than the list — a
+	// server picked from a list of servers, with no sign that half of them
+	// have no desktop. Each pair pins the same file and the library stores
+	// it once; only the image index differs.
 	{
-		ID:       "windows-server-2025",
-		Name:     "Windows Server 2025",
-		Family:   Windows,
-		Category: Server,
-		Version:  "2025 LTSC",
-		Editions: []string{
-			"Standard (Desktop Experience)", "Datacenter (Desktop Experience)",
-			"Standard (Server Core)", "Datacenter (Server Core)",
-		},
+		ID:         "windows-server-2025",
+		Name:       "Windows Server 2025 (Desktop Experience)",
+		Family:     Windows,
+		Category:   Server,
+		Version:    "2025 LTSC",
+		Editions:   []string{"Standard", "Datacenter"},
 		Requires:   []string{FeatureWindowsServer},
 		URL:        "https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/26100.1742.240906-0331.ge_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso",
 		SHA256:     "d0ef4502e350e3c6c53c15b1b3020d38a5ded011bf04998e950720ac8579b23d",
 		Filename:   "windows-server-2025-eval-x64-en-us.iso",
 		ImportFrom: "your volume-licensing portal, for licensed rather than evaluation media",
-		Notes: "180-day evaluation media, fetched from Microsoft on demand — convertible to licensed afterwards, " +
-			"except Server Core. Desktop Experience is the server with the familiar Windows desktop on it; " +
-			"Server Core has no desktop and no Server Manager, and is administered from another machine or a " +
-			"command line. The choice cannot be changed after installation.",
+		Notes: "The server with the familiar Windows desktop on it, and Server Manager. 180-day evaluation " +
+			"media, fetched from Microsoft on demand and convertible to licensed afterwards.",
+		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting.",
+	},
+	{
+		ID:         "windows-server-2025-core",
+		Name:       "Windows Server 2025 (Server Core)",
+		Family:     Windows,
+		Category:   Server,
+		Version:    "2025 LTSC",
+		ServerCore: true,
+		Editions:   []string{"Standard", "Datacenter"},
+		// The Core entries ask for a feature of their own, so a build that
+		// predates them skips these rather than reading server_core as an
+		// unknown field and installing the desktop image somebody did not
+		// want. The Desktop Experience entries stay readable by those builds.
+		Requires:   []string{FeatureWindowsServer, FeatureWindowsServerCore},
+		URL:        "https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/26100.1742.240906-0331.ge_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso",
+		SHA256:     "d0ef4502e350e3c6c53c15b1b3020d38a5ded011bf04998e950720ac8579b23d",
+		Filename:   "windows-server-2025-eval-x64-en-us.iso",
+		ImportFrom: "your volume-licensing portal, for licensed rather than evaluation media",
+		Notes: "No desktop and no Server Manager: administered from another machine, or from a command line " +
+			"on the console. Smaller and with less to patch. The same ISO as the Desktop Experience entry, so " +
+			"having one means the other is already downloaded — but the choice cannot be changed after " +
+			"installation, and evaluation Server Core cannot be converted to licensed later.",
 		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting.",
 	},
 	{
 		ID:       "windows-server-2022",
-		Name:     "Windows Server 2022",
+		Name:     "Windows Server 2022 (Desktop Experience)",
 		Family:   Windows,
 		Category: Server,
 		Version:  "2022 LTSC",
-		Editions: []string{
-			"Standard (Desktop Experience)", "Datacenter (Desktop Experience)",
-			"Standard (Server Core)", "Datacenter (Server Core)",
-		},
+		Editions: []string{"Standard", "Datacenter"},
 		Requires: []string{FeatureWindowsServer},
 		// Unlike 2025's, this URL carries no build number: a refreshed 2022
 		// evaluation would be served from the same path and fail this hash
@@ -91,8 +109,26 @@ var builtin = []Entry{
 		SHA256:     "3e4fa6d8507b554856fc9ca6079cc402df11a8b79344871669f0251535255325",
 		Filename:   "windows-server-2022-eval-x64-en-us.iso",
 		ImportFrom: "your volume-licensing portal, for licensed rather than evaluation media",
-		Notes: "The previous LTSC, for hardware or applications not yet cleared for 2025. Also 180-day evaluation " +
-			"media, and the same choice between Desktop Experience and the desktopless Server Core.",
+		Notes: "The previous LTSC, for hardware or applications not yet cleared for 2025, with the familiar " +
+			"Windows desktop on it. Also 180-day evaluation media.",
+		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting.",
+	},
+	{
+		ID:         "windows-server-2022-core",
+		Name:       "Windows Server 2022 (Server Core)",
+		Family:     Windows,
+		Category:   Server,
+		Version:    "2022 LTSC",
+		ServerCore: true,
+		Editions:   []string{"Standard", "Datacenter"},
+		Requires:   []string{FeatureWindowsServer, FeatureWindowsServerCore},
+		URL:        "https://software-static.download.prss.microsoft.com/sg/download/888969d5-f34g-4e03-ac9d-1f9786c66749/SERVER_EVAL_x64FRE_en-us.iso",
+		SHA256:     "3e4fa6d8507b554856fc9ca6079cc402df11a8b79344871669f0251535255325",
+		Filename:   "windows-server-2022-eval-x64-en-us.iso",
+		ImportFrom: "your volume-licensing portal, for licensed rather than evaluation media",
+		Notes: "The previous LTSC with no desktop and no Server Manager, administered from another machine or " +
+			"a command line. The same ISO as the Desktop Experience entry; the choice cannot be changed after " +
+			"installation.",
 		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting.",
 	},
 	{

@@ -243,6 +243,22 @@ func (l *Library) Pull(ctx context.Context, src *manifest.Source, pinTOFU bool, 
 	if e, err := l.Resolve(src.ID); err == nil && src.SHA256 != "" && e.SHA256 == src.SHA256 {
 		return e, nil // already present and matching
 	}
+	// The same file can be what two sources ask for: Windows Server Desktop
+	// Experience and Server Core are one ISO and two images inside it. The
+	// blob store is keyed by hash and would throw the second copy away after
+	// downloading it, so a pinned source whose bytes are already here is
+	// recorded rather than fetched -- six gigabytes not spent rediscovering
+	// a file on disk.
+	if src.SHA256 != "" {
+		if st, err := os.Stat(l.BlobPath(src.SHA256)); err == nil {
+			e := Entry{
+				ID: src.ID, SHA256: src.SHA256, Filename: src.DownloadFilename(),
+				Kind: src.Kind, Format: src.Format, Size: st.Size(),
+				SourceURL: src.URL, ImportedAt: time.Now().UTC(),
+			}
+			return e, l.record(e)
+		}
+	}
 	url := src.URL
 	if src.Provider != "" {
 		if resolve == nil {
