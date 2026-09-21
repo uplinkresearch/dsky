@@ -87,7 +87,7 @@ func TestAWindowsServerRecipeSavesAndReopens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, edition := range []string{"Standard", "Datacenter Core"} {
+	for _, edition := range []string{"Standard (Desktop Experience)", "Datacenter (Server Core)"} {
 		t.Run(edition, func(t *testing.T) {
 			wsDir := t.TempDir() + "/ws"
 			if err := workspace.ScaffoldEmpty(wsDir, "Acme"); err != nil {

@@ -85,16 +85,18 @@ func (e Entry) ubuntuDesktop() bool { return e.Group() != Server }
 
 // CheckPrograms validates a program list for this entry before anything is
 // downloaded.
-func CheckPrograms(e Entry, ids []string) error { return checkPrograms(e, ids) }
+func CheckPrograms(e Entry, edition string, ids []string) error {
+	return checkPrograms(e, edition, ids)
+}
 
-func checkPrograms(e Entry, ids []string) error {
+func checkPrograms(e Entry, edition string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
 	if !e.ProgramsSupported() {
 		return fmt.Errorf("installing programs alongside %s is not supported — programs can be installed with Windows, with Ubuntu (Server 24.04 and 26.04, Desktop 26.04) and with Fedora Server", e.Name)
 	}
-	if err := checkNeedsDesktop(e, ids); err != nil {
+	if err := checkNeedsDesktop(e, edition, ids); err != nil {
 		return err
 	}
 	switch e.AppTarget() {
@@ -116,8 +118,8 @@ func checkPrograms(e Entry, ids []string) error {
 // anyway. The packages install cleanly, which is the trouble: nothing fails,
 // and the machine simply has no way to run any of them. A stick that quietly
 // installs something unusable is worse than one that says it will not.
-func checkNeedsDesktop(e Entry, ids []string) error {
-	if e.Group() != Server {
+func checkNeedsDesktop(e Entry, edition string, ids []string) error {
+	if e.InstallsDesktop(edition) {
 		return nil
 	}
 	var refused []string
@@ -130,6 +132,21 @@ func checkNeedsDesktop(e Entry, ids []string) error {
 	if len(refused) == 0 {
 		return nil
 	}
+	// Windows Server is the one where this is a choice rather than a fact
+	// about the OS: the same media installs a desktop or no desktop, and the
+	// way out is to pick the other edition rather than to drop the program.
+	if e.IsWindowsServer() {
+		return fmt.Errorf(`%s needs a desktop, and Server Core installs none.
+
+Server Core has no graphical session, so %s would install and then have nothing
+to run it. Choose a Desktop Experience edition instead, which installs the
+desktop these programs need -- the choice cannot be changed afterwards -- or
+leave them out.
+
+For anything the picker will not do, `+"`dsky apps add <installer>`"+` takes your own
+installer, and a workspace recipe takes whatever you want to write.`,
+			strings.Join(refused, ", "), pluralVerb(refused))
+	}
 	return fmt.Errorf(`%s needs a desktop, and %s installs none.
 
 %s has no graphical session at all, so it would install and then have nothing
@@ -138,6 +155,15 @@ to run it. Leave it out, or install a desktop environment yourself afterwards.
 For anything the picker will not do, `+"`dsky apps add <installer>`"+` takes your own
 installer, and a workspace recipe takes whatever you want to write.`,
 		strings.Join(refused, ", "), e.Name, e.Name)
+}
+
+// pluralVerb keeps the Server Core message reading correctly whether one
+// program was refused or several.
+func pluralVerb(refused []string) string {
+	if len(refused) == 1 {
+		return "it"
+	}
+	return "they"
 }
 
 // ubuntuUserDataFile is where the generated answers go in a workspace.

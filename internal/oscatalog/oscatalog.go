@@ -285,6 +285,21 @@ const FeatureImportOnly = "import-only"
 // feature makes such a build skip the entry instead.
 const FeatureWindowsServer = "windows-server"
 
+// InstallsDesktop reports whether media built from this entry leaves the
+// machine with a graphical session on it.
+//
+// For everything else this is a fact about the OS — Ubuntu Server and Fedora
+// Server install no desktop at all. Windows Server is the exception, and the
+// reason this takes an edition: Desktop Experience installs the familiar
+// Windows desktop, Server Core is the same server without one, and one ISO
+// holds both.
+func (e Entry) InstallsDesktop(edition string) bool {
+	if e.IsWindowsServer() {
+		return !strings.Contains(edition, "Core")
+	}
+	return e.Group() != Server
+}
+
 // IsWindowsServer reports whether this entry installs Windows Server, which
 // takes the server path through recipe generation: image chosen by index, no
 // ei.cfg, no client product key, and no debloat.
@@ -297,7 +312,19 @@ func (e Entry) IsWindowsServer() bool {
 // media alike; the names differ between the two (evaluation media appends
 // EVAL), which is why this selects by index. A wrong index still installs
 // something, so the post-install check reads the edition back.
+// The names say which half of the choice is which, because "Standard" and
+// "Standard Core" do not: Desktop Experience is the server with a desktop on
+// it, Server Core is the same server without one, and the two are not
+// interchangeable after installation.
 var serverImages = map[string]int{
+	"Standard (Server Core)":          1,
+	"Standard (Desktop Experience)":   2,
+	"Datacenter (Server Core)":        3,
+	"Datacenter (Desktop Experience)": 4,
+
+	// The names v0.9.0 and v0.9.1 offered. A recipe saved then names its
+	// edition in its own vars, and must still build and still open in the
+	// dialog: these resolve to the same images.
 	"Standard Core":   1,
 	"Standard":        2,
 	"Datacenter Core": 3,
@@ -457,7 +484,7 @@ func SaveRecipe(ctx context.Context, lib *library.Library, wsDir, id, name strin
 	if err := checkEdition(e, opts); err != nil {
 		return "", err
 	}
-	if err := checkPrograms(e, opts.Apps); err != nil {
+	if err := checkPrograms(e, opts.Edition, opts.Apps); err != nil {
 		return "", err
 	}
 	// A saved offline recipe pins the installers it was saved with, into the
@@ -553,7 +580,7 @@ func BuildQuick(ctx context.Context, lib *library.Library, e Entry, opts Options
 		return nil, err
 	}
 	// Fail before downloading gigabytes, not after.
-	if err := checkPrograms(e, opts.Apps); err != nil {
+	if err := checkPrograms(e, opts.Edition, opts.Apps); err != nil {
 		return nil, err
 	}
 	if e.Family == Windows {
@@ -636,7 +663,7 @@ func BuildQuickPayload(ctx context.Context, lib *library.Library, e Entry, opts 
 		return nil, fmt.Errorf("%s is not Windows; a payload sets up programs on a machine that already runs Windows", e.Name)
 	}
 	opts.defaults(e)
-	if err := checkPrograms(e, opts.Apps); err != nil {
+	if err := checkPrograms(e, opts.Edition, opts.Apps); err != nil {
 		return nil, err
 	}
 	if err := prePull(ctx, lib, e, &opts, progress); err != nil {
@@ -1170,7 +1197,7 @@ target:
 		// and would leave Setup prompting on an unattended install.
 		edition := opts.Edition
 		if serverImages[edition] == 0 {
-			edition = "Standard"
+			edition = "Standard (Desktop Experience)"
 		}
 		eiCfg = ""
 		editionVars = fmt.Sprintf("      edition_key: \"\"\n      image_index: \"%d\"\n      server_edition: %q\n",

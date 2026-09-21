@@ -41,8 +41,8 @@ func TestSynthesizedRecipesValid(t *testing.T) {
 		name string
 		opts Options
 	}{
-		{"srv-standard", Options{Edition: "Standard", AccountMode: "local"}},
-		{"srv-datacenter-core", Options{Edition: "Datacenter Core", AccountMode: "local"}},
+		{"srv-standard", Options{Edition: "Standard (Desktop Experience)", AccountMode: "local"}},
+		{"srv-datacenter-core", Options{Edition: "Datacenter (Server Core)", AccountMode: "local"}},
 	}
 	for _, e := range Catalog() {
 		if e.Family != Windows {

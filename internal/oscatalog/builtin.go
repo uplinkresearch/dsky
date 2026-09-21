@@ -42,27 +42,37 @@ var builtin = []Entry{
 	// names carry an EVAL suffix on evaluation media, indexes do not — and
 	// the post-install check reads the edition back to catch a wrong pick.
 	{
-		ID:            "windows-server-2025",
-		Name:          "Windows Server 2025",
-		Family:        Windows,
-		Category:      Server,
-		Version:       "2025 LTSC",
-		Editions:      []string{"Standard", "Datacenter", "Standard Core", "Datacenter Core"},
-		Requires:      []string{FeatureImportOnly, FeatureWindowsServer},
-		ImportFrom:    "https://www.microsoft.com/evalcenter/evaluate-windows-server-2025 (180-day evaluation), or your volume-licensing portal",
-		Notes:         "Download it yourself — Microsoft puts Server media behind a form, so there is no link to pin. Core editions install without a desktop.",
+		ID:       "windows-server-2025",
+		Name:     "Windows Server 2025",
+		Family:   Windows,
+		Category: Server,
+		Version:  "2025 LTSC",
+		Editions: []string{
+			"Standard (Desktop Experience)", "Datacenter (Desktop Experience)",
+			"Standard (Server Core)", "Datacenter (Server Core)",
+		},
+		Requires:   []string{FeatureImportOnly, FeatureWindowsServer},
+		ImportFrom: "https://www.microsoft.com/evalcenter/evaluate-windows-server-2025 (180-day evaluation), or your volume-licensing portal",
+		Notes: "Download it yourself — Microsoft puts Server media behind a form, so there is no link to pin. " +
+			"Desktop Experience is the server with the familiar Windows desktop on it; Server Core has no desktop " +
+			"and no Server Manager, and is administered from another machine or a command line. " +
+			"The choice cannot be changed after installation.",
 		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting.",
 	},
 	{
-		ID:            "windows-server-2022",
-		Name:          "Windows Server 2022",
-		Family:        Windows,
-		Category:      Server,
-		Version:       "2022 LTSC",
-		Editions:      []string{"Standard", "Datacenter", "Standard Core", "Datacenter Core"},
-		Requires:      []string{FeatureImportOnly, FeatureWindowsServer},
-		ImportFrom:    "https://www.microsoft.com/evalcenter/evaluate-windows-server-2022 (180-day evaluation), or your volume-licensing portal",
-		Notes:         "The previous LTSC, for hardware or applications not yet cleared for 2025. Same import-it-yourself route as 2025.",
+		ID:       "windows-server-2022",
+		Name:     "Windows Server 2022",
+		Family:   Windows,
+		Category: Server,
+		Version:  "2022 LTSC",
+		Editions: []string{
+			"Standard (Desktop Experience)", "Datacenter (Desktop Experience)",
+			"Standard (Server Core)", "Datacenter (Server Core)",
+		},
+		Requires:   []string{FeatureImportOnly, FeatureWindowsServer},
+		ImportFrom: "https://www.microsoft.com/evalcenter/evaluate-windows-server-2022 (180-day evaluation), or your volume-licensing portal",
+		Notes: "The previous LTSC, for hardware or applications not yet cleared for 2025. Same import-it-yourself route, " +
+			"and the same choice between Desktop Experience and the desktopless Server Core.",
 		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting.",
 	},
 	{

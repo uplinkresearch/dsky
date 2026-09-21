@@ -120,7 +120,7 @@ func TestFedoraProgramsReachTheRecipe(t *testing.T) {
 	if ws.ProgramsSupported() {
 		t.Error("Fedora Workstation offers programs; its live installer does not take them this way")
 	}
-	if err := CheckPrograms(e, []string{"steam"}); err == nil {
+	if err := CheckPrograms(e, "", []string{"steam"}); err == nil {
 		t.Error("steam accepted for Fedora, which has no acceptable source for it")
 	}
 }

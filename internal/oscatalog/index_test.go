@@ -204,10 +204,18 @@ func TestCommittedIndexMatchesBuiltin(t *testing.T) {
 		t.Fatalf("committed index has %d entries, this build has %d — run: go run ./test/catalogen",
 			len(idx.Entries), len(builtin))
 	}
+	// Whole entries, not the download fields alone. Editions, notes and the
+	// required features are just as much what users get — the pickers read
+	// them straight from this index — and comparing only where the bytes come
+	// from let a renamed edition ship as a stale label in every portal while
+	// this test stayed green.
 	for i, e := range idx.Entries {
 		b := builtin[i]
-		if e.ID != b.ID || e.URL != b.URL || e.SHA256 != b.SHA256 || e.ChecksumsURL != b.ChecksumsURL {
-			t.Errorf("entry %d (%s) differs from the built-in list — run: go run ./test/catalogen", i, b.ID)
+		got, _ := json.Marshal(e)
+		want, _ := json.Marshal(b)
+		if string(got) != string(want) {
+			t.Errorf("entry %d (%s) differs from the built-in list — run: go run ./test/catalogen\n index: %s\n built: %s",
+				i, b.ID, got, want)
 		}
 	}
 	// And it must still satisfy the verifier, so a bad signature is caught

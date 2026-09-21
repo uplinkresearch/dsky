@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "serial": 1790001553,
-  "generated": "2026-09-21T14:39:13Z",
+  "serial": 1790003407,
+  "generated": "2026-09-21T15:10:07Z",
   "entries": [
     {
       "id": "windows-11",
@@ -32,7 +32,7 @@
       "family": "windows",
       "category": "server",
       "version": "2025 LTSC",
-      "notes": "Download it yourself — Microsoft puts Server media behind a form, so there is no link to pin. Core editions install without a desktop.",
+      "notes": "Download it yourself — Microsoft puts Server media behind a form, so there is no link to pin. Desktop Experience is the server with the familiar Windows desktop on it; Server Core has no desktop and no Server Manager, and is administered from another machine or a command line. The choice cannot be changed after installation.",
       "firmware_notes": "UEFI boot. Disk 0 is wiped without prompting.",
       "import_from": "https://www.microsoft.com/evalcenter/evaluate-windows-server-2025 (180-day evaluation), or your volume-licensing portal",
       "requires": [
@@ -40,10 +40,10 @@
         "windows-server"
       ],
       "editions": [
-        "Standard",
-        "Datacenter",
-        "Standard Core",
-        "Datacenter Core"
+        "Standard (Desktop Experience)",
+        "Datacenter (Desktop Experience)",
+        "Standard (Server Core)",
+        "Datacenter (Server Core)"
       ]
     },
     {
@@ -52,7 +52,7 @@
       "family": "windows",
       "category": "server",
       "version": "2022 LTSC",
-      "notes": "The previous LTSC, for hardware or applications not yet cleared for 2025. Same import-it-yourself route as 2025.",
+      "notes": "The previous LTSC, for hardware or applications not yet cleared for 2025. Same import-it-yourself route, and the same choice between Desktop Experience and the desktopless Server Core.",
       "firmware_notes": "UEFI boot. Disk 0 is wiped without prompting.",
       "import_from": "https://www.microsoft.com/evalcenter/evaluate-windows-server-2022 (180-day evaluation), or your volume-licensing portal",
       "requires": [
@@ -60,10 +60,10 @@
         "windows-server"
       ],
       "editions": [
-        "Standard",
-        "Datacenter",
-        "Standard Core",
-        "Datacenter Core"
+        "Standard (Desktop Experience)",
+        "Datacenter (Desktop Experience)",
+        "Standard (Server Core)",
+        "Datacenter (Server Core)"
       ]
     },
     {

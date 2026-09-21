@@ -179,7 +179,7 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 	var appIDs []string
 	if strings.TrimSpace(*apps) != "" && e.Family != oscatalog.Windows {
 		appIDs = strings.Split(*apps, ",")
-		if err := oscatalog.CheckPrograms(e, appIDs); err != nil {
+		if err := oscatalog.CheckPrograms(e, *edition, appIDs); err != nil {
 			return err
 		}
 		if err := printLinuxProgramPlan(os.Stdout, e, appIDs, adminPass); err != nil {

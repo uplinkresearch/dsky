@@ -131,8 +131,10 @@ func GenerateVerifyPS(r *Recipe, drivers ResolvedDrivers, resolveRef func(ref st
 			p(`else { FAIL "expected Server %s, got: $($os.Caption)" }`, ed)
 			// Caption reads the same for Core and Desktop Experience, so the
 			// half of the choice that Caption cannot show is read here.
+			// "Standard (Server Core)" as offered now, and "Standard Core" as
+			// v0.9.0 and v0.9.1 named it in the recipes they saved.
 			want := "Server"
-			if strings.HasSuffix(ed, " Core") {
+			if strings.Contains(ed, "Core") {
 				want = "Server Core"
 			}
 			p(`$it = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').InstallationType`)

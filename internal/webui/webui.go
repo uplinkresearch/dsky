@@ -1185,7 +1185,7 @@ func (s *Server) installOptions(ctx context.Context, req installRequest) (oscata
 		}
 		models = append(models, h)
 	}
-	if err := oscatalog.CheckPrograms(e, req.Apps); err != nil {
+	if err := oscatalog.CheckPrograms(e, req.Edition, req.Apps); err != nil {
 		return e, oscatalog.Options{}, err
 	}
 	if req.Offline && e.Family != oscatalog.Windows {
