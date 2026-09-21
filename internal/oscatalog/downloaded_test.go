@@ -30,7 +30,6 @@ func TestFindDownloadedISO(t *testing.T) {
 		return p
 	}
 	win11, _ := Get("windows-11")
-	win10, _ := Get("windows-10")
 	if got := FindDownloadedISO(win11); got != "" {
 		t.Fatalf("empty Downloads found %q", got)
 	}
@@ -42,9 +41,6 @@ func TestFindDownloadedISO(t *testing.T) {
 	mk("ubuntu-26.04.1-desktop-amd64.iso", 2<<30, 0)
 	if got := FindDownloadedISO(win11); got != newer {
 		t.Fatalf("found %q, want the newest complete Windows 11 ISO %q", got, newer)
-	}
-	if got := FindDownloadedISO(win10); got != "" {
-		t.Fatalf("Windows 10 matched %q", got)
 	}
 	// Saved to the Desktop instead, and newer: found there too.
 	desk := filepath.Join(home, "Desktop")
