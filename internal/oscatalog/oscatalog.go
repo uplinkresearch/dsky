@@ -278,6 +278,32 @@ func (e Entry) recipeOSType() string {
 // that cannot happen.
 const FeatureImportOnly = "import-only"
 
+// FeatureWindowsServer marks the Windows Server entries. Server media is
+// laid out differently from client media — four images on one ISO, chosen by
+// index, and no ei.cfg — so a build that predates that support would compose
+// client-shaped media from a Server ISO and fail at Setup. Gating on the
+// feature makes such a build skip the entry instead.
+const FeatureWindowsServer = "windows-server"
+
+// IsWindowsServer reports whether this entry installs Windows Server, which
+// takes the server path through recipe generation: image chosen by index, no
+// ei.cfg, no client product key, and no debloat.
+func (e Entry) IsWindowsServer() bool {
+	return e.Family == Windows && e.Category == Server
+}
+
+// serverImages maps an offered edition to its image index in install.wim.
+// Microsoft ships the four images in this order on retail and evaluation
+// media alike; the names differ between the two (evaluation media appends
+// EVAL), which is why this selects by index. A wrong index still installs
+// something, so the post-install check reads the edition back.
+var serverImages = map[string]int{
+	"Standard Core":   1,
+	"Standard":        2,
+	"Datacenter Core": 3,
+	"Datacenter":      4,
+}
+
 // ImportOnly reports whether this entry can only be supplied by hand. It
 // reads the feature list rather than inferring from an empty URL, because
 // that list is also what older builds gate on: the two must agree.
@@ -353,6 +379,11 @@ func (o *Options) defaults(e Entry) {
 	}
 	if o.Debloat == "" {
 		o.Debloat = "standard"
+	}
+	// The debloat presets remove consumer apps and client-only features;
+	// on Server they would at best do nothing and at worst break roles.
+	if e.IsWindowsServer() {
+		o.Debloat = "off"
 	}
 }
 
@@ -498,8 +529,15 @@ func BuildQuick(ctx context.Context, lib *library.Library, e Entry, opts Options
 	quickMu.Lock()
 	defer quickMu.Unlock()
 	opts.defaults(e)
-	if e.Family == Windows && genericKeys[opts.Edition] == "" {
-		return nil, fmt.Errorf("unknown Windows edition %q (have: %s)", opts.Edition, strings.Join(e.Editions, ", "))
+	switch {
+	case e.IsWindowsServer():
+		if serverImages[opts.Edition] == 0 {
+			return nil, fmt.Errorf("unknown Windows Server edition %q (have: %s)", opts.Edition, strings.Join(e.Editions, ", "))
+		}
+	case e.Family == Windows:
+		if genericKeys[opts.Edition] == "" {
+			return nil, fmt.Errorf("unknown Windows edition %q (have: %s)", opts.Edition, strings.Join(e.Editions, ", "))
+		}
 	}
 	// Fail before downloading gigabytes, not after.
 	if err := checkPrograms(e, opts.Apps); err != nil {
@@ -1103,6 +1141,28 @@ target:
 	if len(hw) > 0 || len(opts.prepulled) > 0 {
 		minStick = "16GiB"
 	}
+	// Client media carries one image and an ei.cfg picks the edition; Server
+	// media carries four and Setup picks by index, with no ei.cfg involved.
+	// Evaluation media needs no key, and a client key would be rejected, so
+	// the key is left empty and the template drops the ProductKey element.
+	//
+	// Both vars are always written, empty where they do not apply: the
+	// unattend template renders with missingkey=error, so a var the template
+	// mentions and the recipe omits fails the build rather than the install.
+	eiCfg := fmt.Sprintf("  ei_cfg: { edition: %s, channel: Retail, vl: false }\n", editionName(opts.Edition))
+	editionVars := fmt.Sprintf("      edition_key: %s\n      image_index: \"\"\n", genericKeys[opts.Edition])
+	if e.IsWindowsServer() {
+		// BuildQuick rejects an edition that is not on offer, so this only
+		// clamps a caller that skipped it: index 0 is not a valid selection
+		// and would leave Setup prompting on an unattended install.
+		edition := opts.Edition
+		if serverImages[edition] == 0 {
+			edition = "Standard"
+		}
+		eiCfg = ""
+		editionVars = fmt.Sprintf("      edition_key: \"\"\n      image_index: \"%d\"\n      server_edition: %q\n",
+			serverImages[edition], edition)
+	}
 	return fmt.Sprintf(`version: 1
 id: %s
 name: %q
@@ -1118,12 +1178,10 @@ target:
   min_stick: %s
   boot: uefi-only
 windows:
-  ei_cfg: { edition: %s, channel: Retail, vl: false }
-  unattend:
+%s  unattend:
     template: %s
     vars:
-      edition_key: %s
-      locale: %s
+%s      locale: %s
       timezone: %q
       admin_user: %s
       admin_display_name: %s
@@ -1139,7 +1197,7 @@ windows:
 %s
 flash:
   verify: readback-sha256
-`, m.ID, m.Name, e.ID, minStick, editionName(opts.Edition), m.Template, genericKeys[opts.Edition],
+`, m.ID, m.Name, e.ID, minStick, eiCfg, m.Template, editionVars,
 		orDefault(opts.Locale, "en-US"), opts.Timezone,
 		orDefault(opts.AdminUser, "user"), displayName(orDefault(opts.AdminUser, "user")),
 		adminPasswordVar(opts.AdminPassword),

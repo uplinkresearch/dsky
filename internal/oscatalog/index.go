@@ -65,11 +65,12 @@ const (
 // knownFeatures are the capabilities this build can honour. An entry asking
 // for anything outside this set is skipped — see Entry.Requires.
 var knownFeatures = map[string]bool{
-	"iso":             true, // hybrid installer ISO, written whole
-	"raw-image":       true, // compressed raw disk image (Raspberry Pi, Steam Deck)
-	"fido":            true, // Windows media resolved at pull time
-	"checksums-url":   true, // hash resolved from a vendor checksum file
-	FeatureImportOnly: true, // no fetchable URL; the operator supplies the ISO
+	"iso":                true, // hybrid installer ISO, written whole
+	"raw-image":          true, // compressed raw disk image (Raspberry Pi, Steam Deck)
+	"fido":               true, // Windows media resolved at pull time
+	"checksums-url":      true, // hash resolved from a vendor checksum file
+	FeatureImportOnly:    true, // no fetchable URL; the operator supplies the ISO
+	FeatureWindowsServer: true, // Server media: image chosen by index, no ei.cfg
 }
 
 // Index is the published catalog document.

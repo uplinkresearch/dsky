@@ -28,11 +28,22 @@
         </Disk>
       </DiskConfiguration>
       <ImageInstall>
-        <OSImage><InstallTo><DiskID>0</DiskID><PartitionID>3</PartitionID></InstallTo></OSImage>
+        <OSImage>
+          {{if index .Vars "image_index"}}
+          <!-- Server media holds four images (Standard/Datacenter, Core/Desktop
+               Experience). Index, not name: evaluation media appends EVAL to the
+               names but ships them in the same order.
+               Read with index rather than .Vars.image_index: this template
+               renders with missingkey=error, and a caller that assembles vars
+               for client media has no reason to know this key exists. -->
+          <InstallFrom><MetaData wcm:action="add"><Key>/IMAGE/INDEX</Key><Value>{{index .Vars "image_index"}}</Value></MetaData></InstallFrom>
+          {{end}}
+          <InstallTo><DiskID>0</DiskID><PartitionID>3</PartitionID></InstallTo>
+        </OSImage>
       </ImageInstall>
       <UserData>
         <AcceptEula>true</AcceptEula>
-        <ProductKey><Key>{{.Vars.edition_key}}</Key></ProductKey>
+        {{if .Vars.edition_key}}<ProductKey><Key>{{.Vars.edition_key}}</Key></ProductKey>{{end}}
       </UserData>
       {{if eq .Vars.bypass_requirements "1"}}
       <RunSynchronous>

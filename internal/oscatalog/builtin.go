@@ -36,15 +36,33 @@ var builtin = []Entry{
 		Notes:         "Official Microsoft media, fetched on demand. Edition, local-account vs OOBE, and debloat are options.",
 		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting. On unsupported hardware, enable 'skip requirement checks'.",
 	},
+	// Server media is not on Fido and Microsoft puts the evaluation ISOs
+	// behind a form, so these are import-only: the operator hands over the
+	// ISO. Setup picks between the four images on that media by index —
+	// names carry an EVAL suffix on evaluation media, indexes do not — and
+	// the post-install check reads the edition back to catch a wrong pick.
 	{
-		ID:            "windows-10",
-		Name:          "Windows 10",
+		ID:            "windows-server-2025",
+		Name:          "Windows Server 2025",
 		Family:        Windows,
-		Version:       "22H2",
-		Editions:      []string{"Pro", "Home", "Pro N", "Education", "Enterprise"},
-		Provider:      "fido",
-		Fido:          &manifest.FidoSpec{Win: "10", Release: "22H2", Edition: "Pro", Language: "English", Arch: "x64"},
-		Notes:         "Official Microsoft media, fetched on demand.",
+		Category:      Server,
+		Version:       "2025 LTSC",
+		Editions:      []string{"Standard", "Datacenter", "Standard Core", "Datacenter Core"},
+		Requires:      []string{FeatureImportOnly, FeatureWindowsServer},
+		ImportFrom:    "https://www.microsoft.com/evalcenter/evaluate-windows-server-2025 (180-day evaluation), or your volume-licensing portal",
+		Notes:         "Download it yourself — Microsoft puts Server media behind a form, so there is no link to pin. Core editions install without a desktop.",
+		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting.",
+	},
+	{
+		ID:            "windows-server-2022",
+		Name:          "Windows Server 2022",
+		Family:        Windows,
+		Category:      Server,
+		Version:       "2022 LTSC",
+		Editions:      []string{"Standard", "Datacenter", "Standard Core", "Datacenter Core"},
+		Requires:      []string{FeatureImportOnly, FeatureWindowsServer},
+		ImportFrom:    "https://www.microsoft.com/evalcenter/evaluate-windows-server-2022 (180-day evaluation), or your volume-licensing portal",
+		Notes:         "The previous LTSC, for hardware or applications not yet cleared for 2025. Same import-it-yourself route as 2025.",
 		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting.",
 	},
 	{

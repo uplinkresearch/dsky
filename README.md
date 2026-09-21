@@ -71,8 +71,10 @@ had to say plainly what it was about to do.
 
 ## What it produces
 
-- **Windows 10/11 unattended installers** — FAT32, UEFI-boot, `autounattend.xml`
-  + `ei.cfg` + `$OEM$` payload; drivers install at first boot via `pnputil`
+- **Windows 11 and Windows Server unattended installers** — FAT32, UEFI-boot,
+  `autounattend.xml` + `ei.cfg` + `$OEM$` payload (Server picks its edition by
+  image index instead of `ei.cfg`, and the ISO is imported by hand — Microsoft
+  puts Server media behind a form); drivers install at first boot via `pnputil`
   (never DISM-injected), agents install at first boot (never baked — cloned
   agent identities collide in RMMs). WIMs over FAT32's 4 GiB limit are split
   automatically (DISM on Windows hosts, wimlib elsewhere).
@@ -180,8 +182,9 @@ dsky catalog
 dsky install windows-11 --edition Pro --account local --debloat standard
 ```
 
-Twenty-seven operating systems ship in the list today: Windows 11 and 10
-(fetched from Microsoft on demand via Fido); Ubuntu 26.04 LTS desktop and
+Twenty-eight operating systems ship in the list today: Windows 11 (fetched
+from Microsoft on demand via Fido); Windows Server 2025 and 2022 (imported
+by hand — Microsoft puts Server media behind a form); Ubuntu 26.04 LTS desktop and
 server plus 24.04 LTS server; Fedora 44 Workstation and Server; Debian 13;
 Arch; Omarchy; CachyOS desktop and handheld; Linux Mint; Pop!_OS; Bazzite;
 Nobara; Garuda; PikaOS; openSUSE Tumbleweed; NixOS 26.05; Red Hat Enterprise
@@ -563,9 +566,12 @@ Known gaps, stated plainly:
   The engine is there and its guards are tested; the concurrency is not
   hardware-proven.
 - **macOS and Linux flash paths** are written but not hardware-tested.
-- **Windows Server** is not in the catalog. Fido cannot fetch it and its
-  edition selection needs WIM image names read from a real ISO rather than
-  guessed.
+- **Windows Server has never been installed from a real ISO.** It is in the
+  catalog, imported by hand (Fido cannot fetch it), and its edition is chosen
+  by image index — 1 to 4, taken from Microsoft's documented image order
+  rather than read from a WIM. The post-install check reads the edition and
+  installation type back, so a wrong index fails loudly rather than quietly
+  installing Datacenter; but no Server build has been proven end to end.
 - **Binaries are unsigned**, so SmartScreen and Smart App Control will object,
   and self-update verifies integrity rather than authorship. Code signing is
   the fix for both.

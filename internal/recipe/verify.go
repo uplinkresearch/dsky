@@ -123,6 +123,23 @@ func GenerateVerifyPS(r *Recipe, drivers ResolvedDrivers, resolveRef func(ref st
 		p(`if ($os.Caption -match '%s') { OK "edition is %s as requested" }`, editionMatch(w.EICfg.Edition), w.EICfg.Edition)
 		p(`else { FAIL "expected edition %s, got: $($os.Caption)" }`, w.EICfg.Edition)
 	}
+	// Server has no ei.cfg: the edition came from an image index, and an
+	// index that pointed at the wrong image is exactly what this catches.
+	if w.Unattend != nil {
+		if ed := w.Unattend.Vars["server_edition"]; ed != "" {
+			p(`if ($os.Caption -match '%s') { OK "edition is Server %s as requested" }`, serverEditionMatch(ed), ed)
+			p(`else { FAIL "expected Server %s, got: $($os.Caption)" }`, ed)
+			// Caption reads the same for Core and Desktop Experience, so the
+			// half of the choice that Caption cannot show is read here.
+			want := "Server"
+			if strings.HasSuffix(ed, " Core") {
+				want = "Server Core"
+			}
+			p(`$it = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').InstallationType`)
+			p(`if ($it -eq '%s') { OK "installation type is %s as requested" }`, want, want)
+			p(`else { FAIL "expected %s, got: $it" }`, want)
+		}
+	}
 	if w.Unattend != nil {
 		if user := w.Unattend.Vars["admin_user"]; user != "" && accountMode(w) == "local" {
 			p(`if (Get-LocalUser -Name '%s' -ErrorAction SilentlyContinue) { OK "local account '%s' exists" }`, user, user)
@@ -435,6 +452,14 @@ func editionMatch(edition string) string {
 		return "Home"
 	}
 	return edition
+}
+
+// serverEditionMatch turns an offered Server edition into something
+// Win32_OperatingSystem's Caption can be matched against. Caption names the
+// edition but not the installation type ("… Server 2025 Standard" either
+// way), so the Core half of the choice is checked separately.
+func serverEditionMatch(edition string) string {
+	return strings.TrimSuffix(edition, " Core")
 }
 
 // wingetDisplayHint guesses the Add/Remove Programs name from a winget id.

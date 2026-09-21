@@ -35,6 +35,15 @@ func TestSynthesizedRecipesValid(t *testing.T) {
 		{"win-local", Options{Edition: "Pro", AccountMode: "local", Debloat: "standard"}},
 		{"win-oobe-bypass", Options{Edition: "Home", AccountMode: "oobe", Debloat: "off", BypassRequirement: true}},
 	}
+	// Server takes the other path through recipe generation: its editions
+	// name images on the media, not client SKUs.
+	serverCases := []struct {
+		name string
+		opts Options
+	}{
+		{"srv-standard", Options{Edition: "Standard", AccountMode: "local"}},
+		{"srv-datacenter-core", Options{Edition: "Datacenter Core", AccountMode: "local"}},
+	}
 	for _, e := range Catalog() {
 		if e.Family != Windows {
 			dir, err := scaffoldQuickWorkspace(lib, e, Options{}, nil)
@@ -44,7 +53,11 @@ func TestSynthesizedRecipesValid(t *testing.T) {
 			assertLoads(t, dir, e.ID)
 			continue
 		}
-		for _, c := range cases {
+		active := cases
+		if e.IsWindowsServer() {
+			active = serverCases
+		}
+		for _, c := range active {
 			dir, err := scaffoldQuickWorkspace(lib, e, c.opts, nil)
 			if err != nil {
 				t.Fatalf("%s/%s: scaffold: %v", e.ID, c.name, err)
@@ -53,7 +66,21 @@ func TestSynthesizedRecipesValid(t *testing.T) {
 			if r == nil {
 				continue
 			}
-			if r.Windows == nil || r.Windows.EICfg == nil {
+			switch {
+			case e.IsWindowsServer():
+				// No ei.cfg on Server media; the image index is what picks
+				// the edition, and an absent one leaves Setup prompting.
+				if r.Windows != nil && r.Windows.EICfg != nil {
+					t.Errorf("%s/%s: ei_cfg on Server media", e.ID, c.name)
+				}
+				if r.Windows == nil || r.Windows.Unattend == nil ||
+					r.Windows.Unattend.Vars["image_index"] == "" {
+					t.Errorf("%s/%s: missing windows/unattend image_index", e.ID, c.name)
+				} else if got := r.Windows.Unattend.Vars["image_index"]; got != strconv.Itoa(serverImages[c.opts.Edition]) {
+					t.Errorf("%s/%s: image_index %s, want %d for %q",
+						e.ID, c.name, got, serverImages[c.opts.Edition], c.opts.Edition)
+				}
+			case r.Windows == nil || r.Windows.EICfg == nil:
 				t.Errorf("%s/%s: missing windows/ei_cfg", e.ID, c.name)
 			}
 			for _, f := range r.Lint() {
@@ -568,6 +595,15 @@ func TestGenericKeysComplete(t *testing.T) {
 			continue
 		}
 		for _, ed := range e.Editions {
+			// Server editions name images on the media rather than client
+			// SKUs: no generic key exists for them, and evaluation media
+			// takes no key at all.
+			if e.IsWindowsServer() {
+				if serverImages[ed] == 0 {
+					t.Errorf("%s: no image index for edition %q", e.ID, ed)
+				}
+				continue
+			}
 			if genericKeys[ed] == "" {
 				t.Errorf("%s: no generic key for edition %q", e.ID, ed)
 			}

@@ -211,7 +211,10 @@ func TestDriverModelsPerVendor(t *testing.T) {
 		}
 		return []string{vendor + " Model A", vendor + " Model B"}, nil
 	}
-	req := httptest.NewRequest("GET", "/api/drivers/models?os_id=windows-10", nil)
+	// windows-11 rather than windows-10: Windows 10 left the catalog, and an
+	// os_id that resolves to no entry would exercise the fallback instead of
+	// the lookup this asserts.
+	req := httptest.NewRequest("GET", "/api/drivers/models?os_id=windows-11", nil)
 	req.Host = "127.0.0.1:8931"
 	req.Header.Set("X-DSKY-Token", "sekrit")
 	w := httptest.NewRecorder()
@@ -228,7 +231,7 @@ func TestDriverModelsPerVendor(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil || w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if resp.OS != "win10" || len(asked) != len(catalog.ModelFeeds) || asked["framework"] != "win10" || asked["alienware"] != "win10" {
+	if resp.OS != "win11" || len(asked) != len(catalog.ModelFeeds) || asked["framework"] != "win11" || asked["alienware"] != "win11" {
 		t.Errorf("os %q, asked %v", resp.OS, asked)
 	}
 	byVendor := map[string]int{}
