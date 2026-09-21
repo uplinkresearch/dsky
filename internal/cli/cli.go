@@ -134,6 +134,33 @@ func refreshCatalog(ctx context.Context, env *Env) {
 	_ = oscatalog.Refresh(ctx, env.libraryRoot())
 }
 
+// catalogRefreshEvery is how often a window that stays open asks again. The
+// app is left running for days on a bench, and a catalog fetched on Monday
+// is not the one that matters on Thursday.
+const catalogRefreshEvery = 6 * time.Hour
+
+// refreshCatalogWhileOpen keeps the app's OS list current for as long as the
+// window is. Same fetch the CLI does, non-fatal in the same way: no network
+// means the cached list, exactly as before.
+func refreshCatalogWhileOpen(ctx context.Context, root string) {
+	refresh := func() {
+		c, cancel := context.WithTimeout(ctx, 8*time.Second)
+		defer cancel()
+		_ = oscatalog.Refresh(c, root)
+	}
+	refresh()
+	t := time.NewTicker(catalogRefreshEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			refresh()
+		}
+	}
+}
+
 func (e *Env) workspace() (*workspace.Workspace, error) {
 	dir, err := workspace.Find(e.WorkspaceDir)
 	if err != nil {

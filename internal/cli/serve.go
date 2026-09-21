@@ -275,6 +275,13 @@ func startServer(ctx context.Context, lib *library.Library, vars map[string]stri
 	// saved to disk and then invisible the next time it opened, and every
 	// recipe that used one built without it.
 	oscatalog.LoadCached(lib.Root)
+	// ...and then go and ask for a newer one. The CLI refreshes before any
+	// command that shows the catalog; the window never goes through that
+	// path, so until now it offered whatever a CLI run happened to cache
+	// last -- and on a machine where somebody only ever opens the app, that
+	// is whatever shipped with the build. A newly published OS was invisible
+	// with nothing on screen to say so.
+	go refreshCatalogWhileOpen(ctx, lib.Root)
 	if err := appcatalog.LoadCustom(lib.Root); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: your added programs could not be read:", err)
 	}
