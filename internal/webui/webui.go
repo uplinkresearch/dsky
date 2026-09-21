@@ -385,6 +385,12 @@ type catalogEntry struct {
 	// instead of offering a button that cannot work.
 	ImportOnly bool   `json:"import_only,omitempty"`
 	ImportFrom string `json:"import_from,omitempty"`
+	// NeedsFido separates the Windows entries whose ISO is resolved through
+	// Fido — and so wants PowerShell, and meets Microsoft's rate limit —
+	// from the ones that pin a URL like any Linux entry. Windows Server is
+	// the second kind, and telling a Mac it needs PowerShell 7 to fetch a
+	// plain file would be a lie the page tells confidently.
+	NeedsFido bool `json:"needs_fido,omitempty"`
 	// Downloaded: the OS image is already in the library.
 	Downloaded bool `json:"downloaded,omitempty"`
 	// Programs: the program picker is offered — Windows, Ubuntu's installer,
@@ -666,6 +672,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 			Category: string(e.Group()), Arch: e.CPUArch(), Version: e.Version,
 			Notes: e.Notes, FirmwareNotes: e.FirmwareNotes, Editions: e.Editions,
 			ImportOnly: e.ImportOnly(), ImportFrom: e.ImportFrom,
+			NeedsFido:  e.NeedsFido(),
 			Downloaded: downloaded, FoundISO: found, Programs: e.ProgramsSupported(),
 			ThirdPartyDrivers: e.ThirdPartyDriversSupported(),
 			AppTarget:         string(e.AppTarget()),

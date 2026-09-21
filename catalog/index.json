@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "serial": 1790003407,
-  "generated": "2026-09-21T15:10:07Z",
+  "serial": 1790004586,
+  "generated": "2026-09-21T15:29:46Z",
   "entries": [
     {
       "id": "windows-11",
@@ -32,11 +32,13 @@
       "family": "windows",
       "category": "server",
       "version": "2025 LTSC",
-      "notes": "Download it yourself — Microsoft puts Server media behind a form, so there is no link to pin. Desktop Experience is the server with the familiar Windows desktop on it; Server Core has no desktop and no Server Manager, and is administered from another machine or a command line. The choice cannot be changed after installation.",
+      "notes": "180-day evaluation media, fetched from Microsoft on demand — convertible to licensed afterwards, except Server Core. Desktop Experience is the server with the familiar Windows desktop on it; Server Core has no desktop and no Server Manager, and is administered from another machine or a command line. The choice cannot be changed after installation.",
       "firmware_notes": "UEFI boot. Disk 0 is wiped without prompting.",
-      "import_from": "https://www.microsoft.com/evalcenter/evaluate-windows-server-2025 (180-day evaluation), or your volume-licensing portal",
+      "url": "https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/26100.1742.240906-0331.ge_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso",
+      "sha256": "d0ef4502e350e3c6c53c15b1b3020d38a5ded011bf04998e950720ac8579b23d",
+      "filename": "windows-server-2025-eval-x64-en-us.iso",
+      "import_from": "your volume-licensing portal, for licensed rather than evaluation media",
       "requires": [
-        "import-only",
         "windows-server"
       ],
       "editions": [
@@ -52,11 +54,13 @@
       "family": "windows",
       "category": "server",
       "version": "2022 LTSC",
-      "notes": "The previous LTSC, for hardware or applications not yet cleared for 2025. Same import-it-yourself route, and the same choice between Desktop Experience and the desktopless Server Core.",
+      "notes": "The previous LTSC, for hardware or applications not yet cleared for 2025. Also 180-day evaluation media, and the same choice between Desktop Experience and the desktopless Server Core.",
       "firmware_notes": "UEFI boot. Disk 0 is wiped without prompting.",
-      "import_from": "https://www.microsoft.com/evalcenter/evaluate-windows-server-2022 (180-day evaluation), or your volume-licensing portal",
+      "url": "https://software-static.download.prss.microsoft.com/sg/download/888969d5-f34g-4e03-ac9d-1f9786c66749/SERVER_EVAL_x64FRE_en-us.iso",
+      "sha256": "3e4fa6d8507b554856fc9ca6079cc402df11a8b79344871669f0251535255325",
+      "filename": "windows-server-2022-eval-x64-en-us.iso",
+      "import_from": "your volume-licensing portal, for licensed rather than evaluation media",
       "requires": [
-        "import-only",
         "windows-server"
       ],
       "editions": [

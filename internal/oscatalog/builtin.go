@@ -36,11 +36,21 @@ var builtin = []Entry{
 		Notes:         "Official Microsoft media, fetched on demand. Edition, local-account vs OOBE, and debloat are options.",
 		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting. On unsupported hardware, enable 'skip requirement checks'.",
 	},
-	// Server media is not on Fido and Microsoft puts the evaluation ISOs
-	// behind a form, so these are import-only: the operator hands over the
-	// ISO. Setup picks between the four images on that media by index —
-	// names carry an EVAL suffix on evaluation media, indexes do not — and
-	// the post-install check reads the edition back to catch a wrong pick.
+	// Server media is not on Fido, and the Eval Center's form looked like a
+	// gate — it is not one. Its download button is a plain redirect to a
+	// static file on Microsoft's CDN, with no account, no token and no
+	// expiry, so these pin url + sha256 like any other entry rather than
+	// asking the operator to fetch the ISO by hand.
+	//
+	// What they pin is EVALUATION media: 180 days, convertible afterwards to
+	// licensed with DISM /Set-Edition — except Server Core, which Microsoft's
+	// own notes say cannot make that move. Licensed media comes from a
+	// volume-licensing portal instead, which is what ImportFrom points at,
+	// and `--iso` takes it.
+	//
+	// Setup picks between the four images on that media by index — names
+	// carry an EVAL suffix on evaluation media, indexes do not — and the
+	// post-install check reads the edition back to catch a wrong pick.
 	{
 		ID:       "windows-server-2025",
 		Name:     "Windows Server 2025",
@@ -51,12 +61,15 @@ var builtin = []Entry{
 			"Standard (Desktop Experience)", "Datacenter (Desktop Experience)",
 			"Standard (Server Core)", "Datacenter (Server Core)",
 		},
-		Requires:   []string{FeatureImportOnly, FeatureWindowsServer},
-		ImportFrom: "https://www.microsoft.com/evalcenter/evaluate-windows-server-2025 (180-day evaluation), or your volume-licensing portal",
-		Notes: "Download it yourself — Microsoft puts Server media behind a form, so there is no link to pin. " +
-			"Desktop Experience is the server with the familiar Windows desktop on it; Server Core has no desktop " +
-			"and no Server Manager, and is administered from another machine or a command line. " +
-			"The choice cannot be changed after installation.",
+		Requires:   []string{FeatureWindowsServer},
+		URL:        "https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/26100.1742.240906-0331.ge_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso",
+		SHA256:     "d0ef4502e350e3c6c53c15b1b3020d38a5ded011bf04998e950720ac8579b23d",
+		Filename:   "windows-server-2025-eval-x64-en-us.iso",
+		ImportFrom: "your volume-licensing portal, for licensed rather than evaluation media",
+		Notes: "180-day evaluation media, fetched from Microsoft on demand — convertible to licensed afterwards, " +
+			"except Server Core. Desktop Experience is the server with the familiar Windows desktop on it; " +
+			"Server Core has no desktop and no Server Manager, and is administered from another machine or a " +
+			"command line. The choice cannot be changed after installation.",
 		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting.",
 	},
 	{
@@ -69,10 +82,17 @@ var builtin = []Entry{
 			"Standard (Desktop Experience)", "Datacenter (Desktop Experience)",
 			"Standard (Server Core)", "Datacenter (Server Core)",
 		},
-		Requires:   []string{FeatureImportOnly, FeatureWindowsServer},
-		ImportFrom: "https://www.microsoft.com/evalcenter/evaluate-windows-server-2022 (180-day evaluation), or your volume-licensing portal",
-		Notes: "The previous LTSC, for hardware or applications not yet cleared for 2025. Same import-it-yourself route, " +
-			"and the same choice between Desktop Experience and the desktopless Server Core.",
+		Requires: []string{FeatureWindowsServer},
+		// Unlike 2025's, this URL carries no build number: a refreshed 2022
+		// evaluation would be served from the same path and fail this hash
+		// rather than install quietly. The scheduled catalog health check is
+		// what says when that has happened.
+		URL:        "https://software-static.download.prss.microsoft.com/sg/download/888969d5-f34g-4e03-ac9d-1f9786c66749/SERVER_EVAL_x64FRE_en-us.iso",
+		SHA256:     "3e4fa6d8507b554856fc9ca6079cc402df11a8b79344871669f0251535255325",
+		Filename:   "windows-server-2022-eval-x64-en-us.iso",
+		ImportFrom: "your volume-licensing portal, for licensed rather than evaluation media",
+		Notes: "The previous LTSC, for hardware or applications not yet cleared for 2025. Also 180-day evaluation " +
+			"media, and the same choice between Desktop Experience and the desktopless Server Core.",
 		FirmwareNotes: "UEFI boot. Disk 0 is wiped without prompting.",
 	},
 	{

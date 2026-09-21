@@ -255,8 +255,24 @@ func TestCatalogEntriesWellFormed(t *testing.T) {
 		}
 		switch e.Family {
 		case Windows:
-			if e.Provider != "fido" || e.Fido == nil {
-				t.Errorf("%s: Windows entries resolve their ISO through Fido", e.ID)
+			// Client media has no stable URL, so it resolves through Fido.
+			// Server media does have one -- the Eval Center's button is a
+			// redirect to a static file -- so it pins url + sha256 like a
+			// Linux entry, and is held to the same rule: nothing unpinned.
+			switch {
+			case e.Provider == "fido":
+				if e.Fido == nil {
+					t.Errorf("%s: provider fido with no fido spec", e.ID)
+				}
+			case e.URL != "":
+				if e.Filename == "" {
+					t.Errorf("%s: a pinned Windows entry needs a filename", e.ID)
+				}
+				if len(e.SHA256) != 64 {
+					t.Errorf("%s: unpinned or malformed sha256 (%d characters, want 64)", e.ID, len(e.SHA256))
+				}
+			default:
+				t.Errorf("%s: a Windows entry resolves through Fido or pins a url", e.ID)
 			}
 			if len(e.Editions) == 0 {
 				t.Errorf("%s: Windows entries need editions (the key table is keyed by them)", e.ID)

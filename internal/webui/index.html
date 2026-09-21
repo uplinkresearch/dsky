@@ -2622,9 +2622,19 @@ function isoOpt(os) {
   }
   if (os.family !== "windows") return null;
   const home = state.host_os === "darwin" ? "/Users/you" : "/home/you";
-  const page = "microsoft.com/software-download/windows11";
+  // Windows Server is fetched from a pinned URL like any Linux entry, so it
+  // needs no Fido and no PowerShell, and the page to visit by hand is the
+  // Eval Center rather than the Windows 11 download page. Everything below
+  // that talks about rate limits and PowerShell is about Fido.
+  const page = os.needs_fido ? "microsoft.com/software-download/windows11" : "microsoft.com/evalcenter";
   let opt;
-  if (state.windows_fetch || os.downloaded) {
+  if (!os.needs_fido) {
+    opt = textOpt("Use an ISO you downloaded (optional)",
+      state.host_os === "windows" ? "C:\\Users\\you\\Downloads\\server2025.iso" : home + "/Downloads/server2025.iso",
+      os.downloaded
+        ? "Already downloaded, so this is not needed."
+        : `Downloaded from Microsoft and checked against a pinned hash — 180-day evaluation media. Licensed media from your volume-licensing portal goes here instead. Filed under this OS, so later builds reuse it.`);
+  } else if (state.windows_fetch || os.downloaded) {
     opt = textOpt("Use an ISO you downloaded (optional)",
       state.host_os === "windows" ? "C:\\Users\\you\\Downloads\\Win11.iso" : home + "/Downloads/Win11.iso",
       os.downloaded

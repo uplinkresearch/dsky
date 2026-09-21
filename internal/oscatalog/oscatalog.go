@@ -285,6 +285,12 @@ const FeatureImportOnly = "import-only"
 // feature makes such a build skip the entry instead.
 const FeatureWindowsServer = "windows-server"
 
+// NeedsFido reports whether this entry's ISO is resolved through the Fido
+// helper at pull time — Microsoft's client media, which has no stable URL —
+// rather than fetched from a pinned one. Windows Server pins a URL, so it
+// needs neither Fido nor the PowerShell that Fido runs under.
+func (e Entry) NeedsFido() bool { return e.Provider == "fido" }
+
 // InstallsDesktop reports whether media built from this entry leaves the
 // machine with a graphical session on it.
 //
