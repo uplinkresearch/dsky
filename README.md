@@ -566,12 +566,14 @@ Known gaps, stated plainly:
   The engine is there and its guards are tested; the concurrency is not
   hardware-proven.
 - **macOS and Linux flash paths** are written but not hardware-tested.
-- **Windows Server has never been installed from a real ISO.** It is in the
-  catalog, imported by hand (Fido cannot fetch it), and its edition is chosen
-  by image index — 1 to 4, taken from Microsoft's documented image order
-  rather than read from a WIM. The post-install check reads the edition and
-  installation type back, so a wrong index fails loudly rather than quietly
-  installing Datacenter; but no Server build has been proven end to end.
+- **Windows Server is proven for one of its four images.** Server 2025
+  Standard (Desktop Experience) has been built and installed on real
+  hardware: image index 2, exactly where Microsoft's documented order puts
+  it. The other three — Datacenter, and either Server Core — come from that
+  same documented order and have not been watched install, and neither has
+  any 2022 media. The post-install check reads the edition and the
+  installation type back on every build, so a wrong index fails loudly
+  rather than quietly handing over Datacenter or a server with no desktop.
 - **Binaries are unsigned**, so SmartScreen and Smart App Control will object,
   and self-update verifies integrity rather than authorship. Code signing is
   the fix for both.

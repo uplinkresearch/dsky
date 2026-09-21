@@ -334,6 +334,10 @@ func (e Entry) IsWindowsServer() bool {
 // alike; the names differ between the two (evaluation media appends EVAL),
 // which is why this selects by index. A wrong index still installs
 // something, so the post-install check reads the edition back.
+//
+// Index 2 is confirmed on hardware: a 2025 evaluation ISO fetched from the
+// pinned URL installed "Windows Server 2025 Standard Evaluation" with a
+// desktop. The other three are still only as good as the documentation.
 var serverImageBase = map[string]int{
 	"Standard":   1, // 1 Server Core, 2 Desktop Experience
 	"Datacenter": 3, // 3 Server Core, 4 Desktop Experience
