@@ -100,6 +100,11 @@ func TestBuildingAPayloadFetchesNoOperatingSystem(t *testing.T) {
 // The page is told which recipes can be payloads, by the same rule the
 // builder uses -- not by guessing from the OS type.
 func TestTheStateSaysWhichRecipesCanBePayloads(t *testing.T) {
+	// Same rule, same dependency: agentCovers reports false when no agent was
+	// embedded, so without one this asserts the fallback, not the rule.
+	if !agentbin.Available(agentbin.AMD64) {
+		t.Skip("this build has no agent embedded (`./build-agent.sh`)")
+	}
 	s := testServer(t)
 	payloadRecipe(t, s)
 	req := httptest.NewRequest("GET", "/api/state", nil)
