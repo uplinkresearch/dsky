@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "serial": 1789243652,
-  "generated": "2026-09-12T20:07:32Z",
+  "serial": 1790001553,
+  "generated": "2026-09-21T14:39:13Z",
   "entries": [
     {
       "id": "windows-11",
@@ -27,26 +27,43 @@
       ]
     },
     {
-      "id": "windows-10",
-      "name": "Windows 10",
+      "id": "windows-server-2025",
+      "name": "Windows Server 2025",
       "family": "windows",
-      "version": "22H2",
-      "notes": "Official Microsoft media, fetched on demand.",
+      "category": "server",
+      "version": "2025 LTSC",
+      "notes": "Download it yourself — Microsoft puts Server media behind a form, so there is no link to pin. Core editions install without a desktop.",
       "firmware_notes": "UEFI boot. Disk 0 is wiped without prompting.",
-      "provider": "fido",
-      "fido": {
-        "win": "10",
-        "release": "22H2",
-        "edition": "Pro",
-        "language": "English",
-        "arch": "x64"
-      },
+      "import_from": "https://www.microsoft.com/evalcenter/evaluate-windows-server-2025 (180-day evaluation), or your volume-licensing portal",
+      "requires": [
+        "import-only",
+        "windows-server"
+      ],
       "editions": [
-        "Pro",
-        "Home",
-        "Pro N",
-        "Education",
-        "Enterprise"
+        "Standard",
+        "Datacenter",
+        "Standard Core",
+        "Datacenter Core"
+      ]
+    },
+    {
+      "id": "windows-server-2022",
+      "name": "Windows Server 2022",
+      "family": "windows",
+      "category": "server",
+      "version": "2022 LTSC",
+      "notes": "The previous LTSC, for hardware or applications not yet cleared for 2025. Same import-it-yourself route as 2025.",
+      "firmware_notes": "UEFI boot. Disk 0 is wiped without prompting.",
+      "import_from": "https://www.microsoft.com/evalcenter/evaluate-windows-server-2022 (180-day evaluation), or your volume-licensing portal",
+      "requires": [
+        "import-only",
+        "windows-server"
+      ],
+      "editions": [
+        "Standard",
+        "Datacenter",
+        "Standard Core",
+        "Datacenter Core"
       ]
     },
     {
