@@ -567,13 +567,15 @@ Known gaps, stated plainly:
   hardware-proven.
 - **macOS and Linux flash paths** are written but not hardware-tested.
 - **Windows Server is proven for one of its four images.** Server 2025
-  Standard (Desktop Experience) has been built and installed on real
-  hardware: image index 2, exactly where Microsoft's documented order puts
-  it. The other three — Datacenter, and either Server Core — come from that
-  same documented order and have not been watched install, and neither has
-  any 2022 media. The post-install check reads the edition and the
-  installation type back on every build, so a wrong index fails loudly
-  rather than quietly handing over Datacenter or a server with no desktop.
+  Standard (Desktop Experience) has been fetched from its pinned URL,
+  verified against its hash, built and installed on real hardware, and the
+  post-install check ran and passed: image index 2, exactly where
+  Microsoft's documented order puts it. The other three — Datacenter, and
+  either Server Core — come from that same documented order and have not
+  been watched install, and neither has any 2022 media. That check reads the
+  edition and the installation type back on every build, so a wrong index
+  fails loudly rather than quietly handing over Datacenter or a server with
+  no desktop.
 - **Binaries are unsigned**, so SmartScreen and Smart App Control will object,
   and self-update verifies integrity rather than authorship. Code signing is
   the fix for both.
