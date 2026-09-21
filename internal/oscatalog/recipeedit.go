@@ -129,13 +129,23 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 		return notEditable("its bloatware lists were changed by hand")
 	}
 	vars := w.Unattend.Vars
-	for k, v := range genericKeys {
-		if vars["edition_key"] == v {
-			f.Edition = k
+	// Server carries no key at all — its edition is an image on the media —
+	// so the recipe names the edition outright and there is nothing to match
+	// a key against.
+	if ed := vars["server_edition"]; ed != "" {
+		if serverImages[ed] == 0 {
+			return notEditable("its Windows Server edition is not one this build offers")
 		}
-	}
-	if f.Edition == "" {
-		return notEditable("its edition key is not one of Microsoft's generic keys")
+		f.Edition = ed
+	} else {
+		for k, v := range genericKeys {
+			if vars["edition_key"] == v {
+				f.Edition = k
+			}
+		}
+		if f.Edition == "" {
+			return notEditable("its edition key is not one of Microsoft's generic keys")
+		}
 	}
 	f.AccountMode = vars["account_mode"]
 	if f.AccountMode == "" {

@@ -397,6 +397,26 @@ var genericKeys = map[string]string{
 	"Enterprise": "XGVPP-NMH47-7TTHJ-W3FW7-8HV2C",
 }
 
+// checkEdition refuses an edition the entry does not offer. Client and Server
+// name different things — a client SKU that a generic key selects, or one of
+// the four images on Server media — so both callers ask this rather than
+// writing the rule out twice. They did write it out twice, and the copy in
+// SaveRecipe knew only about client editions: building Windows Server worked
+// while saving the same choices as a recipe was refused.
+func checkEdition(e Entry, opts Options) error {
+	switch {
+	case e.IsWindowsServer():
+		if serverImages[opts.Edition] == 0 {
+			return fmt.Errorf("unknown Windows Server edition %q (have: %s)", opts.Edition, strings.Join(e.Editions, ", "))
+		}
+	case e.Family == Windows:
+		if genericKeys[opts.Edition] == "" {
+			return fmt.Errorf("unknown Windows edition %q (have: %s)", opts.Edition, strings.Join(e.Editions, ", "))
+		}
+	}
+	return nil
+}
+
 // Builtin is the list compiled into this program — the fallback when no
 // published index has been verified. Catalog() is what callers want.
 func Builtin() []Entry { return builtin }
@@ -434,8 +454,8 @@ func Fetch(ctx context.Context, lib *library.Library, e Entry, progress func(sta
 // fetches what is missing.
 func SaveRecipe(ctx context.Context, lib *library.Library, wsDir, id, name string, e Entry, opts Options, progress func(stage string, done, total int64)) (string, error) {
 	opts.defaults(e)
-	if e.Family == Windows && genericKeys[opts.Edition] == "" {
-		return "", fmt.Errorf("unknown Windows edition %q (have: %s)", opts.Edition, strings.Join(e.Editions, ", "))
+	if err := checkEdition(e, opts); err != nil {
+		return "", err
 	}
 	if err := checkPrograms(e, opts.Apps); err != nil {
 		return "", err
@@ -529,15 +549,8 @@ func BuildQuick(ctx context.Context, lib *library.Library, e Entry, opts Options
 	quickMu.Lock()
 	defer quickMu.Unlock()
 	opts.defaults(e)
-	switch {
-	case e.IsWindowsServer():
-		if serverImages[opts.Edition] == 0 {
-			return nil, fmt.Errorf("unknown Windows Server edition %q (have: %s)", opts.Edition, strings.Join(e.Editions, ", "))
-		}
-	case e.Family == Windows:
-		if genericKeys[opts.Edition] == "" {
-			return nil, fmt.Errorf("unknown Windows edition %q (have: %s)", opts.Edition, strings.Join(e.Editions, ", "))
-		}
+	if err := checkEdition(e, opts); err != nil {
+		return nil, err
 	}
 	// Fail before downloading gigabytes, not after.
 	if err := checkPrograms(e, opts.Apps); err != nil {
