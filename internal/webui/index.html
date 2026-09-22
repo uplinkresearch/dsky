@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DSKY</title>
+<meta name="description" content="DSKY — media preparation console. Writes and verifies bootable installation media, packs payloads, copies drives and inspects disks.">
 <link rel="icon" type="image/png" href="favicon.png">
 <style>
   :root {
@@ -874,7 +875,14 @@
      So the idle face below is what the machine looks like at rest, and a run
      takes its place. -->
 <div class="activity-wrap">
-  <section id="jobsSec">
+  <!-- The live region is on the stage line and the result, not on the whole
+       console. The percentage and the byte counts change about once a second
+       while a write runs; a polite region around those would talk over
+       everything else in the app for twenty minutes. What a person waiting on
+       a write needs said out loud is that it changed phase -- writing, reading
+       back, done -- and how it ended. The numbers stay readable on demand:
+       the register carries its own aria-label ("68 percent"). -->
+  <section id="jobsSec" aria-label="Write and verify activity">
     <div class="activity-top">
       <span class="cap">Write &amp; verify / Activity display</span>
       <span class="spacer"></span>
@@ -887,7 +895,7 @@
         <div class="screen">
           <div class="jobline">
             <span class="title">No operation in progress</span>
-            <span class="stage">Standing by</span>
+            <span class="stage" aria-live="polite">Standing by</span>
             <span class="pct word">—</span>
           </div>
           <div class="bar"><i></i></div>
@@ -1021,8 +1029,11 @@
     <h3 id="armTitle">Flash device</h3>
     <div class="target" id="armTarget"></div>
     <p id="armNote">This <b>permanently erases</b> everything on the device.</p>
-    <p>Type the device size (<b id="armSize"></b>) to arm:</p>
-    <input id="armInput" autocomplete="off" placeholder="">
+    <!-- labelledby rather than a label of its own: the sentence already says
+         what to type, and it carries the size, so a screen reader hears the
+         number it has to be told rather than "text box". -->
+    <p id="armPrompt">Type the device size (<b id="armSize"></b>) to arm:</p>
+    <input id="armInput" autocomplete="off" placeholder="" aria-labelledby="armPrompt">
     <div class="actions">
       <button onclick="armDialog.close()">Cancel</button>
       <button class="danger" id="armGo">Erase &amp; write</button>
@@ -1037,8 +1048,8 @@
     <div class="target" id="prepTarget"></div>
     <p>This <b>permanently erases</b> the disk and replaces everything on it with one
        empty volume. Only removable USB media can be prepared here.</p>
-    <p>Type the disk size (<b id="prepSize"></b>) to arm:</p>
-    <input id="prepInput" autocomplete="off">
+    <p id="prepPrompt">Type the disk size (<b id="prepSize"></b>) to arm:</p>
+    <input id="prepInput" autocomplete="off" aria-labelledby="prepPrompt">
     <div class="actions">
       <button onclick="prepDialog.close()">Cancel</button>
       <button class="danger" id="prepGo">Erase</button>
@@ -1061,8 +1072,8 @@
     <div id="instArm">
       <div class="target" id="instTarget"></div>
       <p id="instNote">This <b>permanently erases</b> the stick and writes the installer.</p>
-      <p>Type the stick size (<b id="instSize"></b>) to arm:</p>
-      <input id="instInput" autocomplete="off">
+      <p id="instPrompt">Type the stick size (<b id="instSize"></b>) to arm:</p>
+      <input id="instInput" autocomplete="off" aria-labelledby="instPrompt">
     </div>
     <p id="instNoStick" hidden>No USB stick is plugged in. Set up the image now and write it from <b>Built images</b> when you have one.</p>
     <div class="actions">
@@ -1737,7 +1748,30 @@ async function renderCopy() {
     box.placeholder = want;
     const check = () => { $("copyGo").disabled = box.value.trim() !== want; };
     box.oninput = check; check();
-    $("copyGo").onclick = () => startCopy(want);
+    // Held down for the duration of the request, not just until the typed size
+    // stops matching.
+    //
+    // Every other destructive button on this page sits in a dialog that closes
+    // in the same breath as the request goes out, so a second click lands on
+    // something already gone. This one is on the screen itself, and the size
+    // stays typed while the request is in flight -- so two clicks inside that
+    // window were two copies queued, and the server takes raw-device work one
+    // at a time rather than refusing it, so the second one ran afterwards and
+    // wrote the disk again.
+    $("copyGo").onclick = async () => {
+      const go = $("copyGo");
+      go.disabled = true;
+      go.setAttribute("aria-busy", "true");
+      try {
+        await startCopy(want);
+      } finally {
+        go.removeAttribute("aria-busy");
+        // check() rather than enabling: startCopy clears the confirmation on
+        // success, and a button that came back enabled over an empty box would
+        // be armed with nothing typed in it.
+        check();
+      }
+    };
   }
 }
 
@@ -1881,6 +1915,7 @@ function render() {
   // Open-by-path.
   const orow = el("div", "row wsrow");
   const input = el("input"); input.placeholder = "path to a workspace folder…"; input.id = "wsInput";
+  input.setAttribute("aria-label", "Path to a workspace folder");
   input.onkeydown = e => { if (e.key === "Enter") openWorkspace(input.value.trim()); };
   const browseBtn = el("button", "", "Browse…");
   browseBtn.onclick = () => browseWorkspace(browseBtn, input);
@@ -2125,9 +2160,16 @@ function armCapture(dev) {
 
 // ── install dialog (Quick Install) ─────────────────────────────────────────
 const installDialog = $("installDialog");
+// The label element beside these controls is next to them, not attached to
+// them: it has no `for`, and the control is not inside it, so a screen reader
+// reads the text as loose prose and then announces an unnamed box. Giving the
+// control the same words as an aria-label attaches the name it already looks
+// like it has — and doing it in the two factories names every option control
+// in the install dialog at once, rather than one at a time forever.
 function selectOpt(label, pairs) {
   const wrap = el("div", "opt"); wrap.append(el("label", null, label));
   const sel = el("select");
+  sel.setAttribute("aria-label", label);
   for (const [v, t] of pairs) { const o = el("option", null, t); o.value = v; sel.append(o); }
   wrap.append(sel);
   return { wrap, get: () => sel.value, set: v => { if ([...sel.options].some(o => o.value === v)) sel.value = v; } };
@@ -2136,6 +2178,7 @@ function textOpt(label, placeholder, hint, type) {
   const wrap = el("div", "opt");
   wrap.append(el("label", null, label));
   const inp = el("input"); inp.type = type || "text"; inp.placeholder = placeholder || "";
+  inp.setAttribute("aria-label", label);
   wrap.append(inp);
   if (hint) {
     const h = el("div", "sub", hint);
@@ -2166,6 +2209,7 @@ function modelPickerOpt(os, carrier = "stick") {
   wrap.append(el("label", null, "Also stage drivers for other computer models"));
   const chips = el("div", "chips");
   const box = el("input"); box.type = "search"; box.autocomplete = "off";
+  box.setAttribute("aria-label", "Search computer models to stage drivers for");
   box.placeholder = "Search Dell, HP, Lenovo, ASUS, Surface, Samsung, NUC, Alienware, Framework models";
   box.setAttribute("role", "combobox"); box.setAttribute("aria-expanded", "false");
   const results = el("div", "modelresults"); results.hidden = true;
@@ -2394,6 +2438,7 @@ function appsOpt(target = "windows", onChange = null) {
   const sets = el("div", "sets");
   const chips = el("div", "chips");
   const box = el("input"); box.type = "search"; box.autocomplete = "off";
+  box.setAttribute("aria-label", "Search programs to install");
   box.placeholder = linux ? "Search programs, e.g. Brave or VLC" : "Search programs, e.g. Brave, or type a winget id such as Brave.Brave";
   box.setAttribute("role", "combobox"); box.setAttribute("aria-expanded", "false");
   const results = el("div", "modelresults"); results.hidden = true;
@@ -2684,6 +2729,7 @@ function domainOpt() {
 
   const row = el("div"); row.style.cssText = "display:flex;gap:6px;align-items:center";
   const inp = el("input"); inp.type = "text"; inp.style.flex = "1";
+  inp.setAttribute("aria-label", "Path to the domain join file");
   inp.placeholder = state.host_os === "windows" ? "C:\\Users\\you\\PC-042.txt" : "/path/to/PC-042.txt";
   const choose = el("button", null, "Choose\u2026"); choose.type = "button";
   row.append(inp, choose);
@@ -3012,6 +3058,7 @@ function showRate(j, ev) {
 // doneLine is the sentence this tool most wants to be able to say.
 function doneLine(ev, elapsed) {
   const wrap = el("div", "jobdone");
+  wrap.setAttribute("role", "status");
   const said = (ev.result || "done").trim();
   wrap.append(el("span", "", "✓"),
     el("span", "", said + (elapsed > 1500 ? ` · ${secs(elapsed / 1000)}` : "")));
@@ -3424,6 +3471,7 @@ function upsertJob(ev) {
     const line = el("div", "jobline");
     const title = el("span", "title", ev.title || ev.job_id);
     const stage = el("span", "stage");
+    stage.setAttribute("aria-live", "polite");
     const pct = el("span", "pct");
     line.append(title, stage, pct);
     const bar = el("div", "bar"); bar.append(el("i"));
@@ -3557,6 +3605,7 @@ function newWorkspaceBlock() {
   const row = el("div", "row wsrow");
   const orgIn = el("input");
   orgIn.placeholder = "workspace name";
+  orgIn.setAttribute("aria-label", "Workspace name");
   orgIn.value = (wsDefaults && wsDefaults.org) || "";
   const btn = el("button", state.has_workspace ? "" : "primary", "Create workspace");
   row.append(orgIn, btn);
