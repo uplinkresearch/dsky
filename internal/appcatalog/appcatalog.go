@@ -102,6 +102,10 @@ var builtin = []App{
 	{ID: "office", Name: "Microsoft 365 Apps (Word, Excel, Outlook…)", Category: "Documents", Winget: "Microsoft.Office", Licence: true, Large: true},
 	{ID: "libreoffice", Name: "LibreOffice", Category: "Documents", Winget: "TheDocumentFoundation.LibreOffice", Desktop: true},
 	{ID: "onlyoffice", Name: "ONLYOFFICE Desktop Editors", Category: "Documents", Winget: "ONLYOFFICE.DesktopEditors", Desktop: true},
+	// Apache OpenOffice is the older project LibreOffice forked from, and
+	// still what a lot of offices ask for by name. Both are offered because
+	// asking for one and being given the other is a support call.
+	{ID: "openoffice", Name: "Apache OpenOffice", Category: "Documents", Winget: "Apache.OpenOffice", Desktop: true},
 	{ID: "foxitreader", Name: "Foxit PDF Reader", Category: "Documents", Winget: "Foxit.FoxitReader", Desktop: true},
 	{ID: "pdf24", Name: "PDF24 Creator", Category: "Documents", Winget: "geeksoftwareGmbH.PDF24Creator"},
 	{ID: "obsidian", Name: "Obsidian", Category: "Documents", Winget: "Obsidian.Obsidian", Desktop: true},
@@ -239,6 +243,7 @@ type Elsewhere struct {
 // NotInWinget is what a search that finds no program checks before saying
 // nothing matched.
 var NotInWinget = []Elsewhere{
+	{Name: "Weave", Words: []string{"weave"}, Note: "Weave's desktop app isn't in winget — it is downloaded from the Weave portal, signed in. Get the installer from weavehelp.com and add it under Your installers."},
 	{Name: "RustDesk", Words: []string{"rustdesk"}, Note: "RustDesk isn't in winget. Download its installer from rustdesk.com and add it under Your installers."},
 	{Name: "FortiClient VPN", Words: []string{"forticlient", "fortinet"}, Note: "FortiClient VPN isn't in winget. Download its installer from fortinet.com and add it under Your installers."},
 	{Name: "NVIDIA app", Words: []string{"nvidia", "geforce"}, Note: "The NVIDIA app isn't in winget. Download its installer from nvidia.com and add it under Your installers."},
