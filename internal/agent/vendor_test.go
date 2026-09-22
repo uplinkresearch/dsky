@@ -51,6 +51,9 @@ func TestTheSignerMustBeThePublisher(t *testing.T) {
 // The HP recipe's failure, handled: winget refuses on the stale hash, the
 // agent fetches the same link, finds Google's valid signature, and installs
 // it through msiexec -- once, without the pointless second and third attempts.
+//
+// The manifest names Google.Chrome as vouched because the build does: the
+// fallback is only offered for ids DSKY's own list spells. See vouchedFor.
 func TestChromeInstallsFromGooglesSignedInstallerWhenWingetsHashIsStale(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("an msi"))
@@ -67,7 +70,7 @@ func TestChromeInstallsFromGooglesSignedInstallerWhenWingetsHashIsStale(t *testi
 	t.Cleanup(func() { verifySignatureFn = prevVerify })
 
 	out := strings.Replace(chromeHashMismatch, "https://dl.google.com/dl/chrome/install", srv.URL, 1)
-	a, dir := newAgent(t, &Manifest{Version: ManifestVersion})
+	a, dir := newAgent(t, &Manifest{Version: ManifestVersion, Apps: &Apps{Vouched: []string{"Google.Chrome"}}})
 	f := &fakeRun{}
 	f.do = func(name string, args []string) (result, error) {
 		if name == "winget" {
@@ -127,7 +130,7 @@ func TestAnInstallerNotSignedByThePublisherIsNeverRun(t *testing.T) {
 			t.Cleanup(func() { verifySignatureFn = prevVerify })
 
 			out := strings.Replace(chromeHashMismatch, "https://dl.google.com/dl/chrome/install", srv.URL, 1)
-			a, dir := newAgent(t, &Manifest{Version: ManifestVersion})
+			a, dir := newAgent(t, &Manifest{Version: ManifestVersion, Apps: &Apps{Vouched: []string{"Google.Chrome"}}})
 			f := &fakeRun{}
 			f.do = func(name string, args []string) (result, error) {
 				if name == "winget" {
@@ -153,7 +156,7 @@ func TestAnInstallerNotSignedByThePublisherIsNeverRun(t *testing.T) {
 
 // Plain HTTP and non-MSI installers are not attempted at all.
 func TestOnlyHTTPSAndMSIAreFetched(t *testing.T) {
-	a, dir := newAgent(t, &Manifest{Version: ManifestVersion})
+	a, dir := newAgent(t, &Manifest{Version: ManifestVersion, Apps: &Apps{Vouched: []string{"Google.Chrome"}}})
 	if a.installFromVendor("Google.Chrome", "Downloading http://dl.google.com/chrome.msi") {
 		t.Error("fetched an installer over plain HTTP")
 	}
@@ -163,5 +166,74 @@ func TestOnlyHTTPSAndMSIAreFetched(t *testing.T) {
 	log := logText(t, dir)
 	if !strings.Contains(log, "not HTTPS") || !strings.Contains(log, "not an MSI") {
 		t.Errorf("the log does not say why:\n%s", log)
+	}
+}
+
+// An id an operator typed into a recipe gets no vendor fallback, because the
+// fallback works out which publisher to insist on from the id itself: an id
+// chosen freely also chooses the name its own signature has to match.
+// Acme.Thing would be satisfied by anyone whose certificate says "Acme", and
+// registering a company is not a high bar. So winget's refusal stands.
+func TestAPackageDSKYDoesNotVouchForGetsNoVendorFallback(t *testing.T) {
+	// The signature check is made to pass, so that what stops the install is
+	// unambiguously the gate and not the certificate.
+	prevVerify := verifySignatureFn
+	verifySignatureFn = func(string) (string, string, error) {
+		return "Valid", "CN=Acme Holdings, O=Acme Holdings", nil
+	}
+	t.Cleanup(func() { verifySignatureFn = prevVerify })
+
+	out := strings.Replace(chromeHashMismatch, "Google.Chrome", "Acme.Thing", -1)
+	a, dir := newAgent(t, &Manifest{Version: ManifestVersion,
+		Apps: &Apps{Winget: []string{"Acme.Thing"}, Vouched: []string{"Google.Chrome"}}})
+	f := &fakeRun{}
+	f.do = func(name string, args []string) (result, error) {
+		if name == "winget" {
+			return result{Code: wingetHashMismatch, Out: out}, nil
+		}
+		return result{}, nil
+	}
+	f.install(t)
+
+	a.installPackage("winget", "Acme.Thing", "")
+
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, "msiexec ") {
+			t.Errorf("an installer was fetched and run for a package DSKY does not vouch for: %v", f.calls)
+		}
+	}
+	log := logText(t, dir)
+	if !strings.Contains(log, "not one DSKY's own list names") {
+		t.Errorf("the log does not say why the fallback was not taken:\n%s", log)
+	}
+	// It still has to read as a failed program, or a machine comes off the
+	// bench missing something with nothing saying so.
+	if !strings.Contains(log, "FAILED Acme.Thing") {
+		t.Errorf("the refusal is not recorded as a failure:\n%s", log)
+	}
+}
+
+// Media built before the manifest recorded which ids were vouched for has no
+// list, so nothing takes the fallback. Closed is the right way to fail here:
+// the fallback is an extra route on a path winget has already refused, and
+// doing without it costs a program, not a machine.
+func TestWithNoVouchedListNothingTakesTheFallback(t *testing.T) {
+	a, _ := newAgent(t, &Manifest{Version: ManifestVersion})
+	if a.vouchedFor("Google.Chrome") {
+		t.Error("a manifest that names no vouched packages vouched for one anyway")
+	}
+	b, _ := newAgent(t, &Manifest{Version: ManifestVersion, Apps: &Apps{}})
+	if b.vouchedFor("Google.Chrome") {
+		t.Error("an empty vouched list vouched for a package")
+	}
+}
+
+// winget ids are case-insensitive, and a recipe that spells one differently
+// from the catalog must not lose its fallback over the spelling.
+func TestVouchingIsCaseInsensitive(t *testing.T) {
+	a, _ := newAgent(t, &Manifest{Version: ManifestVersion,
+		Apps: &Apps{Vouched: []string{"Google.Chrome"}}})
+	if !a.vouchedFor("google.chrome") {
+		t.Error("the same id spelled differently lost its fallback")
 	}
 }

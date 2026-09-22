@@ -79,7 +79,16 @@ func Verify(dir string) ([]Check, error) {
 			add("program "+id, ok, note)
 		}
 		for _, in := range m.Apps.Installers {
-			add("installer "+in.File, strings.Contains(log, "installed "+in.File), "")
+			// An installer the agent refused reads as "not installed" here,
+			// which is true but not the useful sentence: somebody looking at
+			// this wants to know the file on the media was not the file the
+			// build staged, because that is a stick to destroy rather than a
+			// program to install again.
+			note := ""
+			if strings.Contains(log, in.File+refusedPhrase) {
+				note = "refused: the file on the media is not the one the build staged"
+			}
+			add("installer "+in.File, strings.Contains(log, "installed "+in.File), note)
 		}
 	}
 

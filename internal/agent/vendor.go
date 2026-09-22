@@ -94,6 +94,28 @@ func signedBy(subject, publisher string) bool {
 	return false
 }
 
+// vouchedFor reports whether this package may take the vendor fallback: it is
+// one of the ids DSKY's own program list names, as recorded by the build.
+//
+// The gate is here rather than in the signature check because it is a
+// different question. The signature check asks "did the publisher this id
+// names sign this file"; this asks "is this an id whose name we chose". An
+// operator can put any winget id in a recipe, and an id chosen freely also
+// chooses which publisher name the signature has to match -- Acme.Thing is
+// satisfied by anyone whose certificate says "Acme". Built-in ids are spelled
+// by DSKY, so the publisher they imply is DSKY's to stand behind.
+func (a *Agent) vouchedFor(id string) bool {
+	if a.Manifest == nil || a.Manifest.Apps == nil {
+		return false
+	}
+	for _, v := range a.Manifest.Apps.Vouched {
+		if strings.EqualFold(v, id) {
+			return true
+		}
+	}
+	return false
+}
+
 // installFromVendor is the fallback for a package winget refused on its stale
 // hash. It reports whether the package is now installed.
 func (a *Agent) installFromVendor(id, wingetOut string) bool {

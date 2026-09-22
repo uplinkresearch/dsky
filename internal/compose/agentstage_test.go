@@ -209,6 +209,9 @@ func TestAJoinThatCanBeDeferredIsAllowed(t *testing.T) {
 // else runs the installers), and each file must still be tied to the winget
 // package it is, or the machine has a pile of programs nothing can account
 // for and no way to bring them up to date.
+// chromeSHA stands in for what the library hashed the staged installer to.
+const chromeSHA = "8f1ccd1cbbcf1d4c7a5edc3f0e41b0d7fb4bcb6d2b7bb6bb55d9d1ee4fbb4a11"
+
 func TestAnOfflineBuildKeepsTheAppsStepAndTheRecordOfWhatItInstalled(t *testing.T) {
 	r := &recipe.Recipe{ID: "offline", Windows: &recipe.WindowsSpec{
 		Apps: &recipe.AppsSpec{
@@ -223,7 +226,7 @@ func TestAnOfflineBuildKeepsTheAppsStepAndTheRecordOfWhatItInstalled(t *testing.
 			{MSI: &recipe.RunItem{Ref: "winget-google.chrome"}},
 		}},
 	}}
-	refFiles := map[string]string{"winget-google.chrome": "chrome64.msi"}
+	refFiles := map[string]stagedRef{"winget-google.chrome": {Name: "chrome64.msi", SHA256: chromeSHA}}
 	m := buildManifest(r, recipe.ResolvedDrivers{}, agentInstallers(r.Windows, refFiles),
 		agentOfflineApps(r.Windows, refFiles), "", migrateParts{})
 
@@ -235,6 +238,12 @@ func TestAnOfflineBuildKeepsTheAppsStepAndTheRecordOfWhatItInstalled(t *testing.
 	}
 	if len(m.Apps.Installers) != 1 || m.Apps.Installers[0].File != "chrome64.msi" {
 		t.Errorf("installers = %+v", m.Apps.Installers)
+	}
+	// The hash has to reach the machine, or the agent has nothing to check
+	// the file on the stick against and every staged installer runs blind.
+	if m.Apps.Installers[0].SHA256 != chromeSHA {
+		t.Errorf("the build staged chrome64.msi at %s but the manifest carries %q",
+			chromeSHA, m.Apps.Installers[0].SHA256)
 	}
 	// One record, not two: a ref that never got staged must not be recorded,
 	// or the machine tries to update a program it never received.
@@ -261,9 +270,33 @@ func TestInstallersRunWhenNoWingetPackageWasChosen(t *testing.T) {
 			{MSI: &recipe.RunItem{Ref: "app-agent"}},
 		}},
 	}}
-	m := buildManifest(r, recipe.ResolvedDrivers{}, agentInstallers(r.Windows, map[string]string{"app-agent": "agent.msi"}),
+	m := buildManifest(r, recipe.ResolvedDrivers{}, agentInstallers(r.Windows, map[string]stagedRef{"app-agent": {Name: "agent.msi"}}),
 		nil, "", migrateParts{})
 	if got := strings.Join(m.Steps, ","); got != "drivers,apps" {
 		t.Fatalf("steps = %q, so agent.msi is staged and never run", got)
+	}
+}
+
+// The machine has no catalog to consult, so the build has to write down which
+// of a recipe's winget ids came from DSKY's own list. Without that the agent
+// cannot tell a curated id from one somebody typed, and the vendor fallback
+// would be back to trusting whatever publisher the id names.
+func TestTheManifestRecordsWhichWingetIDsDSKYVouchesFor(t *testing.T) {
+	r := &recipe.Recipe{ID: "mixed", Windows: &recipe.WindowsSpec{
+		Apps: &recipe.AppsSpec{Winget: []string{"Google.Chrome", "Acme.Thing"}},
+		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{
+			{Apps: true},
+		}},
+	}}
+	m := buildManifest(r, recipe.ResolvedDrivers{}, nil, nil, "", migrateParts{})
+	if m.Apps == nil {
+		t.Fatal("no apps step in the manifest")
+	}
+	// Both are still installed through winget in the ordinary way.
+	if len(m.Apps.Winget) != 2 {
+		t.Errorf("winget ids = %v; the gate must not drop a program", m.Apps.Winget)
+	}
+	if len(m.Apps.Vouched) != 1 || m.Apps.Vouched[0] != "Google.Chrome" {
+		t.Errorf("vouched = %v; want only the id DSKY's own list names", m.Apps.Vouched)
 	}
 }

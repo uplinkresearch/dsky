@@ -141,6 +141,9 @@ func fedoraFirstBootScript(plan appcatalog.FedoraPlan) string {
 		w(`  note "FAILED %s"; failed=1`, pkg)
 		w(`fi`)
 	}
+	if len(plan.Repos) > 0 {
+		writeKeyOK(w, "dnf install -y -q gnupg2")
+	}
 	for _, id := range plan.Repos {
 		repo, ok := appcatalog.FedoraRepoByID(id)
 		if !ok {
@@ -156,19 +159,34 @@ func fedoraFirstBootScript(plan appcatalog.FedoraPlan) string {
 		w(`else`)
 		// gpgcheck stays on and the vendor's key is imported by name, so a
 		// package that is not theirs does not install quietly.
-		w(`  cat > /etc/yum.repos.d/%s.repo <<'REPOEOF'`, repo.ID)
+		//
+		// The key is fetched here rather than left to rpm and dnf, so that
+		// its fingerprint can be checked before anything trusts it, and the
+		// repository file then points at the local copy that passed. Leaving
+		// gpgkey as the vendor's URL would have dnf fetch it again on its own
+		// terms, which is the fetch this is trying not to take on faith.
+		key := "/etc/pki/rpm-gpg/dsky-" + repo.ID + ".asc"
+		w(`  install -d -m 0755 /etc/pki/rpm-gpg`)
+		w(`  if { command -v curl >/dev/null || dnf install -y -q curl; } && curl -fsSL %s -o %s.new && keyok %s.new %q %q; then`,
+			repo.GPGKey, key, key, appcatalog.VendorKeyFingerprint(repo.GPGKey), repo.Name)
+		w(`    mv %s.new %s`, key, key)
+		w(`    cat > /etc/yum.repos.d/%s.repo <<'REPOEOF'`, repo.ID)
 		w(`[%s]`, repo.ID)
 		w(`name=%s`, repo.Name)
 		w(`baseurl=%s`, repo.BaseURL)
 		w(`enabled=1`)
 		w(`gpgcheck=1`)
 		w(`repo_gpgcheck=0`)
-		w(`gpgkey=%s`, repo.GPGKey)
+		w(`gpgkey=file://%s`, key)
 		w(`REPOEOF`)
-		w(`  if rpm --import %s && dnf install -y -q %s; then`, repo.GPGKey, repo.Package)
-		w(`    note "installed %s"`, repo.Name)
+		w(`    if rpm --import %s && dnf install -y -q %s; then`, key, repo.Package)
+		w(`      note "installed %s"`, repo.Name)
+		w(`    else`)
+		w(`      note "FAILED %s"; failed=1`, repo.Name)
+		w(`    fi`)
 		w(`  else`)
-		w(`    note "FAILED %s"; failed=1`, repo.Name)
+		w(`    rm -f %s.new`, key)
+		w(`    note "FAILED %s: its signing key was not fetched and accepted, so the repository was not added"; failed=1`, repo.Name)
 		w(`  fi`)
 		w(`fi`)
 	}

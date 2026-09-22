@@ -9,6 +9,7 @@ import (
 
 	"github.com/uplinkresearch/dsky/internal/agent"
 	"github.com/uplinkresearch/dsky/internal/agentbin"
+	"github.com/uplinkresearch/dsky/internal/appcatalog"
 	"github.com/uplinkresearch/dsky/internal/drivers/catalog"
 	"github.com/uplinkresearch/dsky/internal/fsimg"
 	"github.com/uplinkresearch/dsky/internal/recipe"
@@ -166,6 +167,12 @@ func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []a
 		m.Apps = &agent.Apps{Scope: recipe.AppsScope(w.Apps), Installers: payload}
 		if w.Apps != nil {
 			m.Apps.Winget = w.Apps.Winget
+			// Which of those ids DSKY itself vouches for. The machine has no
+			// catalog to ask, and the one thing this decides -- whether a
+			// package may take the vendor fallback when winget refuses it --
+			// must not be decided by the id the operator typed. See
+			// appcatalog.VouchedWingetID.
+			m.Apps.Vouched = appcatalog.VouchedWingetIDs(w.Apps.Winget)
 			m.Apps.Offline, m.Apps.BuiltAt = offline, w.Apps.BuiltAt
 		}
 	}
@@ -291,7 +298,7 @@ func stageAgent(stage fsimg.StageMap, buildTmp string, m *agent.Manifest) error 
 // the order the recipe runs them. They ride on the stick and need no network,
 // which is why they run after the winget packages: on a machine that never
 // reaches the internet, the agent that matters still lands.
-func agentInstallers(w *recipe.WindowsSpec, refFiles map[string]string) []agent.Installer {
+func agentInstallers(w *recipe.WindowsSpec, refFiles map[string]stagedRef) []agent.Installer {
 	var out []agent.Installer
 	for _, s := range w.Firstboot.Steps {
 		var item *recipe.RunItem
@@ -304,8 +311,8 @@ func agentInstallers(w *recipe.WindowsSpec, refFiles map[string]string) []agent.
 		default:
 			continue
 		}
-		name := refFiles[item.Ref]
-		if name == "" {
+		staged := refFiles[item.Ref]
+		if staged.Name == "" {
 			continue
 		}
 		args := append([]string(nil), item.Args...)
@@ -314,7 +321,7 @@ func agentInstallers(w *recipe.WindowsSpec, refFiles map[string]string) []agent.
 				args[i] = strings.ReplaceAll(a, "{log}", item.Log)
 			}
 		}
-		out = append(out, agent.Installer{File: name, Args: args, MSI: msi})
+		out = append(out, agent.Installer{File: staged.Name, SHA256: staged.SHA256, Args: args, MSI: msi})
 	}
 	return out
 }
@@ -327,14 +334,14 @@ func agentInstallers(w *recipe.WindowsSpec, refFiles map[string]string) []agent.
 // A ref with no staged file is dropped rather than recorded: a record naming
 // a file that is not on the media would have the machine trying to update a
 // program it never got.
-func agentOfflineApps(w *recipe.WindowsSpec, refFiles map[string]string) []agent.OfflineApp {
+func agentOfflineApps(w *recipe.WindowsSpec, refFiles map[string]stagedRef) []agent.OfflineApp {
 	var out []agent.OfflineApp
 	for _, o := range w.Apps.OfflineApps() {
-		file := refFiles[o.Ref]
-		if file == "" {
+		staged := refFiles[o.Ref]
+		if staged.Name == "" {
 			continue
 		}
-		out = append(out, agent.OfflineApp{ID: o.ID, Version: o.Version, File: file})
+		out = append(out, agent.OfflineApp{ID: o.ID, Version: o.Version, File: staged.Name})
 	}
 	return out
 }

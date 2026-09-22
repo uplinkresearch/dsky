@@ -165,6 +165,14 @@ type Apps struct {
 	Winget []string `json:"winget,omitempty"`
 	// Scope is "machine" (try machine scope first) or "user".
 	Scope string `json:"scope,omitempty"`
+	// Vouched are the ids in Winget that came from DSKY's own program list
+	// rather than being typed into a recipe. Only these may take the vendor
+	// fallback when winget refuses a package on a stale catalog hash: that
+	// fallback works out which publisher to insist on from the id itself, so
+	// an id chosen freely would choose the name its own signature has to
+	// match. An id absent here still installs through winget as usual; it
+	// simply has no second route on the one path winget has already refused.
+	Vouched []string `json:"vouched,omitempty"`
 	// Installers are the operator's own .msi/.exe files, staged beside the
 	// agent and run after the winget packages: they need no network, so if
 	// the machine is offline the one that matters still lands.
@@ -200,9 +208,18 @@ type WiFi struct {
 
 // Installer is one operator-supplied installer on the stick.
 type Installer struct {
-	File string   `json:"file"`
-	Args []string `json:"args,omitempty"`
-	MSI  bool     `json:"msi,omitempty"`
+	File string `json:"file"`
+	// SHA256 is what the file hashed to when the build staged it, lowercase
+	// hex. The agent checks it before running the installer, because between
+	// the build and first boot the file at that name on the stick is whatever
+	// is at that name on the stick -- a stick is a writable volume carried
+	// between benches and plugged into machines being rebuilt because they
+	// are infected. Empty on media built before this field existed, and an
+	// empty one is not a failure: it is recorded as unchecked and run, which
+	// is exactly what that media has always done.
+	SHA256 string   `json:"sha256,omitempty"`
+	Args   []string `json:"args,omitempty"`
+	MSI    bool     `json:"msi,omitempty"`
 }
 
 // Timeout returns the exe's timeout, or a sane default.

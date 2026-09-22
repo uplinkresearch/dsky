@@ -574,6 +574,9 @@ func ubuntuFirstBootScript(plan appcatalog.UbuntuPlan) string {
 		w(`  note "FAILED: snapd is not on this system, so the snaps cannot be installed"; failed=1`)
 		w(`fi`)
 	}
+	if len(plan.Repos) > 0 {
+		writeKeyOK(w, "apt install -y -q gnupg")
+	}
 	for _, id := range plan.Repos {
 		repo, ok := appcatalog.UbuntuRepoByID(id)
 		if !ok {
@@ -595,14 +598,20 @@ func ubuntuFirstBootScript(plan appcatalog.UbuntuPlan) string {
 		}
 		w(`else`)
 		w(`  install -d -m 0755 /etc/apt/keyrings`)
-		w(`  if apt install -y -q curl && curl -fsSL %s -o %s; then`, repo.KeyURL, keyring)
+		// Fetched beside the keyring rather than onto it. The keyring path is
+		// what the sources line trusts, so nothing may arrive there before
+		// the fingerprint has been read off it and accepted.
+		w(`  if apt install -y -q curl && curl -fsSL %s -o %s.new && keyok %s.new %q %q; then`,
+			repo.KeyURL, keyring, keyring, appcatalog.VendorKeyFingerprint(repo.KeyURL), repo.Name)
+		w(`    mv %s.new %s`, keyring, keyring)
 		w(`    echo "deb [%ssigned-by=%s] %s %s %s" > /etc/apt/sources.list.d/%s.list`,
 			arch, keyring, repo.URL, repo.Suite, repo.Comps, repo.ID)
 		w(`    for i in 1 2 3; do apt update -q && break; sleep 20; done`)
 		w(`    if apt install -y -q %s; then note "installed %s"; else note "FAILED %s"; failed=1; fi`,
 			repo.Package, repo.Name, repo.Name)
 		w(`  else`)
-		w(`    note "FAILED %s: could not fetch the vendor's signing key"; failed=1`, repo.Name)
+		w(`    rm -f %s.new`, keyring)
+		w(`    note "FAILED %s: its signing key was not fetched and accepted, so the repository was not added"; failed=1`, repo.Name)
 		w(`  fi`)
 		w(`fi`)
 	}

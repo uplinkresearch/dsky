@@ -97,7 +97,7 @@ jobs:
         run: |
           set -o pipefail
           go test ./internal/appcatalog/ -count=1 -timeout 20m -v \
-            -run 'TestUbuntuNamesLive|TestUbuntuVendorReposLive|TestUbuntuReleasesLive|TestFedoraNamesLive|TestFedoraVendorReposLive' 2>&1 | tee ubuntu.txt
+            -run 'TestUbuntuNamesLive|TestUbuntuVendorReposLive|TestUbuntuReleasesLive|TestFedoraNamesLive|TestFedoraVendorReposLive|TestVendorKeysLive' 2>&1 | tee ubuntu.txt
 
       # Only the failing lines, so the issue says what rotted rather than
       # burying it in 27 successes.
@@ -116,6 +116,7 @@ jobs:
             grep -E "prepulllive_test.go:[0-9]+: " winget.txt \
               | grep -v ": ok$" | grep -v ": cannot ride on a stick: " || true
             grep -E "ubuntulive_test.go:[0-9]+: " ubuntu.txt | grep -v ": ok$" || true
+            grep -E "vendorkeyslive_test.go:[0-9]+: " ubuntu.txt | grep -v " ok$" || true
             grep -E "mirrorslive_test.go:[0-9]+: " mirrors.txt || true
             echo '```'
           } > summary.md

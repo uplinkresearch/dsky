@@ -125,7 +125,7 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 	if missing := recipe.NeededVars(r, vars); len(missing) > 0 {
 		return nil, fmt.Errorf("compose: %s", recipe.NeededVarsError(missing))
 	}
-	refFiles := map[string]string{} // source ref -> staged filename under Scripts/
+	refFiles := map[string]stagedRef{} // source ref -> what was staged under Scripts/
 
 	// An offline join is applied at first boot, never by Setup in specialize.
 	// See agentODJ for why this is not the obvious way round. Whichever runs
@@ -476,6 +476,21 @@ func overlayVars(base, overlay map[string]string) (map[string]string, error) {
 type materialized struct {
 	host string // host path of the file
 	name string // filename to stage as
+	sha  string // what it hashed to in the library
+}
+
+// stagedRef is a source that has been put onto the media: what it is called
+// there, and what it hashed to when the build put it there.
+//
+// The hash rides along because the agent checks it before running an
+// installer. A stick is a writable volume that gets carried between benches,
+// lent out, and plugged into the machine being rebuilt because that machine
+// is infected; between the build finishing and first boot running, the file
+// at a given name is whatever is at that name. Recording the hash here is
+// what lets the machine refuse a file the build did not produce.
+type stagedRef struct {
+	Name   string
+	SHA256 string
 }
 
 // ensureRef makes sure a source's bytes are in the library, fetching them if
@@ -512,7 +527,7 @@ func materializeFile(ctx context.Context, req Request, ref string) (materialized
 	if err != nil {
 		return materialized{}, err
 	}
-	return materialized{host: req.Library.BlobPath(entry.SHA256), name: entry.Filename}, nil
+	return materialized{host: req.Library.BlobPath(entry.SHA256), name: entry.Filename, sha: entry.SHA256}, nil
 }
 
 // materializeDir turns an INF driver pack (workspace dir, or zip blob) into
@@ -637,11 +652,11 @@ func splitOversizeWIM(ctx context.Context, req Request, stage fsimg.StageMap) er
 // driver packs, and the recipe's payload files. Shared by the install image
 // and the standalone payload, so the two cannot drift apart in how a pack is
 // staged or what it is called.
-func stageDriversAndPayload(ctx context.Context, req Request, stage fsimg.StageMap, buildTmp string) (drivers recipe.ResolvedDrivers, refFiles map[string]string, err error) {
+func stageDriversAndPayload(ctx context.Context, req Request, stage fsimg.StageMap, buildTmp string) (drivers recipe.ResolvedDrivers, refFiles map[string]stagedRef, err error) {
 	r := req.Recipe
 	w := r.Windows
 	ws := req.Workspace
-	refFiles = map[string]string{} // source ref -> staged filename under Scripts/
+	refFiles = map[string]stagedRef{} // source ref -> what was staged under Scripts/
 
 	// Driver packs: explicit ones, then packs resolved for windows.hardware
 	// entries (manifests carrying a matching `hardware:` block).
@@ -669,7 +684,7 @@ func stageDriversAndPayload(ctx context.Context, req Request, stage fsimg.StageM
 				return drivers, nil, err
 			}
 			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
-			refFiles[pack.Ref] = file.name
+			refFiles[pack.Ref] = stagedRef{Name: file.name, SHA256: file.sha}
 			drivers.Cabs = append(drivers.Cabs, struct {
 				File string
 				Dir  string
@@ -684,7 +699,7 @@ func stageDriversAndPayload(ctx context.Context, req Request, stage fsimg.StageM
 				return drivers, nil, fmt.Errorf("compose: driver pack %s uses extract-then-sweep but has no extract args (e.g. Dell: /s /e={dir})", pack.Ref)
 			}
 			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
-			refFiles[pack.Ref] = file.name
+			refFiles[pack.Ref] = stagedRef{Name: file.name, SHA256: file.sha}
 			drivers.Extracts = append(drivers.Extracts, struct {
 				File string
 				Dir  string
@@ -697,7 +712,7 @@ func stageDriversAndPayload(ctx context.Context, req Request, stage fsimg.StageM
 				return drivers, nil, err
 			}
 			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
-			refFiles[pack.Ref] = file.name
+			refFiles[pack.Ref] = stagedRef{Name: file.name, SHA256: file.sha}
 			drivers.Exes = append(drivers.Exes, struct {
 				File       string
 				Args       []string
@@ -724,7 +739,7 @@ func stageDriversAndPayload(ctx context.Context, req Request, stage fsimg.StageM
 				return drivers, nil, err
 			}
 			stage.AddFile(file.host, path.Join(scriptsImg, file.name))
-			refFiles[item.Ref] = file.name
+			refFiles[item.Ref] = stagedRef{Name: file.name, SHA256: file.sha}
 			continue
 		}
 		host := filepath.Join(ws.Dir, filepath.FromSlash(item.Path))
@@ -739,17 +754,17 @@ func stageDriversAndPayload(ctx context.Context, req Request, stage fsimg.StageM
 
 // refResolver finds the staged name of a source a first-boot step names,
 // staging it if nothing has yet.
-func refResolver(ctx context.Context, req Request, stage fsimg.StageMap, refFiles map[string]string) func(string) (string, error) {
+func refResolver(ctx context.Context, req Request, stage fsimg.StageMap, refFiles map[string]stagedRef) func(string) (string, error) {
 	return func(ref string) (string, error) {
-		if name, ok := refFiles[ref]; ok {
-			return name, nil
+		if staged, ok := refFiles[ref]; ok {
+			return staged.Name, nil
 		}
 		file, err := materializeFile(ctx, req, ref)
 		if err != nil {
 			return "", fmt.Errorf("compose: firstboot step references %q: %w", ref, err)
 		}
 		stage.AddFile(file.host, path.Join(scriptsImg, file.name))
-		refFiles[ref] = file.name
+		refFiles[ref] = stagedRef{Name: file.name, SHA256: file.sha}
 		return file.name, nil
 	}
 }

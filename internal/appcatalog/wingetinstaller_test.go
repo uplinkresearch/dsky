@@ -390,3 +390,26 @@ func TestTheFolderWalkHappensOncePerPackage(t *testing.T) {
 		t.Errorf("walked the repository %d times for one package, want %d", walks, first)
 	}
 }
+
+// DSKY vouches for the ids it ships and no others. The agent's vendor
+// fallback rests on this: it decides which publisher must have signed an
+// installer from the package id, so the id has to be one DSKY chose.
+func TestVouchingCoversTheBuiltInListAndNothingElse(t *testing.T) {
+	if !VouchedWingetID("Google.Chrome") {
+		t.Error("Google.Chrome is in the built-in list but is not vouched for")
+	}
+	if !VouchedWingetID("google.chrome") {
+		t.Error("vouching is case-sensitive; winget ids are not")
+	}
+	// The shape of the attack the gate exists for: a plausible-looking id
+	// whose prefix is a company somebody could register.
+	for _, id := range []string{"Acme.Thing", "Google.Chromee", "Gooogle.Chrome", "", "Chrome"} {
+		if VouchedWingetID(id) {
+			t.Errorf("%q is not in the built-in list but is vouched for", id)
+		}
+	}
+	got := VouchedWingetIDs([]string{"Acme.Thing", "Google.Chrome", "Mozilla.Firefox", "Nope.Nope"})
+	if len(got) != 2 || got[0] != "Google.Chrome" || got[1] != "Mozilla.Firefox" {
+		t.Errorf("filtered to %v; want the two built-in ids, in order", got)
+	}
+}

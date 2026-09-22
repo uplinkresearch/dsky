@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"os"
@@ -205,6 +207,17 @@ func (a *Agent) installPackage(wg, id, scope string) {
 			// minutes of certain failure; check the vendor's own signature
 			// instead, and stop either way.
 			a.J.Info(stepApps, "%s: winget's catalog is behind the vendor's download (installer hash does not match)", id)
+			if !a.vouchedFor(id) {
+				// The fallback decides which publisher to insist on from the
+				// id, so it is only sound for ids DSKY chose. Anything else
+				// stops where winget stopped, which is the same place it
+				// stopped before the fallback existed.
+				a.J.Fail(stepApps, "%s: winget's catalog is behind the vendor's download, and this package is not one "+
+					"DSKY's own list names, so its installer is not fetched from the vendor. Install it by hand, or wait "+
+					"for winget's catalog to catch up.", id)
+				a.failed(KindApp, id, "winget's catalog is behind the vendor's download")
+				return
+			}
 			if a.installFromVendor(id, r.Out) {
 				a.done(KindApp, id)
 			} else {
@@ -237,6 +250,9 @@ func (a *Agent) runInstaller(in Installer) {
 		a.failed(KindApp, installerName(in), "its installer is not on the stick")
 		return
 	}
+	if !a.installerIsWhatTheBuildStaged(in, src) {
+		return
+	}
 	var r result
 	if in.MSI {
 		args := append([]string{"/i", src}, in.Args...)
@@ -266,6 +282,68 @@ func (a *Agent) runInstaller(in Installer) {
 		a.J.FailDetail(stepApps, in.File+" exited "+itoa(r.Code), trimOut(r.Out))
 		a.failed(KindApp, installerName(in), "its installer exited "+itoa(r.Code))
 	}
+}
+
+// installerIsWhatTheBuildStaged checks the file on the stick against the hash
+// the build recorded for it, and reports whether it may be run.
+//
+// The media is not a sealed thing. It is a writable volume that gets carried
+// between benches, lent to somebody, and plugged into the machine being
+// rebuilt because that machine is infected. Everything else in the chain is
+// hash-checked -- the OS image against the signed catalog, a pre-pulled
+// program against its winget manifest, a driver pack against the vendor's
+// own catalog -- and then the file sat on a stick in a drawer with nothing
+// watching it. This is the last link.
+//
+// Media built before the manifest carried hashes has none to check. That is
+// recorded and the installer runs, because refusing it would break every
+// stick already in a van over a check the build never promised.
+func (a *Agent) installerIsWhatTheBuildStaged(in Installer, path string) bool {
+	if in.SHA256 == "" {
+		a.J.Info(stepApps, "%s: this media records no hash for it, so it is run unchecked", in.File)
+		return true
+	}
+	got, err := hashOf(path)
+	if err != nil {
+		a.J.FailDetail(stepApps, in.File+": could not be read to check it against the build", err.Error())
+		a.failed(KindApp, installerName(in), "its installer could not be read to check it")
+		return false
+	}
+	if got != strings.ToLower(in.SHA256) {
+		// Not a retry and not a warning. The bytes are not the bytes the
+		// build put there, and the one thing not to do with an unexplained
+		// installer is run it as Administrator.
+		a.J.Fail(stepApps, "%s"+refusedPhrase+"%s, the build staged %s — not installing it. "+
+			"The media has been changed or damaged since it was built; rebuild the stick.",
+			in.File, got, strings.ToLower(in.SHA256))
+		a.failed(KindApp, installerName(in), "the file on the media is not the one the build staged")
+		return false
+	}
+	return true
+}
+
+// refusedPhrase is the middle of the line above, and the phrase Verify looks
+// for to tell a refusal from a program that simply did not install. It is a
+// constant because the two live in different files: reworded in one place
+// only, the report would quietly go back to saying "not installed" about a
+// stick somebody should be destroying.
+const refusedPhrase = ": this file hashes to "
+
+// hashOf is the SHA-256 of a file, lowercase hex. Local to the agent, which
+// keeps its imports to the standard library and the one package it needs for
+// elevation, because it is the binary that has to run on a machine with
+// nothing else on it.
+func hashOf(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // installerName is what to call one of the operator's own installers in the

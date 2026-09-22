@@ -243,3 +243,43 @@ func versionParts(s string) []int {
 	}
 	return out
 }
+
+// Vouching for a winget package.
+//
+// The agent has a fallback for a package winget refuses on a stale catalog
+// hash: fetch the same installer the vendor's link serves and install it if
+// Windows says the vendor signed it. Which vendor it should be is taken from
+// the package id -- Google.Chrome must be signed by Google.
+//
+// That is sound only while the id comes from this list. An operator can put
+// any winget id in a recipe, and an id chosen freely also chooses the
+// publisher name the check will accept: Acme.Thing passes if it is signed by
+// anyone whose organisation contains the word "acme", which is not a high bar
+// to clear deliberately. So the fallback is offered for the ids shipped here
+// and no others. An id from outside the list still installs through winget in
+// the ordinary way; it simply does not get a second route on the one path
+// where winget itself has declined.
+
+// VouchedWingetID reports whether a winget id is one of the built-in list's,
+// spelled as the list spells it. Case-insensitive, because winget ids are.
+func VouchedWingetID(id string) bool {
+	for _, a := range builtin {
+		if a.Winget != "" && strings.EqualFold(a.Winget, id) {
+			return true
+		}
+	}
+	return false
+}
+
+// VouchedWingetIDs filters a recipe's winget ids down to the ones this build
+// vouches for, keeping the order given. It is what the build writes into the
+// manifest, because the machine has no catalog of its own to ask.
+func VouchedWingetIDs(ids []string) []string {
+	var out []string
+	for _, id := range ids {
+		if VouchedWingetID(id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
