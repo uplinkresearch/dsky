@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/uplinkresearch/dsky/internal/hidewin"
 )
 
 // result is what running one program produced.
@@ -24,9 +26,22 @@ func (r result) ok() bool { return r.Err == nil && r.Code == 0 }
 // would run without a Windows machine.
 var runner = runReal
 
+// command is how the agent starts a program.
+//
+// The window matters as much as the deadline. The agent is linked for the GUI
+// subsystem, so it has no console of its own, and Windows gives a console
+// program started by a program without one a new console of its own --
+// visible. Without this, a run would flash up a window for every winget
+// package, every pnputil sweep and every PowerShell script, on a desktop
+// somebody is sitting at. The output still comes back: only the window is
+// suppressed, and elsewhere this does nothing.
+func command(ctx context.Context, name string, args ...string) *exec.Cmd {
+	return hidewin.Cmd(exec.CommandContext(ctx, name, args...))
+}
+
 func runReal(ctx context.Context, name string, args ...string) result {
 	start := time.Now()
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := command(ctx, name, args...)
 	out, err := cmd.CombinedOutput()
 	r := result{Out: string(out), Timing: time.Since(start)}
 	if err != nil {
