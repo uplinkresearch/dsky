@@ -32,6 +32,7 @@ Quick install (no workspace needed)
   catalog                   list the operating systems on offer
   install <os-id> [device]  build + flash an OS from the catalog
                             (--edition, --account local|oobe, --debloat, --bypass-checks,
+                             --password-never-expires for the local account,
                              --drivers to detect this machine and stage its drivers,
                              --drivers-for "dell:OptiPlex 7010" for another model (repeatable),
                              --apps chrome,7zip,... to install programs at first boot

@@ -106,6 +106,9 @@ func (s *Server) describeRecipe(rc *recipe.Recipe, form *oscatalog.RecipeForm) [
 			default:
 				add("Account setup", w.Unattend.Vars["account_mode"])
 			}
+			if w.Unattend.Vars["password_never_expires"] == "1" {
+				add("Password expires", "Never")
+			}
 			if w.Unattend.Vars["bypass_requirements"] == "1" {
 				add("TPM / Secure Boot / RAM checks", "Skipped")
 			} else {
