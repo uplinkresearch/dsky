@@ -258,8 +258,24 @@
       </OOBE>
       {{end}}
       <FirstLogonCommands>
+        {{if and (eq .Vars.account_mode "local") (eq (index .Vars "password_never_expires") "1")}}
+        <!-- "Password never expires" on the account above. The answer file's
+             LocalAccount has no element for it, so the account takes the
+             machine's password policy, 42 days on a standalone Windows PC,
+             and a bench-built machine handed to somebody locks them out at its
+             first expiry. It runs as the first sign-in, which in local mode is
+             that account signing itself in, so the name is $env:USERNAME and
+             nothing typed into the dialog has to survive PowerShell quoting.
+             Read with index: a recipe saved before this option existed does
+             not carry the key, and the template renders with missingkey=error. -->
         <SynchronousCommand wcm:action="add" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
           <Order>1</Order>
+          <CommandLine>powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Set-LocalUser -Name $env:USERNAME -PasswordNeverExpires $true"</CommandLine>
+          <Description>DSKY: the local account's password never expires</Description>
+        </SynchronousCommand>
+        {{end}}
+        <SynchronousCommand wcm:action="add" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+          <Order>2</Order>
           <CommandLine>cmd /c C:\Windows\Setup\Scripts\firstboot.cmd</CommandLine>
           <Description>Run first-boot drivers, debloat, and payload</Description>
         </SynchronousCommand>

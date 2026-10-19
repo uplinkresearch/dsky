@@ -23,12 +23,14 @@ import (
 // RecipeForm is a saved recipe read back into the choices the install dialog
 // offers, so it can be opened there and changed.
 type RecipeForm struct {
-	OSID              string   `json:"os_id"`
-	Edition           string   `json:"edition,omitempty"`
-	AccountMode       string   `json:"account_mode,omitempty"`
-	Debloat           string   `json:"debloat,omitempty"`
-	BypassRequirement bool     `json:"bypass_requirement,omitempty"`
-	Apps              []string `json:"apps"`
+	OSID              string `json:"os_id"`
+	Edition           string `json:"edition,omitempty"`
+	AccountMode       string `json:"account_mode,omitempty"`
+	Debloat           string `json:"debloat,omitempty"`
+	BypassRequirement bool   `json:"bypass_requirement,omitempty"`
+	// PasswordNeverExpires is the tick under the administrator's password.
+	PasswordNeverExpires bool     `json:"password_never_expires,omitempty"`
+	Apps                 []string `json:"apps"`
 	// Offline is the recipe carrying its programs' installers rather than
 	// naming them for winget. The dialog shows it as a tick beside the
 	// program picker.
@@ -169,6 +171,7 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 		f.AccountMode = "local"
 	}
 	f.BypassRequirement = vars["bypass_requirements"] == "1"
+	f.PasswordNeverExpires = vars["password_never_expires"] == "1"
 	f.Debloat = "off"
 	if w.Debloat != nil && w.Debloat.Preset != "" {
 		f.Debloat = w.Debloat.Preset
@@ -222,7 +225,7 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 // doesn't show. Compared as decoded YAML: comments and layout don't count.
 func sameAsDialog(r *recipe.Recipe, f RecipeForm, e Entry) error {
 	opts := Options{Edition: f.Edition, AccountMode: f.AccountMode, Debloat: f.Debloat,
-		BypassRequirement: f.BypassRequirement, Apps: f.Apps,
+		BypassRequirement: f.BypassRequirement, PasswordNeverExpires: f.PasswordNeverExpires, Apps: f.Apps,
 		ThirdPartyDrivers: f.ThirdPartyDrivers, WiFiSSID: f.WiFiSSID,
 		Offline: f.Offline, prepulled: f.prepulled, builtAt: f.builtAt}
 	if f.WiFiPassword {

@@ -115,6 +115,12 @@ type Options struct {
 	AccountMode       string // windows: local | oobe
 	Debloat           string // windows: off | standard | aggressive
 	BypassRequirement bool   // windows: skip TPM/SecureBoot/RAM checks
+	// PasswordNeverExpires marks the local account an unattended install
+	// creates as "password never expires". Windows only, and only for the
+	// local-account mode: the answer file cannot say it, so the account
+	// otherwise takes the machine's policy, 42 days by default. Linux needs
+	// nothing -- Ubuntu and Fedora both ship PASS_MAX_DAYS 99999.
+	PasswordNeverExpires bool
 	// Hardware asks for driver packs to be found and staged for these
 	// machines (windows only) — what hwdetect found on this box, via
 	// driverresolve.SpecsFor. Entries no catalog covers are dropped: a
@@ -1142,6 +1148,14 @@ target:
 	if opts.BypassRequirement {
 		bypass = "1"
 	}
+	// Written only when asked for. A recipe saved before the option existed
+	// has no such line, and the edit dialog checks that saving its choices
+	// writes back exactly the recipe it opened; an always-present "0" would
+	// make every older recipe uneditable.
+	neverExpires := ""
+	if opts.PasswordNeverExpires && opts.AccountMode == "local" {
+		neverExpires = "      password_never_expires: \"1\"\n"
+	}
 	preset := debloatPreset(opts.Debloat)
 	steps := "      - drivers\n"
 	if preset != "off" {
@@ -1284,7 +1298,7 @@ windows:
       computer_name: %q
       account_mode: %s
       bypass_requirements: "%s"
-%s  debloat:
+%s%s  debloat:
     preset: %s
 %s%s%s%s  firstboot:
     mode: generate
@@ -1297,7 +1311,7 @@ flash:
 		orDefault(opts.AdminUser, "user"), displayName(orDefault(opts.AdminUser, "user")),
 		adminPasswordVar(opts.AdminPassword),
 		orDefault(opts.Hostname, "*"),
-		opts.AccountMode, bypass, hardwareYAML(hw), preset, wifiBlock, appsBlock, payloadBlock, domainBlock, steps)
+		opts.AccountMode, bypass, neverExpires, hardwareYAML(hw), preset, wifiBlock, appsBlock, payloadBlock, domainBlock, steps)
 }
 
 func orDefault(s, def string) string {

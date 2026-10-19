@@ -1116,13 +1116,16 @@ type installRequest struct {
 	// AdminUser and AdminPassword are the local account an unattended install
 	// creates. The password is used for this build and not written down: it
 	// is not saved into a recipe, and not kept anywhere on this machine.
-	AdminUser         string   `json:"admin_user"`
-	AdminPassword     string   `json:"admin_password"`
-	Debloat           string   `json:"debloat"`
-	BypassRequirement bool     `json:"bypass_requirement"`
-	Drivers           bool     `json:"drivers"`
-	DriversFor        string   `json:"drivers_for"`
-	Apps              []string `json:"apps"`
+	AdminUser     string `json:"admin_user"`
+	AdminPassword string `json:"admin_password"`
+	// PasswordNeverExpires stops that account's password expiring under
+	// Windows' default policy (42 days on a standalone machine).
+	PasswordNeverExpires bool     `json:"password_never_expires"`
+	Debloat              string   `json:"debloat"`
+	BypassRequirement    bool     `json:"bypass_requirement"`
+	Drivers              bool     `json:"drivers"`
+	DriversFor           string   `json:"drivers_for"`
+	Apps                 []string `json:"apps"`
 	// WiFiSSID and WiFiPassword join the machine to a wireless network at
 	// first boot. Without one, a hands-off install on a machine with no
 	// ethernet port reaches first boot with no way to download anything, and
@@ -1233,7 +1236,8 @@ func (s *Server) installOptions(ctx context.Context, req installRequest) (oscata
 		Offline:    req.Offline,
 		DomainBlob: blob,
 		AdminUser:  strings.TrimSpace(req.AdminUser), AdminPassword: req.AdminPassword,
-		WiFiSSID: ssid, WiFiPassword: req.WiFiPassword,
+		PasswordNeverExpires: req.PasswordNeverExpires,
+		WiFiSSID:             ssid, WiFiPassword: req.WiFiPassword,
 	}, nil
 }
 

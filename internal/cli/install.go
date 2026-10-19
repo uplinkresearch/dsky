@@ -65,6 +65,8 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 	account := fs.String("account", "local", "Windows account setup: local | oobe")
 	debloat := fs.String("debloat", "standard", "Windows debloat: off | standard | aggressive")
 	bypass := fs.Bool("bypass-checks", false, "Windows: skip TPM/Secure Boot/RAM checks")
+	neverExpires := fs.Bool("password-never-expires", false, "Windows: the local account's password never expires\n"+
+		"(otherwise it follows Windows' policy, 42 days by default)")
 	withDrivers := fs.Bool("drivers", false, "drivers for this computer: on Windows, detect this machine and stage\n"+
 		"its driver packs; on Ubuntu, have the installer put on the proprietary\n"+
 		"drivers it finds (NVIDIA and the like)")
@@ -244,7 +246,8 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 		Hardware: hw, Apps: appIDs, ThirdPartyDrivers: thirdParty, Offline: *offline,
 		DomainBlob: *domainBlob,
 		AdminUser:  *adminUser, AdminPassword: adminPass,
-		WiFiSSID: strings.TrimSpace(*wifiSSID), WiFiPassword: wifiPass,
+		PasswordNeverExpires: *neverExpires,
+		WiFiSSID:             strings.TrimSpace(*wifiSSID), WiFiPassword: wifiPass,
 	}, prog.report)
 	prog.finish()
 	if err != nil {
