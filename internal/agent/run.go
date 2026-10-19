@@ -102,7 +102,7 @@ func Apply(dir string, opts RunOptions) (int, error) {
 	}
 	defer j.Close()
 
-	a := &Agent{Dir: dir, Manifest: m, J: j, State: LoadState(dir), Opts: opts}
+	a := &Agent{Dir: dir, Manifest: m, J: j, State: StateForRun(dir), Opts: opts}
 	start := time.Now()
 	machine := machineName(machineModel())
 	if m.Standalone() {
