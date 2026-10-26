@@ -1,0 +1,69 @@
+name: cut-release
+# A release is cut by landing release-notes/vX.Y.Z.md on main. This makes the
+# annotated tag from that file -- the same tag a person would push by hand --
+# and then runs the release build for it.
+on:
+  push:
+    branches: [main]
+    paths: ["release-notes/v*.md"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: tag
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -eu
+          # Only notes this push added: editing an old release's notes must
+          # not re-cut it.
+          base="$BEFORE"
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="${GITHUB_SHA}^"
+          fi
+          files=$(git diff --name-only --diff-filter=A "$base" "$GITHUB_SHA" -- 'release-notes/v*.md')
+          count=$(printf '%s' "$files" | grep -c . || true)
+          if [ "$count" -eq 0 ]; then
+            echo "no new release notes in this push"
+            exit 0
+          fi
+          if [ "$count" -gt 1 ]; then
+            echo "::error::one release at a time; this push added: $files"
+            exit 1
+          fi
+          tag=$(basename "$files" .md)
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::$files is not named vX.Y.Z.md"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "::error::$tag already exists; a published tag is never moved"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" "$GITHUB_SHA" -F "$files" --cleanup=verbatim
+          git push origin "refs/tags/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+    permissions:
+      contents: write
