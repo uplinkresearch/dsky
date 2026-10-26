@@ -12,7 +12,14 @@
 set -eu
 cd "$(dirname "$0")"
 VERSION="${1:-dev}"
-LDFLAGS="-s -w -X github.com/uplinkresearch/dsky/internal/buildinfo.Version=${VERSION}"
+# -H=windowsgui: the agent has no console of its own. A payload is one file
+# somebody double-clicks, and Explorer gives a console-subsystem program a
+# console window -- which then sits on the desktop behind the status window for
+# the whole run, blank, and closable by accident. The agent attaches to the
+# console it was started from when there is one, so `verify`, `scan` and a
+# quiet `apply` still print for a script or a remote tool; see
+# internal/agent/console_windows.go.
+LDFLAGS="-s -w -H=windowsgui -X github.com/uplinkresearch/dsky/internal/buildinfo.Version=${VERSION}"
 for arch in amd64 arm64; do
   out="$(mktemp)"
   CGO_ENABLED=0 GOOS=windows GOARCH="$arch" \
