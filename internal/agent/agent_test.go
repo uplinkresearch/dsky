@@ -359,17 +359,22 @@ func TestApplyRunsEveryStepInOrder(t *testing.T) {
 			t.Errorf("step %q was not recorded as finished", step)
 		}
 	}
+	if st.Completed == "" {
+		t.Error("the run reached its end without recording that it had")
+	}
 
-	// A second run repeats nothing.
+	// And a run that is started again after that one finished does the work
+	// again, rather than reading the finished run's state and skipping
+	// straight to the finish screen.
 	before := len(f.calls)
 	if _, err := Apply(dir, RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.calls) != before {
-		t.Errorf("a second run did %d more things; it should have skipped every finished step", len(f.calls)-before)
+	if len(f.calls) == before {
+		t.Error("a second run did nothing at all; a finished run's state held it back")
 	}
-	if !strings.Contains(logText(t, dir), "already done on an earlier boot") {
-		t.Error("the log does not say the steps were skipped")
+	if strings.Contains(logText(t, dir), "already done on an earlier boot") {
+		t.Error("the second run skipped steps a finished run had recorded")
 	}
 }
 

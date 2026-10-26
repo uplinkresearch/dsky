@@ -128,6 +128,13 @@ var (
 // the real end of the work -- never on the way into a restart, where the
 // machine still needs both of them to come back.
 func (a *Agent) finishUp() {
+	// The state file is this run's, and this run is over. Said before the
+	// task is taken away rather than after, so a machine that loses power
+	// between the two comes back with nothing arranged to start the agent
+	// and a state that says there is nothing left to do -- which is the
+	// truth. The other order leaves a machine that starts the agent to be
+	// told every step is done.
+	a.State.Complete()
 	clearResumeFn(a)
 	// Only a first boot arranged an automatic sign-in, so only a first boot
 	// puts one away. A machine a payload is deployed onto may sign itself in
