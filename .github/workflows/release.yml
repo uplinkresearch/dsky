@@ -2,6 +2,13 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # cut-release.yml calls this after it creates the tag. A tag pushed with the
+  # workflow's own token does not start other workflows, so it has to.
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -9,8 +16,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27"
@@ -18,7 +29,7 @@ jobs:
         run: |
           set -eu
           mkdir -p dist
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${TAG}"
           # The first-boot agent is compiled first and embedded into every
           # DSKY, which then stages it onto Windows media from any host.
           ./build-agent.sh "${VERSION}"
@@ -56,7 +67,7 @@ jobs:
           # falls back to the tagged COMMIT's message — which published one
           # release describing a CI fix instead of the features.
           notes="${RUNNER_TEMP}/notes.md"
-          ref="repos/${GITHUB_REPOSITORY}/git/ref/tags/${GITHUB_REF_NAME}"
+          ref="repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}"
           : > "$notes"
           if [ "$(gh api "$ref" --jq '.object.type')" = "tag" ]; then
             sha=$(gh api "$ref" --jq '.object.sha')
@@ -77,16 +88,16 @@ jobs:
           # Converge rather than fail: re-running a release (a fixed workflow,
           # a retag) should correct the existing one, not abort on "already
           # exists" and leave it half-wrong.
-          title="DSKY ${GITHUB_REF_NAME}"
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+          title="DSKY ${TAG}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
             # --draft=false --latest are not cosmetic: deleting a tag demotes its
             # release to a draft, so the release a re-run finds is usually one
             # that has to be published again, not merely re-described.
-            gh release edit "${GITHUB_REF_NAME}" --title "$title" --notes-file "$notes" \
+            gh release edit "${TAG}" --title "$title" --notes-file "$notes" \
               --draft=false --latest
-            gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+            gh release upload "${TAG}" dist/* --clobber
           else
-            gh release create "${GITHUB_REF_NAME}" dist/* --title "$title" --notes-file "$notes"
+            gh release create "${TAG}" dist/* --title "$title" --notes-file "$notes"
           fi
 
   # A real click-to-install download for the product page. Runs after the
@@ -94,8 +105,12 @@ jobs:
   installer:
     needs: build
     runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27"
@@ -104,7 +119,7 @@ jobs:
         run: |
           set -eu
           mkdir -p dist
-          LDFLAGS="-s -w -X github.com/uplinkresearch/dsky/internal/buildinfo.Version=${GITHUB_REF_NAME}"
+          LDFLAGS="-s -w -X github.com/uplinkresearch/dsky/internal/buildinfo.Version=${TAG}"
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
             go build -trimpath -ldflags "$LDFLAGS" -o dist/dsky.exe ./cmd/dsky
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
@@ -118,7 +133,7 @@ jobs:
             choco install innosetup --no-progress -y
             $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           }
-          & $iscc /DAppVersion=$env:GITHUB_REF_NAME installer\dsky.iss
+          & $iscc /DAppVersion=$env:TAG installer\dsky.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
           Get-Item dist\dsky-setup-amd64.exe | ForEach-Object { "built {0} ({1:N1} MB)" -f $_.Name, ($_.Length/1MB) }
       - name: Attach it to the release
@@ -131,5 +146,5 @@ jobs:
           # so this name must stay version-free and must land on every release.
           sha=$(sha256sum dist/dsky-setup-amd64.exe | cut -d' ' -f1)
           echo "$sha  dsky-setup-amd64.exe" > dist/dsky-setup-amd64.exe.sha256
-          gh release upload "${GITHUB_REF_NAME}" \
+          gh release upload "${TAG}" \
             dist/dsky-setup-amd64.exe dist/dsky-setup-amd64.exe.sha256 --clobber
