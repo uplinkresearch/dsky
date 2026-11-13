@@ -6,15 +6,20 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/uplinkresearch/dsky/internal/agent"
 )
 
 func main() {
+	// On Windows this program is linked for the GUI subsystem, so that a
+	// double-clicked payload does not put a console window on the desktop for
+	// the length of the run. First, then, find the console it was started
+	// from, if it was started from one: this is a command line tool too, and
+	// verify, scan and a quiet apply all have something to say.
+	agent.UseParentConsole()
 	if err := agent.Main(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "dsky-agent:", err)
+		agent.SayFatal(err)
 		os.Exit(1)
 	}
 }
