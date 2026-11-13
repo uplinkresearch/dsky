@@ -68,13 +68,6 @@ func TestABuildRefusesWhatWasNotApproved(t *testing.T) {
 		t.Errorf("blocker: %v", err)
 	}
 
-	// And for a domain machine with no OU to put the computer account in.
-	m = approved(t, "office")
-	m.Identity.ComputerOUDN = ""
-	rehash(t, m)
-	if err := Preflight(m); err == nil || !strings.Contains(err.Error(), "which OU") {
-		t.Errorf("no OU: %v", err)
-	}
 }
 
 // rehash makes the approval match the manifest as it now stands, which is
@@ -89,54 +82,44 @@ func rehash(t *testing.T, m *Manifest) {
 	m.Approval.ContentHash = h
 }
 
-// A domain machine needs its own join file, and the plan has to say which OU
-// the computer account belongs in — that is what djoin is told.
-func TestABuildNeedsTheJoinFileAndTheOU(t *testing.T) {
+// DSKY does not join domains. A machine that was in one is built under the
+// plan's name, in a workgroup, and the build says so before it runs, with the
+// OU and the groups whoever joins it will need.
+func TestADomainMachineIsBuiltUnjoinedAndSaysSo(t *testing.T) {
 	m := approved(t, "office")
-	if _, err := PlanBuild(m, ""); err == nil || !strings.Contains(err.Error(), "offline join file") {
-		t.Errorf("no blob: %v", err)
-	}
-	p, err := PlanBuild(m, "/tmp/pc-odj.txt")
+	p, err := PlanBuild(m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.DomainBlob != "/tmp/pc-odj.txt" {
-		t.Errorf("the join file did not reach the build: %+v", p)
+	if p.Hostname != m.Target.Hostname || p.Hostname == "" {
+		t.Errorf("hostname: %q, want the plan's %q", p.Hostname, m.Target.Hostname)
 	}
-	// The blob names the computer, so the build does not -- and that still
-	// holds now the agent applies it after OOBE rather than Setup applying it
-	// in specialize. Proven on a lab machine: built with no name of its own,
-	// it came back from the agent's join as NEWDESK01 in lab.dsky.local, the
-	// name its computer account was provisioned for.
-	if p.Hostname != "" {
-		t.Errorf("a hostname was sent alongside an offline join: %q", p.Hostname)
-	}
-	if cmd := DjoinCommand(m, "pc-odj.txt"); !strings.Contains(cmd, `/machineou "OU=Front Desk,OU=Workstations,DC=mead,DC=local"`) ||
-		!strings.Contains(cmd, "/reuse") {
-		t.Errorf("djoin command: %s", cmd)
-	}
-	// Single-quoted for PowerShell: a computer account ends in $, which a
-	// double-quoted string would read as a variable.
-	if g := GroupCommands(m); len(g) != 1 || !strings.Contains(g[0], `-Identity 'MEAD\Practice Workstations'`) ||
-		!strings.Contains(g[0], `-Members 'MEAD-FRONT-02$'`) {
-		t.Errorf("group commands: %v", g)
+	warned := strings.Join(p.Warnings, "\n")
+	for _, want := range []string{m.Identity.DomainFQDN, "by hand", "OU=Front Desk,OU=Workstations,DC=mead,DC=local",
+		`MEAD\Practice Workstations`} {
+		if !strings.Contains(warned, want) {
+			t.Errorf("the warning never mentions %q:\n%s", want, warned)
+		}
 	}
 
-	// Without a domain, the machine's name is the build's to set.
+	// Without a domain there is nothing to say.
 	k := approved(t, "kiosk")
-	p, err = PlanBuild(k, "")
+	p, err = PlanBuild(k)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if p.Hostname != "MEAD-LOBBY-KIOSK" {
 		t.Errorf("hostname: %q", p.Hostname)
 	}
+	if strings.Contains(strings.Join(p.Warnings, "\n"), "by hand") {
+		t.Errorf("a machine in no domain was told to join one: %v", p.Warnings)
+	}
 }
 
 // The plan's applications become the choices the rest of DSKY already takes.
 func TestTheBuildInstallsWhatThePlanSays(t *testing.T) {
 	m := approved(t, "customized")
-	p, err := PlanBuild(m, "/tmp/pc-odj.txt")
+	p, err := PlanBuild(m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +205,7 @@ func TestSettingsThatBelongToAPersonWaitForThatPerson(t *testing.T) {
 	}
 	// And the operator is told, because a setting that appears only when
 	// somebody signs in is not one they can check at the bench.
-	p, err := PlanBuild(m, "/tmp/pc-odj.txt")
+	p, err := PlanBuild(m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +223,7 @@ func TestTheBuildSaysWhichPrintersNeedAHand(t *testing.T) {
 		{Name: "Back Office", IP: "10.0.0.50", DriverName: "HP UPD PCL6"},
 	}
 	rehash(t, m)
-	p, err := PlanBuild(m, "/tmp/pc-odj.txt")
+	p, err := PlanBuild(m)
 	if err != nil {
 		t.Fatal(err)
 	}

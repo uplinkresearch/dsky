@@ -165,41 +165,30 @@ type Options struct {
 	// ask it to, so there is nothing to detect and nothing to stage, which is
 	// why this is a flag rather than Hardware above.
 	ThirdPartyDrivers bool
-	// DomainBlob is a file from `djoin /provision`: an offline domain join.
-	//
-	// Only the offline path is offered here, and that asymmetry is deliberate.
-	// A credentialed join needs a password, and a password passed to a command
-	// lands in shell history and in the terminal scrollback of whoever is
-	// watching — on top of the cleartext copy it already leaves on the stick.
-	// A workspace recipe keeps it in vars.local.yaml, which is gitignored, so
-	// that is where credentialed joins belong.
-	DomainBlob string
 	// Hostname, Locale and Timezone are what the new machine should be. They
 	// exist because a migration knows them: it read them off the machine
 	// being replaced, and a replacement PC in the installer's time zone is
 	// noticed within the hour. Empty means what it always meant -- a random
 	// name, en-US, and whatever Windows picks.
-	//
-	// Hostname is ignored on an offline domain join: the join file names the
-	// computer, and a second name here breaks the trust the join sets up.
 	Hostname string
-	Locale   string
-	Timezone string
+	// NameBySerial names each machine PC-<serial number> while it installs,
+	// so one stick can image any number of machines without two of them
+	// sharing a name. An explicit Hostname wins: a migration knows the name
+	// the replacement has to have.
+	NameBySerial bool
+	Locale       string
+	Timezone     string
 	// AdminUser is the local administrator's name, for the same reason: a
 	// migration knows what the operator calls it.
 	AdminUser string
 	// AdminPassword is that account's password, supplied at build time and
 	// never stored: it is not in the recipe on disk, not in a migration
 	// manifest, and not in the workspace. It reaches the answer file through
-	// compose's in-memory CLIVars, which is the same channel a credentialed
-	// join's password uses.
+	// compose's in-memory CLIVars.
 	//
 	// Empty is what it has always been -- a passwordless local
 	// administrator, which is fine on a standalone machine that somebody is
-	// standing in front of. It is not fine on a machine that joins a domain
-	// and signs itself in automatically: anybody who walks up to the new PC
-	// gets an administrator's desktop on a domain member. A migration
-	// therefore asks for one.
+	// standing in front of.
 	AdminPassword string
 	// WiFiSSID and WiFiPassword are a wireless network the machine joins at
 	// first boot, before its programs are installed.
@@ -224,7 +213,7 @@ type Options struct {
 // adminPasswordVar is what the recipe says about the administrator's password.
 // When there is one it says where to find it, never what it is: the value
 // arrives at render time through CLIVars, so a recipe left behind in the
-// library cannot hand somebody the password to a domain member.
+// library cannot hand somebody the administrator's password.
 func adminPasswordVar(pass string) string {
 	if pass == "" {
 		return `""`
@@ -1227,13 +1216,11 @@ target:
 			wifiBlock += fmt.Sprintf("    password: %q\n", wifiPasswordVar)
 		}
 	}
-	// An offline-join blob is a path on this machine, so it goes in verbatim
-	// rather than being copied into the ephemeral workspace: compose reads it
-	// at build time and inlines the base64 into the answer file.
-	domainBlock := ""
-	switch {
-	case opts.DomainBlob != "":
-		domainBlock = fmt.Sprintf("  domain:\n    blob: %q\n", filepath.ToSlash(opts.DomainBlob))
+	// A machine named after its serial number, unless the caller already
+	// knows what this one has to be called.
+	nameBlock := ""
+	if opts.NameBySerial && strings.TrimSpace(opts.Hostname) == "" {
+		nameBlock = "  name_by_serial: true\n"
 	}
 	// Staged GPU driver packages run past a gigabyte each, so driver media
 	// outgrows the 8 GiB stick a bare Windows ISO fits on. So does a set of
@@ -1311,7 +1298,7 @@ flash:
 		orDefault(opts.AdminUser, "user"), displayName(orDefault(opts.AdminUser, "user")),
 		adminPasswordVar(opts.AdminPassword),
 		orDefault(opts.Hostname, "*"),
-		opts.AccountMode, bypass, neverExpires, hardwareYAML(hw), preset, wifiBlock, appsBlock, payloadBlock, domainBlock, steps)
+		opts.AccountMode, bypass, neverExpires, hardwareYAML(hw), preset, wifiBlock, appsBlock, payloadBlock, nameBlock, steps)
 }
 
 func orDefault(s, def string) string {

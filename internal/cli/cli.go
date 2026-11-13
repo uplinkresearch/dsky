@@ -37,7 +37,7 @@ Quick install (no workspace needed)
                              --drivers-for "dell:OptiPlex 7010" for another model (repeatable),
                              --apps chrome,7zip,... to install programs at first boot
                                (set:business for a starter set, winget:Publisher.Package for any winget package),
-                             --domain-blob <file> to join a domain offline,
+                             --name-by-serial to name each PC PC-<serial number>,
                              --iso <file> to use an ISO you downloaded yourself)
   detect                    what this computer is, and the drivers it needs
 

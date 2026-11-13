@@ -130,8 +130,9 @@ type Target struct {
 	DskyOptions json.RawMessage `json:"dsky_options,omitempty"`
 }
 
-// Identity is domain membership as instructions. The offline join blob is
-// produced at build time and named here; a credential never appears.
+// Identity is the old machine's domain membership, as instructions for
+// whoever joins the new one: DSKY does not. ODJBlobPath is no longer written
+// and is kept so manifests that have it still read.
 type Identity struct {
 	DomainFQDN     string       `json:"domain_fqdn"`
 	DomainNetBIOS  string       `json:"domain_netbios"`

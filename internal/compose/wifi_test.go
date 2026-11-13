@@ -19,7 +19,6 @@ func TestWiFiStepGoesAfterTheDrivers(t *testing.T) {
 		{"the usual build", []string{"drivers", "debloat", "apps"}, []string{"drivers", "wifi", "debloat", "apps"}},
 		{"no debloat", []string{"drivers", "apps"}, []string{"drivers", "wifi", "apps"}},
 		{"no drivers at all", []string{"debloat", "apps"}, []string{"wifi", "debloat", "apps"}},
-		{"a domain member", []string{"drivers", "debloat", "apps"}, []string{"drivers", "wifi", "debloat", "apps"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := insertWiFi(append([]string{}, tc.steps...), true)

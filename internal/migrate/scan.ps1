@@ -98,7 +98,7 @@ $out.identity = Try-Read "identity" {
     if ($fqdn) { $netbios = ($fqdn -split "\.")[0].ToUpper() }
   }
   # The OU the computer object is in, from the Group Policy state key: no RSAT
-  # and no domain query needed, and it is what djoin /machineou wants.
+  # and no domain query needed, and it is the form an OU is written in.
   $ou = ""
   $gp = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\State\Machine"
   if (Test-Path $gp) {

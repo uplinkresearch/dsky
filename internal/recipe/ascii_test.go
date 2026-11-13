@@ -62,6 +62,7 @@ func generatedScripts(t *testing.T) map[string]string {
 		"verify.ps1":              GenerateVerifyPS(r, drv, func(ref string) (string, error) { return ref, nil }),
 		"clear-status-screen.cmd": GenerateClearStatusScreen(),
 		ModelInstallerScriptName:  ModelInstallerScriptFile(),
+		SerialNameScriptName:      SerialNameScriptFile(),
 	}
 }
 

@@ -227,14 +227,15 @@ func (r *Review) userFiles(m *Manifest) (bool, error) {
 	return changed, nil
 }
 
-// identity shows where the new machine lands in the domain, and lets it be
-// moved: a replacement often goes into a different OU from the machine it
-// replaces, and that is a decision, not a reading.
+// identity shows the domain the old machine was in and where the new one
+// should go, and lets that be changed: a replacement often goes into a
+// different OU from the machine it replaces, and that is a decision, not a
+// reading. DSKY does not join it; this is what whoever does needs to know.
 func (r *Review) identity(m *Manifest) (bool, error) {
 	if !m.Identity.Domained() {
 		return false, nil
 	}
-	r.say("Joins %s as %s", m.Identity.DomainFQDN, m.Target.Hostname)
+	r.say("Was in %s; join %s to it by hand once it is installed", m.Identity.DomainFQDN, m.Target.Hostname)
 	if m.Identity.ComputerOUDN != "" {
 		r.say("  into %s", m.Identity.ComputerOUDN)
 	}

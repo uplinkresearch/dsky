@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/uplinkresearch/dsky/internal/appcatalog"
@@ -79,9 +78,9 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 		"machine installs them with no internet at all. The stick grows by the\n"+
 		"size of the installers and their versions are frozen on today's date;\n"+
 		"the machine updates them itself once it reaches a network.")
-	domainBlob := fs.String("domain-blob", "", "Windows: join a domain using a blob from\n"+
-		"`djoin /provision` (one machine per blob). A credentialed join belongs\n"+
-		"in a workspace recipe, so its password is not left in shell history.")
+	nameBySerial := fs.Bool("name-by-serial", false, "Windows: name each PC after its serial number, like PC-5CD1234XYZ,\n"+
+		"so one stick (or several) can image a batch without repeating a name.\n"+
+		"A PC with no real serial number is named after its network card.")
 	adminUser := fs.String("admin-user", "", "the local account an unattended install creates (default \"user\")")
 	adminPassStdin := fs.Bool("admin-password-stdin", false, "read that account's password from stdin, so the install asks nothing at all.\n"+
 		"Without it Linux stops once for an account, and Windows makes a local\n"+
@@ -228,24 +227,16 @@ func cmdInstall(ctx context.Context, env *Env, args []string) error {
 		// There is nothing here to put on the stick instead.
 		return fmt.Errorf("--offline is a Windows option; %s installs its programs through its own installer", e.Name)
 	}
-	if *domainBlob != "" {
-		if e.Family != oscatalog.Windows {
-			return fmt.Errorf("--domain-blob is a Windows option")
-		}
-		// The blob is that computer account's password. Said plainly, because
-		// "offline join is the safe one" is easy to over-read, and because the
-		// blob is for exactly one machine.
-		fmt.Printf("Offline domain join from %s\n", filepath.Base(*domainBlob))
-		fmt.Println("  This blob is for one machine and holds its computer-account password —")
-		fmt.Println("  treat the stick as carrying a credential, and build one stick per machine.")
+	if *nameBySerial && e.Family != oscatalog.Windows {
+		return fmt.Errorf("--name-by-serial is a Windows option")
 	}
 	fmt.Printf("Building %s installer media...\n", e.Name)
 	prog := &stageProgress{}
 	art, err := oscatalog.BuildQuick(ctx, lib, e, oscatalog.Options{
 		Edition: *edition, AccountMode: *account, Debloat: *debloat, BypassRequirement: *bypass,
 		Hardware: hw, Apps: appIDs, ThirdPartyDrivers: thirdParty, Offline: *offline,
-		DomainBlob: *domainBlob,
-		AdminUser:  *adminUser, AdminPassword: adminPass,
+		NameBySerial: *nameBySerial,
+		AdminUser:    *adminUser, AdminPassword: adminPass,
 		PasswordNeverExpires: *neverExpires,
 		WiFiSSID:             strings.TrimSpace(*wifiSSID), WiFiPassword: wifiPass,
 	}, prog.report)
