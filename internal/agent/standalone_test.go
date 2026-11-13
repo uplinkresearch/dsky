@@ -311,3 +311,95 @@ func TestTheExitCodeCountsProblems(t *testing.T) {
 }
 
 var _ = errors.New
+
+// A payload run a second time does the work a second time.
+//
+// This is what somebody reported: a payload ran and installed none of its
+// programs, and the payload they built and ran next went straight to the
+// finish screen without attempting anything. A payload lives in a folder
+// named for its build, the same build is the same folder, and the state file
+// the first run left there said every step was done -- so the second run
+// skipped all of them and told them the machine was ready. Somebody who runs
+// a payload again is asking for the work, not for a report on the last time.
+func TestRunningAPayloadAgainDoesTheWorkAgain(t *testing.T) {
+	dir := t.TempDir()
+	stageINF(t, dir)
+	if err := standaloneManifest().Save(filepath.Join(dir, ManifestName)); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeRun{}
+	f.do = func(name string, args []string) (result, error) {
+		if name == "pnputil" {
+			return result{Code: 0, Out: "Driver package added successfully."}, nil
+		}
+		return result{}, nil
+	}
+	f.install(t)
+
+	if _, err := Apply(dir, RunOptions{Quiet: true}); err != nil {
+		t.Fatal(err)
+	}
+	first := len(f.calls)
+	if first == 0 {
+		t.Fatal("the first run did nothing, so the second proves nothing")
+	}
+
+	if _, err := Apply(dir, RunOptions{Quiet: true}); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.calls) == first {
+		t.Error("the second run did nothing: the finished run's state skipped every step")
+	}
+	if strings.Contains(logText(t, dir), "already done on an earlier boot") {
+		t.Error("the second run treated a finished run's steps as its own")
+	}
+}
+
+// The other half of the same rule: a run that was interrupted is still
+// carried on rather than started over, because that is a machine part way
+// through a build rather than somebody asking for another one.
+func TestAnInterruptedPayloadIsCarriedOnRatherThanRestarted(t *testing.T) {
+	dir := t.TempDir()
+	st := LoadState(dir)
+	st.Finish("drivers")
+
+	got := StateForRun(dir)
+	if !got.Finished("drivers") {
+		t.Error("an interrupted run's finished step was thrown away, so the drivers would be installed twice")
+	}
+
+	// And once that run reaches its end, the next one starts from nothing.
+	st.Complete()
+	if StateForRun(dir).Finished("drivers") {
+		t.Error("a finished run's state was carried into the next run")
+	}
+}
+
+// What a new run does not start over on: the shortcuts that were on the
+// desktop before any payload touched this machine. Reading them again now
+// would take the icons the last run installed for the owner's own, and a
+// payload that adopts them never removes them again.
+func TestTheOwnersShortcutsOutliveTheRunThatRecordedThem(t *testing.T) {
+	dir := t.TempDir()
+	st := LoadState(dir)
+	own := st.OwnShortcuts(func() []string {
+		return []string{`C:\Users\dgb\Desktop\Quotes.lnk`}
+	})
+	if len(own) != 1 {
+		t.Fatalf("the owner's shortcuts were recorded as %v", own)
+	}
+	st.Finish("apps")
+	st.Complete()
+
+	next := StateForRun(dir)
+	if next.Finished("apps") {
+		t.Error("a finished run's steps were carried into the next run")
+	}
+	again := next.OwnShortcuts(func() []string {
+		t.Error("the owner's desktop was read again, after a payload had installed onto it")
+		return nil
+	})
+	if !again[strings.ToLower(`C:\Users\dgb\Desktop\Quotes.lnk`)] {
+		t.Errorf("the owner's shortcut was forgotten: %v", again)
+	}
+}
