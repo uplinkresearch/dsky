@@ -410,33 +410,27 @@ The exit code is the number of problems; 0 is a clean run. The file is also a
 zip, so anything that opens zips gives you the folder, the agent and a
 README.txt — which is what to use where a program with a window cannot run.
 
-### Joining a domain
+### Naming PCs by serial number
 
-Windows sticks can join a domain without a network, from a file made with
-`djoin /provision` on a computer already in the domain, so no domain password
-goes on the stick. A join file is one computer's account, so it is one stick
-per computer: `--domain-blob PC-042.txt`, or "Join a domain" in the Install
-dialog. The PC gets the name in the file.
+A stick can name each PC after its serial number while Windows installs —
+`PC-5CD1234XYZ` — so one stick, or several running at once, can image a whole
+batch without two PCs sharing a name and without a list of names to keep. It is
+"Name each PC after its serial number" in the Install dialog (on by default),
+`--name-by-serial` for `dsky install`, and `windows.name_by_serial: true` in a
+recipe.
 
-The join is applied at first boot — by the agent, or by the first-boot script
-DSKY generates — rather than during Windows Setup, and that is not an
-implementation detail. Windows will not sign a
-local account in automatically on a PC that has just joined a domain, so a PC
-joined during Setup never runs its first boot: it waits at a sign-in screen
-with no drivers and no programs, and resets itself back into Setup when nobody
-sits down at it. Joining afterwards avoids all of that. The PC installs, signs
-itself in, applies the join, restarts, and carries on.
+The name is read off the PC itself. Windows allows 15 characters, so a serial
+longer than 12 keeps its last 12, which is the part that differs within a batch.
+A PC that reports a placeholder instead of a serial — most virtual machines and
+some home-built boards say "To Be Filled By O.E.M." or "Default string" — is
+named after its network card's hardware address instead. The post-install check
+fails a PC whose name did not come out `PC-` something, and
+`C:\Windows\Setup\Scripts\dsky-name.log` says what it read.
 
-One recipe shape cannot have this done for it: a hand-written first-boot script
-(`windows.firstboot.mode: template`). DSKY will not edit a script somebody else
-wrote, so a recipe that has one *and* a domain join is refused at build time,
-with the `djoin` line to paste into that script.
-
-Joining a batch of computers from one stick (a folder of join files named by
-serial number) has been **withdrawn** for now: it joined each PC during Setup
-and so had exactly that problem, and there is no way to test a batch here yet.
-A recipe that still asks for it is refused by name rather than quietly built
-without a join.
+DSKY does not join PCs to a domain. Join them by hand once they are installed
+(Settings > System > About > Domain or workgroup). A recipe that still has a
+`windows.domain` section is refused by name rather than quietly built without
+its join.
 
 ### Three ways in, one pipeline
 
@@ -545,7 +539,7 @@ Known gaps, stated plainly:
 - **No physical Windows install has been done end to end yet** with drivers
   and programs staged. That is the next acceptance milestone, and until it
   passes, the first-boot driver and winget paths are reviewed but unproven.
-  Domain join has not yet joined a real domain.
+  Naming by serial number has not yet named a real PC.
 - **Copying a drive has never touched a real disk.** The clone engine's
   logic is tested — fanning out to many targets, a stick pulled mid-write, a
   drive that stores something other than what it was sent, every mistaken

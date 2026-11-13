@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// The record has to survive a restart, because a migration guarantees one: the
-// domain join asks for it before the programs are installed. A record only
+// The record has to survive a restart, because a build can ask for one partway
+// through: a driver install that Windows wants finished before the programs. A record only
 // written at the end is a record that is never written on exactly the machines
 // this feature exists for.
 func TestTheRecordSurvivesARestart(t *testing.T) {
@@ -22,9 +22,9 @@ func TestTheRecordSurvivesARestart(t *testing.T) {
 	defer j.Close()
 	start := time.Now()
 
-	// First boot: the join happens, then the machine restarts.
+	// First boot: a setting is applied, then the machine restarts.
 	a := &Agent{Dir: dir, Manifest: &Manifest{Recipe: "front-desk"}, J: j}
-	a.done(KindDomain, "domain join")
+	a.done(KindSetting, "power.plan")
 	a.writeResult("NEWDESK01", start, false)
 
 	// Second boot: a fresh agent, which knows nothing of the first.
@@ -55,9 +55,9 @@ func TestTheRecordSurvivesARestart(t *testing.T) {
 	if len(r.Outcomes) != 4 {
 		t.Fatalf("outcomes: %+v", r.Outcomes)
 	}
-	// The join happened before the restart and is still there afterwards.
-	if got["domain/domain join"].State != StateDone {
-		t.Errorf("the join was lost across the restart: %+v", r.Outcomes)
+	// The setting was applied before the restart and is still there afterwards.
+	if got["setting/power.plan"].State != StateDone {
+		t.Errorf("the setting was lost across the restart: %+v", r.Outcomes)
 	}
 	if got["printer/Back Office"].State != StateFailed ||
 		got["printer/Back Office"].Note == "" {
@@ -101,7 +101,7 @@ func TestARerunStepReplacesItsOwnOutcome(t *testing.T) {
 
 // An agent that cannot read its manifest still has to say so on the machine.
 // Without this the failure is perfect silence: Windows installs, signs itself
-// in, and hands over a PC that looks untouched, with a domain join file still
+// in, and hands over a PC that looks untouched, with its files still
 // sitting unused beside an agent that quietly refused its own manifest.
 func TestAnUnreadableManifestIsWrittenDownOnTheMachine(t *testing.T) {
 	dir := t.TempDir()
@@ -120,7 +120,7 @@ func TestAnUnreadableManifestIsWrittenDownOnTheMachine(t *testing.T) {
 		t.Fatalf("nothing was written where first boot is logged: %v", err)
 	}
 	log := string(b)
-	for _, want := range []string{"NOTHING WAS DONE", "no domain join", "build-agent.sh"} {
+	for _, want := range []string{"NOTHING WAS DONE", "no drivers", "build-agent.sh"} {
 		if !strings.Contains(log, want) {
 			t.Errorf("the machine's own log does not say %q:\n%s", want, log)
 		}

@@ -104,54 +104,6 @@ func (r *Recipe) Lint() []Finding {
 			"of them. Add windows.wifi, or make sure it is plugged in", len(w.Apps.Winget))
 	}
 
-	// Domain join. The failure everything here guards against is the quiet
-	// one: Setup carries on into a workgroup, the machine looks perfectly
-	// installed, and nobody notices until someone tries a domain login.
-	if d := w.Domain; d.Enabled() {
-		// The same defect the offline join was moved out of Setup to avoid.
-		// Not proven on a credentialed join -- nothing here has run one since
-		// -- but it is the same mechanism, and a machine that strands is worth
-		// a sentence before a stick is written rather than after.
-		if !d.Offline() && strings.EqualFold(firstbootAccountMode(r), "local") {
-			warnf("windows.domain uses a join account, so Windows Setup performs the join — and a PC " +
-				"that joins a domain during Setup will not sign a local account in automatically " +
-				"afterwards, which is how this build runs its first boot. Expect it to stop at a " +
-				"sign-in screen with no drivers and no programs. An offline join " +
-				"(windows.domain.blob) is applied at first boot instead and does not have this " +
-				"problem; a machine somebody signs into by hand does not either")
-		}
-		if !d.Offline() {
-			// Cleartext is not a choice here. The PlainText/base64 obfuscation
-			// that local-account passwords can use does not exist for this
-			// element — Microsoft documents that only local account passwords
-			// can be hidden in an answer file. Setup scrubs the copy it caches
-			// on the installed system; nothing scrubs the media.
-			warnf("windows.domain uses a join account, so its password is written into " +
-				"autounattend.xml on the stick in clear text — there is no way to obfuscate it, and " +
-				"nothing removes it from the media, so the stick carries a live domain credential for " +
-				"as long as it exists. Delegate an account that may only create computer objects in " +
-				"the target OU, never a domain admin. An offline join (windows.domain.blob) avoids " +
-				"putting a user credential on the stick at all")
-			if d.Password != "" && !strings.Contains(d.Password, "${var:") {
-				warnf("windows.domain.password holds a literal password — use \"${var:domain_password}\" " +
-					"and put the value in vars.local.yaml (gitignored)")
-			}
-			if d.OU == "" {
-				warnf("windows.domain sets no ou — the computer object lands in the domain's default " +
-					"Computers container, where most group policy does not apply")
-			}
-		} else {
-			// Not a user credential, but not nothing either: the blob carries
-			// the machine account's password, and Microsoft says to treat it
-			// as securely as a plaintext password. Worth saying, because
-			// "offline join is the safe one" is easy to over-read.
-			warnf("windows.domain uses an offline-join blob, which needs no domain privileges at " +
-				"install time — but the blob still holds that computer account's password and " +
-				"belongs to exactly one machine, so treat the stick as carrying a credential and " +
-				"build one stick per machine")
-		}
-	}
-
 	// A generate-mode firstboot that never installs drivers but stages
 	// driver packs is almost certainly a mistake.
 	if w.Firstboot.Mode == "generate" && len(w.DriverPacks) > 0 {
@@ -166,14 +118,4 @@ func (r *Recipe) Lint() []Finding {
 		}
 	}
 	return out
-}
-
-// firstbootAccountMode is what the recipe's answer file was told about signing
-// in: "local" means the machine signs itself in to run first boot, which is
-// the case that a domain join during Setup breaks.
-func firstbootAccountMode(r *Recipe) string {
-	if r.Windows == nil || r.Windows.Unattend == nil {
-		return ""
-	}
-	return r.Windows.Unattend.Vars["account_mode"]
 }

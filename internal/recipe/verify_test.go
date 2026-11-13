@@ -32,17 +32,11 @@ func renderVerify(r *Recipe, d ResolvedDrivers) string {
 // nobody notices. A machine that installed cleanly and is in a workgroup, or
 // has a yellow-banged NIC, looks exactly like a success.
 func TestVerifyChecksTheSilentFailures(t *testing.T) {
-	r := verifyRecipe(func(w *WindowsSpec) {
-		w.Domain = &DomainSpec{Join: "corp.example.com", Username: "svc", Password: "${var:pw}"}
-	})
+	r := verifyRecipe(nil)
 	got := renderVerify(r, ResolvedDrivers{})
 
 	for _, want := range []string{
 		"ConfigManagerErrorCode -ne 0", // yellow bangs
-		"PartOfDomain",                 // the workgroup case
-		"Test-ComputerSecureChannel",   // joined but trust broken
-		"corp.example.com",             // the right domain, not just any
-		"DOMAIN-JOIN-FAILED",           // points at the evidence
 		"firstboot.log",                // did the script even run
 	} {
 		if !strings.Contains(got, want) {
@@ -61,14 +55,14 @@ func TestVerifyChecksTheSilentFailures(t *testing.T) {
 	}
 }
 
-// TestVerifyIsSilentAboutWhatWasNotAsked: a check that reports on a domain
-// nobody asked to join, or programs nobody chose, is noise — and noise is how
+// TestVerifyIsSilentAboutWhatWasNotAsked: a check that reports on programs
+// nobody chose is noise — and noise is how
 // people learn to ignore the output.
 func TestVerifyIsSilentAboutWhatWasNotAsked(t *testing.T) {
 	got := renderVerify(verifyRecipe(nil), ResolvedDrivers{})
-	for _, unwanted := range []string{"PartOfDomain", "Test-ComputerSecureChannel", "Uninstall\\*"} {
+	for _, unwanted := range []string{"Uninstall\\*"} {
 		if strings.Contains(got, unwanted) {
-			t.Errorf("a recipe with no domain and no apps still checks for %q", unwanted)
+			t.Errorf("a recipe with no apps still checks for %q", unwanted)
 		}
 	}
 	// But the universal checks are always there.

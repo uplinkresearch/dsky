@@ -217,7 +217,6 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /api/browse", s.auth(s.handleBrowse))
 	mux.HandleFunc("POST /api/browse/image", s.auth(s.handleBrowseImage))
 	mux.HandleFunc("POST /api/browse/installer", s.auth(s.handleBrowseInstaller))
-	mux.HandleFunc("POST /api/browse/djoin", s.auth(s.handleBrowseDjoin))
 	mux.HandleFunc("GET /api/apps", s.auth(s.handleApps))
 	mux.HandleFunc("GET /api/apps/winget", s.auth(s.handleWingetLookup))
 	mux.HandleFunc("POST /api/apps/add", s.auth(s.handleAppAdd))
@@ -1138,9 +1137,8 @@ type installRequest struct {
 	// join at all.
 	Offline bool   `json:"offline"`
 	ISO     string `json:"iso"`
-	// DomainBlob is a file from `djoin /provision`: an offline domain join
-	// for one computer.
-	DomainBlob string `json:"domain_blob"`
+	// NameBySerial names each machine PC-<serial number> while it installs.
+	NameBySerial bool `json:"name_by_serial"`
 	// Mode is "install" (build and write to device_id, the default), "setup"
 	// (build the image and keep it, no stick), or "download" (fetch the OS
 	// image only).
@@ -1204,14 +1202,8 @@ func (s *Server) installOptions(ctx context.Context, req installRequest) (oscata
 		// network. There is nothing here to put on the media instead.
 		return e, oscatalog.Options{}, fmt.Errorf("putting the programs on the media is a Windows option; %s installs its own", e.Name)
 	}
-	blob := strings.TrimSpace(req.DomainBlob)
-	if blob != "" {
-		if e.Family != oscatalog.Windows {
-			return e, oscatalog.Options{}, fmt.Errorf("joining a domain is a Windows option")
-		}
-		if err := compose.CheckODJBlob(blob); err != nil {
-			return e, oscatalog.Options{}, fmt.Errorf("domain join file: %w", err)
-		}
+	if req.NameBySerial && e.Family != oscatalog.Windows {
+		return e, oscatalog.Options{}, fmt.Errorf("naming a PC after its serial number is a Windows option")
 	}
 	ssid := strings.TrimSpace(req.WiFiSSID)
 	if ssid != "" {
@@ -1233,9 +1225,9 @@ func (s *Server) installOptions(ctx context.Context, req installRequest) (oscata
 		Edition: req.Edition, AccountMode: req.AccountMode,
 		Debloat: req.Debloat, BypassRequirement: req.BypassRequirement,
 		Hardware: hw, Models: models, Apps: req.Apps, ThirdPartyDrivers: thirdParty,
-		Offline:    req.Offline,
-		DomainBlob: blob,
-		AdminUser:  strings.TrimSpace(req.AdminUser), AdminPassword: req.AdminPassword,
+		Offline:      req.Offline,
+		NameBySerial: req.NameBySerial,
+		AdminUser:    strings.TrimSpace(req.AdminUser), AdminPassword: req.AdminPassword,
 		PasswordNeverExpires: req.PasswordNeverExpires,
 		WiFiSSID:             ssid, WiFiPassword: req.WiFiPassword,
 	}, nil
@@ -1422,12 +1414,6 @@ func (s *Server) handleSaveRecipe(w http.ResponseWriter, r *http.Request) {
 	id := slugify(name)
 	if name == "" || id == "" {
 		httpErr(w, 400, "the recipe needs a name")
-		return
-	}
-	// A join file is one computer's account, usable once, so a recipe that
-	// carried it would join every later machine as that one computer.
-	if strings.TrimSpace(req.DomainBlob) != "" {
-		httpErr(w, 400, "a domain join file is for one computer, so it is not saved into a recipe — set up or install that computer's stick directly, or leave the domain join off to save the recipe")
 		return
 	}
 	e, opts, err := s.installOptions(r.Context(), req)
@@ -2042,30 +2028,6 @@ func (s *Server) handleAppRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"id": c.ID, "name": c.Name, "filename": c.Filename})
-}
-
-// handleBrowseDjoin asks the desktop for a `djoin /provision` file and checks
-// it is one before the dialog accepts it.
-func (s *Server) handleBrowseDjoin(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
-	defer cancel()
-	path, err := filepicker.PickFile(ctx, "Select the file from djoin /provision", "Domain join files", []string{"txt", "djoin", "blob"})
-	switch {
-	case errors.Is(err, filepicker.ErrCancelled):
-		writeJSON(w, 200, map[string]string{"path": ""})
-		return
-	case errors.Is(err, filepicker.ErrUnavailable):
-		httpErr(w, 501, "no file chooser on this host — type the path instead")
-		return
-	case err != nil:
-		httpErr(w, 500, "%v", err)
-		return
-	}
-	if err := compose.CheckODJBlob(path); err != nil {
-		httpErr(w, 400, "%v", err)
-		return
-	}
-	writeJSON(w, 200, map[string]string{"path": path})
 }
 
 // handleBrowseInstaller asks the desktop for a .msi or .exe and offers back

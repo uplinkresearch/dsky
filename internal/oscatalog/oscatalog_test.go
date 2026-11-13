@@ -401,12 +401,10 @@ func TestCustomAppReachesTheMedia(t *testing.T) {
 	}
 }
 
-// TestQuickInstallOfflineDomainJoin: Quick Install offers the offline path and
-// only the offline path. A credentialed join needs a password, and a password
-// on a command line lands in shell history — on top of the cleartext copy it
-// already leaves on the stick — so that belongs in a workspace recipe where
-// vars.local.yaml is gitignored.
-func TestQuickInstallOfflineDomainJoin(t *testing.T) {
+// TestQuickInstallNamesBySerial: the tick reaches the recipe, an explicit
+// name wins over it (a migration knows what the replacement is called), and
+// a build that did not ask for it is unchanged.
+func TestQuickInstallNamesBySerial(t *testing.T) {
 	lib, err := library.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -415,39 +413,27 @@ func TestQuickInstallOfflineDomainJoin(t *testing.T) {
 	if !ok {
 		t.Skip("no windows entry")
 	}
-	blob := filepath.Join(t.TempDir(), "pc01.odj")
-	dir, err := scaffoldQuickWorkspace(lib, e, Options{Edition: "Pro", DomainBlob: blob}, nil)
+	dir, err := scaffoldQuickWorkspace(lib, e, Options{Edition: "Pro", NameBySerial: true}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := assertLoads(t, dir, e.ID)
-	if r == nil || r.Windows == nil {
-		t.Fatal("recipe did not load")
-	}
-	d := r.Windows.Domain
-	if !d.Enabled() || !d.Offline() {
-		t.Fatalf("offline domain join did not reach the recipe: %+v", d)
-	}
-	if d.Blob != filepath.ToSlash(blob) {
-		t.Errorf("blob path = %q, want %q", d.Blob, filepath.ToSlash(blob))
-	}
-	// Nothing credentialed may appear, however the recipe was generated.
-	if d.Join != "" || d.Username != "" || d.Password != "" {
-		t.Errorf("Quick Install emitted join credentials: %+v", d)
+	if r == nil || r.Windows == nil || !r.Windows.NameBySerial {
+		t.Fatal("naming by serial did not reach the recipe")
 	}
 	for _, f := range r.Lint() {
 		if f.Severity == "error" {
 			t.Errorf("lint error: %s", f.Message)
 		}
 	}
-
-	// And no domain block at all when none was asked for.
-	bare, err := scaffoldQuickWorkspace(lib, e, Options{Edition: "Pro"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rb := assertLoads(t, bare, e.ID); rb != nil && rb.Windows.Domain.Enabled() {
-		t.Error("a build with no --domain-blob produced a domain join")
+	for _, opts := range []Options{{Edition: "Pro"}, {Edition: "Pro", NameBySerial: true, Hostname: "FRONT-02"}} {
+		d, err := scaffoldQuickWorkspace(lib, e, opts, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rb := assertLoads(t, d, e.ID); rb != nil && rb.Windows.NameBySerial {
+			t.Errorf("%+v named by serial", opts)
+		}
 	}
 }
 

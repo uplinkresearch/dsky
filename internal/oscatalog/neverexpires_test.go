@@ -30,7 +30,7 @@ func TestPasswordNeverExpiresReachesTheAnswerFile(t *testing.T) {
 		vars := map[string]string{
 			"locale": "en-US", "computer_name": "*", "edition_key": "KEY",
 			"admin_user": "user", "admin_display_name": "User", "admin_password": "",
-			"account_mode": account, "bypass_requirements": "0", "domain_mode": "",
+			"account_mode": account, "bypass_requirements": "0",
 		}
 		for k, v := range extra {
 			vars[k] = v

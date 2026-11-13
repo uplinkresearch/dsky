@@ -21,8 +21,7 @@ import (
 // migration" in setupact.log).
 //
 // It runs in the specialize pass, where the stick is still plugged in and has
-// a drive letter, and before anything that needs the scripts (the domain join
-// by serial number runs a script from the same folder). It copies nothing
+// a drive letter, and before anything that needs the scripts. It copies nothing
 // when Setup already did. RunSynchronous paths are limited to 259
 // characters, which is why this is one terse line.
 const oemCopyCommand = `cmd /c for %d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) do @if exist %d:\sources\$OEM$\$$\Setup\Scripts\firstboot.cmd if not exist C:\Windows\Setup\Scripts\firstboot.cmd xcopy %d:\sources\$OEM$\$$ C:\Windows /e /i /h /y`
@@ -38,13 +37,20 @@ var orderTag = regexp.MustCompile(`<Order>\s*(\d+)\s*</Order>`)
 // Setup runs them by Order), or as a new component, or a new specialize
 // section. The result must still parse.
 func withOEMCopy(unattend string) (string, error) {
-	if strings.Contains(unattend, oemCopyDescription) {
+	return firstSpecializeCommand(unattend, oemCopyDescription, oemCopyCommand)
+}
+
+// firstSpecializeCommand adds a command to a rendered answer file as the first
+// specialize-pass command, as withOEMCopy describes. Adding the same command
+// twice changes nothing.
+func firstSpecializeCommand(unattend, description, command string) (string, error) {
+	if strings.Contains(unattend, description) {
 		return unattend, nil
 	}
 	cmd := "\n        <RunSynchronousCommand wcm:action=\"add\" xmlns:wcm=\"http://schemas.microsoft.com/WMIConfig/2002/State\">" +
 		"\n          <Order>1</Order>" +
-		"\n          <Description>" + oemCopyDescription + "</Description>" +
-		"\n          <Path>" + xmlEscape(oemCopyCommand) + "</Path>" +
+		"\n          <Description>" + description + "</Description>" +
+		"\n          <Path>" + xmlEscape(command) + "</Path>" +
 		"\n        </RunSynchronousCommand>"
 	component := "\n    <component name=\"Microsoft-Windows-Deployment\" processorArchitecture=\"amd64\"" +
 		" publicKeyToken=\"31bf3856ad364e35\" language=\"neutral\" versionScope=\"nonSxS\">" +
@@ -97,7 +103,7 @@ func withOEMCopy(unattend string) (string, error) {
 		if _, err := dec.Token(); err == io.EOF {
 			break
 		} else if err != nil {
-			return "", fmt.Errorf("compose: adding the script copy broke autounattend.xml: %w", err)
+			return "", fmt.Errorf("compose: adding %q broke autounattend.xml: %w", description, err)
 		}
 	}
 	return out, nil

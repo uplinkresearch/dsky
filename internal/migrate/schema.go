@@ -46,7 +46,7 @@ var schemaDescriptions = map[string]string{
 	"resolution":     "how this application is to be installed on the new machine",
 	"config_capture": "files and registry keys holding this application's own settings; only ever from a curated recipe, never guessed",
 	"apply":          "how to set this on each target OS, keyed by OS name (win11); absent or empty means captured for the report but not applied",
-	"odj_blob_path":  "offline domain join file produced at build time; never a credential",
+	"odj_blob_path":  "no longer written: DSKY does not join domains; kept so older manifests still read",
 	"compat":         "what a person has to decide about; an unacknowledged blocker prevents approval",
 	"order":          "install sequencing, lower first; 10 for prerequisites, 50 default",
 	"confidence":     "0 to 1; how sure an automatic match is",

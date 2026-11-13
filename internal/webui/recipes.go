@@ -157,13 +157,8 @@ func (s *Server) describeRecipe(rc *recipe.Recipe, form *oscatalog.RecipeForm) [
 		} else {
 			add("Drivers", strings.Join(drivers, ", "))
 		}
-		if d := w.Domain; d != nil {
-			switch {
-			case d.Blob != "":
-				add("Join a domain", "One computer, join file "+d.Blob)
-			case d.Join != "":
-				add("Join a domain", d.Join)
-			}
+		if w.NameBySerial {
+			add("Computer name", "PC- and its serial number")
 		}
 	} else {
 		// One describer answers this for the CLI, the picker and this page. It
@@ -208,10 +203,6 @@ func (s *Server) handleRecipeUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.OSID != old.OSID {
 		httpErr(w, 400, "a recipe keeps its OS — save a new recipe for %s", req.OSID)
-		return
-	}
-	if strings.TrimSpace(req.DomainBlob) != "" {
-		httpErr(w, 400, "a domain join file is for one computer, so it is not saved into a recipe")
 		return
 	}
 	// The name is worth keeping; the password is not ours to keep. A recipe is

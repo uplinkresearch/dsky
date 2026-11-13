@@ -31,38 +31,6 @@ rem dsky-agent.json beside it. Edit the recipe, not this file.
 //
 // The fallback is the point: a build that cannot use the agent produces the
 // media it produced last week, not broken media.
-// deferredDomainMode is what the answer file is told when the join happens at
-// first boot rather than during Setup: nothing. No Provisioning element, no Credentials, no join at all --
-// Setup installs Windows into a workgroup and OOBE runs on a machine that is
-// not yet a domain member.
-//
-// agentODJ is why. Applying the blob in specialize is the obvious way round
-// and it is what DSKY did, and on a machine that also has to sign itself in to
-// finish provisioning it does not work. The lab machine's own OOBE log:
-//
-//	[Shell Unattend] UserAccounts: created account 'uplink'
-//	[Shell Unattend] AutoLogon Username is 'uplink'
-//	[msoobe.exe]     Not setting autologon for new local user ... domain-joined
-//	[msoobe.exe]     PostTaskOperations with accountNeeded = 1
-//	[taskhostw.exe]  UserOOBEController::Exit() started [2]
-//	                 image state [COMPLETE] --> [SPECIALIZE_RESEAL_TO_OOBE]
-//
-// The answer file is honoured; msoobe then overrides the automatic sign-in
-// because the machine is domain-joined, hands it to defaultuser0 to run user
-// OOBE, and user OOBE cannot finish without somebody at the keyboard. The
-// monitor times out and reboots back into OOBE, over and over.
-//
-// A by-serial batch is NOT the counter-example -- I thought it was, and it is
-// worth writing down that it is not. It runs djoin in the specialize pass too
-// (internal/recipe/domainserial.go), so those machines are domain members
-// before OOBE starts, same as this was, and they are exposed to the same loop
-// whenever they also sign themselves in. Nothing here fixes that; it is
-// recorded in the plan doc as its own question.
-const (
-	deferredDomainMode = "deferred"
-	agentODJName       = recipe.DomainBlobFile
-)
-
 func agentCovers(r *recipe.Recipe) (bool, string) {
 	w := r.Windows
 	if w == nil {
@@ -82,17 +50,6 @@ func agentCovers(r *recipe.Recipe) (bool, string) {
 			return false, "its first-boot steps include commands the agent does not run"
 		}
 	}
-	if w.Domain != nil && !w.Domain.Offline() {
-		// A credentialed join keeps the generated scripts: it is proven as it
-		// stands, and its password handling is the part least worth
-		// disturbing. (Joining a batch by serial number used to be the other
-		// case here; it is withdrawn, and refused in recipe.DomainSpec before
-		// a build gets this far.)
-		return false, "it joins a domain with a username and password"
-	}
-	// A single offline join file is no obstacle, because with the agent in
-	// charge the join no longer happens during Setup at all: the agent
-	// applies it at first boot instead. See agentODJ.
 	if !agentbin.Available(agentbin.AMD64) {
 		return false, "this DSKY was built without the agent"
 	}
@@ -150,12 +107,6 @@ func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []a
 			}
 		}
 	}
-	if w.Domain.Offline() {
-		m.Domain = &agent.Domain{File: agentODJName}
-		// First, and before the programs: a machine that joins and then
-		// restarts should do it before an hour of installing, not after.
-		m.Steps = append([]string{agent.StepDomain}, m.Steps...)
-	}
 	if w.Debloat.Enabled() {
 		m.Debloat = &agent.Debloat{Preset: w.Debloat.Preset, Apps: recipe.DebloatApps(w.Debloat)}
 	}
@@ -176,12 +127,11 @@ func buildManifest(r *recipe.Recipe, drivers recipe.ResolvedDrivers, payload []a
 // passphrase resolved.
 //
 // The recipe holds "${var:wifi_password}" and the value arrives at build time,
-// the same route the administrator's password and a domain join's credentials
-// take. Rendering straight from the spec instead put the literal text
-// "${var:wifi_password}" on the stick as the network's key -- and that is not
-// a build failure but a working profile with the wrong password in it, so the
-// machine installs perfectly, never joins, downloads nothing, and says
-// nothing. Caught by reading a built image; no unit test could have, because
+// the same route the administrator's password takes. Rendering straight from
+// the spec instead put the literal text "${var:wifi_password}" on the stick
+// as the network's key -- and that is not a build failure but a working
+// profile with the wrong password in it, so the machine installs perfectly,
+// never joins, downloads nothing, and says nothing. Caught by reading a built image; no unit test could have, because
 // every one of them passed a real passphrase in.
 func wlanProfile(w *recipe.WiFiSpec, vars map[string]string) (string, error) {
 	pass, err := recipe.ExpandVars(w.Password, vars)
@@ -342,32 +292,6 @@ func agentOfflineApps(w *recipe.WindowsSpec, refFiles map[string]string) []agent
 // AgentMedia reports whether media built from this recipe carries the agent,
 // so the tool can name the right check for the machine.
 func AgentMedia(r *recipe.Recipe) (bool, string) { return agentCovers(r) }
-
-// checkJoinCanBeDeferred refuses the one recipe shape whose domain join cannot
-// be moved out of Windows Setup.
-//
-// The join has to happen at first boot: a PC that joins a domain during Setup
-// will not sign a local account in automatically afterwards, so its first boot
-// never runs and it stops at a sign-in screen with no drivers and no programs.
-// Whichever thing runs first boot applies it -- the agent as its first step, or
-// the generated script before anything else. A hand-written first-boot script
-// is neither, and DSKY will not edit a script somebody else wrote, so the build
-// stops here and names the command they need rather than handing back media
-// that strands the machine.
-func checkJoinCanBeDeferred(r *recipe.Recipe) error {
-	w := r.Windows
-	if w == nil || !w.Domain.Offline() || w.Firstboot.Mode != "template" {
-		return nil
-	}
-	return fmt.Errorf("compose: %s joins a domain and has a hand-written first-boot script "+
-		"(windows.firstboot.mode: template), and those two cannot be combined. The join has to be "+
-		"applied by first boot rather than by Windows Setup -- a PC that joins during Setup will not "+
-		"sign a local account in automatically, so it stops at a sign-in screen with nothing "+
-		"installed -- and DSKY cannot add that to a script it did not write. Either let DSKY generate "+
-		"the first-boot script (windows.firstboot.mode: generate), or apply the join from your own "+
-		"script with: djoin /requestodj /loadfile %%WINDIR%%\\Setup\\Scripts\\%s /windowspath "+
-		"%%WINDIR%% /localos, and restart afterwards", r.ID, recipe.DomainBlobFile)
-}
 
 // migrateParts are the pieces of an approved migration plan that the agent
 // carries out. They are handed to the build rather than read from the recipe:

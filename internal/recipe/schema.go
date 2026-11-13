@@ -83,9 +83,18 @@ type WindowsSpec struct {
 	Debloat      *DebloatSpec   `yaml:"debloat,omitempty"`
 	Apps         *AppsSpec      `yaml:"apps,omitempty"`
 	WiFi         *WiFiSpec      `yaml:"wifi,omitempty"`
-	Domain       *DomainSpec    `yaml:"domain,omitempty"`
-	StatusScreen *StatusScreen  `yaml:"status_screen,omitempty"`
-	Firstboot    FirstbootSpec  `yaml:"firstboot,omitempty"`
+	// NameBySerial names the machine PC-<serial number> while Windows
+	// installs, so any number of machines can be imaged from one stick, or
+	// from several at once, without two of them sharing a name. It overrides
+	// unattend's computer_name. See compose's serial naming for the details.
+	NameBySerial bool `yaml:"name_by_serial,omitempty"`
+	// Domain is where a domain join used to be configured. DSKY no longer
+	// joins a PC to a domain (see validate), and the key is kept only so a
+	// recipe that still has one is refused by name instead of failing as an
+	// unknown field with nothing to say why.
+	Domain       any           `yaml:"domain,omitempty"`
+	StatusScreen *StatusScreen `yaml:"status_screen,omitempty"`
+	Firstboot    FirstbootSpec `yaml:"firstboot,omitempty"`
 }
 
 // StatusScreen paints the result of the post-install check onto the machine's
@@ -121,110 +130,6 @@ func (s *StatusScreen) SuccessImage() (path, ref string) {
 		return "", ""
 	}
 	return s.Success, s.SuccessRef
-}
-
-// DomainSpec joins the imaged machine to an Active Directory domain. There are
-// two ways, and they are not variations on one thing — they trade off
-// differently and suit different jobs.
-//
-// Offline (a blob from `djoin /provision`) puts no credential on the media at
-// all and needs no domain network while Setup runs, because the computer
-// account was created in advance and the blob carries its own secret. The cost
-// is that a blob belongs to exactly one machine, so it is the answer when you
-// have a list of machines, not when you image whatever arrives.
-//
-// Credentialed (a join account and its password) images any number of machines
-// from one stick. The cost is that the password is written into
-// autounattend.xml on a FAT32 volume that anyone who picks up the stick can
-// read — Windows scrubs it from the copy it keeps on the installed system, but
-// nothing scrubs the stick. Use an account delegated to create computer
-// objects in one OU, never a domain admin, and keep the value in
-// vars.local.yaml rather than in the recipe.
-type DomainSpec struct {
-	// Join is the domain to join, e.g. corp.example.com (credentialed path).
-	Join string `yaml:"join,omitempty"`
-	// OU is where the computer object is created, as a distinguished name.
-	// Only meaningful on the credentialed path: an offline blob already
-	// carries the OU chosen when it was provisioned.
-	OU string `yaml:"ou,omitempty"`
-	// Username may be user@domain.tld or DOMAIN\user.
-	Username string `yaml:"username,omitempty"`
-	Password string `yaml:"password,omitempty"`
-
-	// Blob is a workspace-relative file holding the base64 provisioning data
-	// from `djoin /provision`; BlobRef names one in the library instead.
-	// Either selects the offline path.
-	Blob    string `yaml:"blob,omitempty"`
-	BlobRef string `yaml:"blob_ref,omitempty"`
-
-	// BlobsBySerial was a folder of offline-join files, one per computer,
-	// named after each computer's serial number: one stick for a whole batch.
-	// It is withdrawn, and the field is kept only so that a recipe still
-	// holding one is refused by name instead of parsing into silence. See
-	// validate.
-	BlobsBySerial string `yaml:"blobs_by_serial,omitempty"`
-}
-
-// validate checks the two paths are not mixed and that each has what it needs.
-// A half-configured join is worse than none: Setup carries on into a workgroup
-// and the machine looks fine until somebody tries to log in with a domain
-// account.
-func (d *DomainSpec) validate(fail func(string, ...any) error) error {
-	credentialed := d.Join != "" || d.Username != "" || d.Password != ""
-	if d.BlobsBySerial != "" {
-		// Withdrawn, and refused rather than ignored: a recipe that quietly
-		// lost its domain join would erase a batch of disks and hand back
-		// workgroup machines that look finished.
-		//
-		// It joined each computer during Windows Setup, which is the thing a
-		// lab machine proved a machine cannot come back from. Windows will
-		// not sign a local account in automatically on a PC that has just
-		// joined a domain, so the first boot never runs, and Windows resets
-		// itself into setup again waiting for somebody to type. A single
-		// offline join was fixed by joining after Setup instead; the same
-		// change has not been made here, and nothing has run this path since,
-		// so it is not offered rather than offered untested.
-		return fail("windows.domain.blobs_by_serial has been withdrawn: it joined each computer " +
-			"during Windows Setup, and a PC that joins a domain during Setup does not finish " +
-			"setting itself up — it waits at a sign-in screen with no drivers and no programs. " +
-			"Build one stick per computer with windows.domain.blob (`dsky install --domain-blob`), " +
-			"which joins after Setup and is tested")
-	}
-	switch {
-	case d.Offline() && credentialed:
-		return fail("windows.domain sets both an offline blob and join credentials — pick one; " +
-			"an offline blob already carries the computer account, so credentials are not used")
-	case d.Blob != "" && d.BlobRef != "":
-		return fail("windows.domain sets both blob and blob_ref — pick one")
-	case d.Offline() && d.OU != "":
-		return fail("windows.domain.ou has no effect on an offline join — the OU is fixed when " +
-			"`djoin /provision /machineou` creates the blob")
-	case d.Offline():
-		return nil
-	case !credentialed:
-		return nil // nothing configured at all
-	case d.Join == "":
-		return fail("windows.domain needs join (the domain to join), e.g. corp.example.com")
-	case d.Username == "":
-		return fail("windows.domain.join is set but no username — an account that may add " +
-			"computers to the domain is required")
-	case d.Password == "":
-		return fail("windows.domain.join is set but no password — use \"${var:domain_password}\" " +
-			"and put the value in vars.local.yaml (gitignored)")
-	}
-	return nil
-}
-
-// Offline reports whether this is an offline domain join.
-func (d *DomainSpec) Offline() bool {
-	return d != nil && (d.Blob != "" || d.BlobRef != "")
-}
-
-// Enabled reports whether any domain join is configured. A withdrawn
-// blobs_by_serial counts, so that a recipe carrying one reaches validate and
-// is refused by name rather than treated as having no join at all.
-func (d *DomainSpec) Enabled() bool {
-	return d != nil && (d.Join != "" || d.Offline() || d.BlobsBySerial != "")
 }
 
 // AppsSpec installs programs at first boot with winget, Windows' own package
@@ -652,10 +557,16 @@ func (r *Recipe) Validate() error {
 		if a := r.Windows.Apps; a != nil && a.Scope != "" && a.Scope != "machine" && a.Scope != "user" {
 			return fail("windows.apps.scope must be machine or user")
 		}
-		if d := r.Windows.Domain; d != nil {
-			if err := d.validate(fail); err != nil {
-				return err
-			}
+		if r.Windows.NameBySerial && r.Windows.Unattend == nil {
+			return fail("windows.name_by_serial needs windows.unattend: the name is set by a " +
+				"command the answer file runs while Windows installs")
+		}
+		if r.Windows.Domain != nil {
+			// Refused rather than ignored: a recipe that quietly lost its
+			// join would hand back workgroup machines that look finished.
+			return fail("windows.domain has been removed: DSKY no longer joins a PC to a domain. " +
+				"Delete the domain section and join the PC by hand once it is installed " +
+				"(Settings > System > About > Domain or workgroup)")
 		}
 		if w := r.Windows.WiFi; w != nil {
 			if err := ValidateWiFi(w, "windows.wifi.ssid", "windows.wifi.password", fail); err != nil {
