@@ -6,8 +6,6 @@ package flash
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -103,6 +101,10 @@ func writeRefusedHint(err error) string {
 		" rather than a hub."
 }
 
+// enumTolerance is how far the enumerator's idea of a disk's size may sit from
+// the size the open device reports before they are taken to be different disks.
+const enumTolerance = 64 << 20
+
 // Progress receives stage updates; total is -1 while unknown (compressed
 // sources).
 type Progress func(stage string, done, total int64)
@@ -153,28 +155,37 @@ func Flash(ctx context.Context, art *compose.Artifact, dev device.Device, progre
 		return fmt.Errorf("flash: %s is %d MiB, recipe requires at least %d MiB", dev.ID, dev.SizeBytes>>20, art.MinStick>>20)
 	}
 
+	// Opened here only to fail before the stick is touched if the image is
+	// missing or unreadable; the write opens it again for itself, and again
+	// if it has to resume.
 	reader, err := stream.Open(art.Path, art.Compress)
 	if err != nil {
 		return fmt.Errorf("flash: %w", err)
 	}
-	defer reader.Close()
+	reader.Close()
 	total := art.Size
 	if art.Compress != "" && art.Compress != "none" {
 		total = -1
 	}
 
 	progress("open", 0, total)
-	t, err := OpenTarget(ctx, dev)
+	t, err := openTarget(ctx, dev)
 	if err != nil {
 		return err
 	}
-	defer t.Close()
+	// The run may swap t for the same stick reopened after a reset, so the
+	// handle closed at the end is whichever one it holds by then.
+	r := &run{ctx: ctx, dev: dev, t: t, total: total, progress: progress}
+	defer func() {
+		if r.t != nil {
+			r.t.Close()
+		}
+	}()
 	// The open device's own size report is authoritative where available
 	// (Windows WMI enumeration under-reports by CHS-geometry rounding, up
 	// to a few MiB). The enumerator's size still cross-checks that the
 	// same physical device is attached: a swapped stick differs by far
 	// more than one cylinder.
-	const enumTolerance = 64 << 20
 	devSize := dev.SizeBytes
 	if tSize, err := t.Size(); err == nil && tSize > 0 {
 		switch {
@@ -222,76 +233,23 @@ func Flash(ctx context.Context, art *compose.Artifact, dev device.Device, progre
 
 	clearForWrite(t)
 
-	// ── Write ────────────────────────────────────────────────────────────
-	hash := sha256.New()
-	buf := alignedBuffer(chunkSize)
-	var written int64
-	for {
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("flash: canceled after %d MiB: %w", written>>20, err)
-		}
-		n, rerr := io.ReadFull(reader, buf)
-		if n > 0 {
-			chunk := buf[:n]
-			if pad := (SectorSize - n%SectorSize) % SectorSize; pad != 0 {
-				chunk = buf[:n+pad]
-				for i := n; i < n+pad; i++ {
-					chunk[i] = 0
-				}
-			}
-			if written+int64(len(chunk)) > devSize {
-				return fmt.Errorf("flash: image is larger than %s (%d MiB) — wrong device or truncated stick", dev.ID, devSize>>20)
-			}
-			if _, werr := t.WriteAt(chunk, written); werr != nil {
-				return fmt.Errorf("flash: write failed at %d MiB: %w%s", written>>20, werr, writeRefusedHint(werr))
-			}
-			hash.Write(chunk)
-			written += int64(len(chunk))
-			progress("write", written, total)
-		}
-		if rerr == io.EOF || rerr == io.ErrUnexpectedEOF {
-			break
-		}
-		if rerr != nil {
-			return fmt.Errorf("flash: reading artifact: %w", rerr)
-		}
+	// ── Write, then verify ───────────────────────────────────────────────
+	// Both ride out a stick that resets partway through; see resume.go.
+	r.devSize = devSize
+	written, wantHash, err := r.write(art)
+	if err != nil {
+		return err
 	}
 	if written == 0 {
 		return fmt.Errorf("flash: artifact was empty")
 	}
-	wantHash := hex.EncodeToString(hash.Sum(nil))
-
-	if err := t.Sync(); err != nil {
-		return fmt.Errorf("flash: flushing device: %w", err)
-	}
-
-	// ── Verify ───────────────────────────────────────────────────────────
 	if art.Verify != "none" {
-		progress("verify", 0, written)
-		vhash := sha256.New()
-		var read int64
-		for read < written {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			n := int64(chunkSize)
-			if read+n > written {
-				n = written - read
-			}
-			if _, err := t.ReadAt(buf[:n], read); err != nil {
-				return fmt.Errorf("flash: readback failed at %d MiB: %w", read>>20, err)
-			}
-			vhash.Write(buf[:n])
-			read += n
-			progress("verify", read, written)
-		}
-		got := hex.EncodeToString(vhash.Sum(nil))
-		if got != wantHash {
-			return fmt.Errorf("flash: VERIFY FAILED on %s — device returned different data than written (failing or counterfeit stick). Do not use this stick", dev.ID)
+		if err := r.verify(written, wantHash); err != nil {
+			return err
 		}
 	}
 
-	if err := t.Finalize(); err != nil {
+	if err := r.t.Finalize(); err != nil {
 		return fmt.Errorf("flash: finalizing device: %w", err)
 	}
 	progress("done", written, written)
