@@ -72,6 +72,10 @@ func (p *stageProgress) printf(format string, args ...any) {
 
 // report is the callback handed to every long operation.
 func (p *stageProgress) report(stage string, done, total int64) {
+	// A stage may carry a second line for the page to show under it (see
+	// splitStage in index.html). A status line that is redrawn in place has
+	// room for one, so the terminal shows the stage itself.
+	stage, _, _ = strings.Cut(stage, "\n")
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

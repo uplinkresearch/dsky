@@ -3241,15 +3241,47 @@ function drawPatter(j) {
   if (said !== j.flair.textContent) j.flair.textContent = said;
 }
 
+// A stage can carry a second line, "head\ndetail". The head is the stage; the
+// detail is something the run needs the operator to read -- the stick has
+// gone and is being waited for, or the run has slowed down for it -- and it
+// takes the patter's place until the run stops saying it. Patter is for a run
+// going to plan, and this one is not.
+function splitStage(stage) {
+  const at = (stage || "").indexOf("\n");
+  return at < 0 ? [stage || "", ""] : [stage.slice(0, at), stage.slice(at + 1)];
+}
+
+// How many times a run's stick disconnected and was waited out, read from the
+// waiting stage ("... come back (2 of 3) ..."). A run that finishes after one
+// has passed its readback and is good, but the stick that did it is worth
+// knowing about before it is trusted with the next install.
+function noteDrops(j, head) {
+  const m = /stick disconnected .*\((\d+) of \d+\)/i.exec(head);
+  if (m) j.drops = Math.max(j.drops || 0, +m[1]);
+}
+
 function setPatter(j, ev) {
   if (ev.final) {
     clearInterval(j.patterTimer);
     j.patterTimer = null;
     j.flair.hidden = !!ev.error;
-    if (!ev.error) j.flair.textContent = LANDED[ev.kind] || "All systems nominal";
+    if (!ev.error) {
+      j.flair.textContent = j.drops
+        ? `Verified, but the stick disconnected ${j.drops === 1 ? "once" : j.drops + " times"}. It passed, but consider replacing it.`
+        : LANDED[ev.kind] || "All systems nominal";
+    }
     return;
   }
-  const phase = patterPhase(ev);
+  const [head, detail] = splitStage(ev.stage);
+  noteDrops(j, head);
+  if (detail) {
+    clearInterval(j.patterTimer);
+    j.patterTimer = null;
+    j.flair.hidden = false;
+    j.flair.textContent = detail;
+    return;
+  }
+  const phase = patterPhase({ ...ev, stage: head });
   if (phase !== j.phase) {
     j.phase = phase;
     j.phaseT0 = Date.now();
@@ -3498,14 +3530,15 @@ function upsertJob(ev) {
     dressAll(row);
   }
   if (!ev.final) j.running = true;
-  j.stage.textContent = ev.error ? ev.error : ev.stage;
+  const [head] = splitStage(ev.stage);
+  j.stage.textContent = ev.error ? ev.error : head;
   setPatter(j, ev);
   j.stage.classList.toggle("error", !!ev.error);
   if (ev.error) { j.stage.style.color = "var(--err)"; j.bar.querySelector("i").style.background = "var(--err)"; }
   // Reading a disk back and hashing it is a different act from writing it, and
   // it is the one that proves the write. It gets its own colour so the run
   // visibly changes phase rather than the bar simply going round twice.
-  j.bar.classList.toggle("verify", /verif/i.test(ev.stage || ""));
+  j.bar.classList.toggle("verify", /verif/i.test(head));
 
   if (ev.final && !ev.error) {
     // Only for a job this page watched run, and only the first time it is
