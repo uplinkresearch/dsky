@@ -62,8 +62,7 @@
   header h1 { margin: 0; line-height: 0; }
   header h1 img { height: 32px; width: auto; display: block; }
   header .ver { color: var(--dim); font-size: 12px; margin-left: 14px; white-space: nowrap; }
-  #updBtn { margin-left: 10px; }
-  #quitBtn { margin-left: 8px; }
+  #quitBtn, #settingsBtn { margin-left: 8px; }
   .wsrow input { flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--line);
     border-radius: 6px; padding: 6px 9px; font: inherit; font-size: 13px; min-width: 0; }
   .active { color: var(--ok); }
@@ -136,6 +135,19 @@
     border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: inherit; margin: 8px 0 14px; }
   dialog .actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
   #recipeDialog { width: min(640px, calc(100vw - 32px)); min-width: 0; }
+  #rcImages { margin: 0 0 12px; font-size: 13px; }
+  #rcImages .rcimghead { color: var(--dim); font: 11px var(--mono); letter-spacing: 1px;
+    text-transform: uppercase; margin-bottom: 4px; }
+  #rcImages .rcimg { display: flex; align-items: center; gap: 10px; padding: 3px 0;
+    font-variant-numeric: tabular-nums; }
+  #rcImages .rcimg .grow { flex: 1; }
+  #settingsDialog { width: min(760px, calc(100vw - 32px)); min-width: 0; max-height: calc(100vh - 48px); }
+  #settingsDialog .body { display: flex; flex-direction: column; gap: 14px; }
+  #settingsDialog .settingshead { display: flex; align-items: center; gap: 10px; }
+  #settingsDialog .settingshead h3 { margin: 0; }
+  #settingsDialog .settingshead .spacer { flex: 1; }
+  #settingsDialog input { margin: 0; }
+  #settingsDialog .wsrow input { width: auto; }
   dialog .facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 12px 0 14px; font-size: 13px; }
   dialog .facts dt { color: var(--dim); }
   dialog .facts dd { margin: 0; overflow-wrap: anywhere; }
@@ -161,16 +173,19 @@
   .wsexplain { color: var(--dim); font-size: 12px; padding: 4px 14px 8px; line-height: 1.5; }
   .wswhere { color: var(--dim); font-size: 12px; padding: 0 14px 2px; }
   .linkish { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .addmine { display: inline-block; margin-top: 6px; font-size: 12px; }
   .appcat { color: var(--dim); font-size: 11px; text-transform: uppercase;
     letter-spacing: .04em; margin: 8px 0 2px; }
   .opt.check { display: flex; align-items: center; gap: 8px; }
   .opt.check input { width: auto; }
   .opt.check label { margin: 0; color: var(--text); }
-  /* ── Copy a drive / Disk utility ────────────────────────────────────────
+  /* ── Disks ─────────────────────────────────────────────────────────────────
      The identity card is the guardrail. Typing a size and clicking twice stops
      nobody; recognising "Samsung 990 PRO, one partition labelled Photos" does. */
   .picklabel { color: var(--dim); font-size: 12px; white-space: nowrap; }
   .dstlabel { padding: 6px 14px 0; }
+  .diskacts { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px; }
+  .diskacts[hidden] { display: none; }
   .idcard { margin: 8px 14px 12px; padding: 11px 13px; border-radius: 7px;
     background: var(--bg); border: 1px solid var(--line); font-size: 13px; }
   .idcard.warn { border-color: var(--warn); }
@@ -192,7 +207,7 @@
     border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px;
     font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; }
 
-  /* ── The five screens ───────────────────────────────────────────────────
+  /* ── The three screens ──────────────────────────────────────────────────
      Everything used to be on screen at once, which showed a newcomer nine
      panels and no idea which one their job started in. Each screen is a job
      somebody turned up to do; the panels on it are the ones that job needs,
@@ -202,16 +217,14 @@
      "disks" cannot match "disksomething". */
   main > .col > section { display: none; }
   body[data-door="install"]  section[data-door~="install"],
-  body[data-door="clone"]    section[data-door~="clone"],
   body[data-door="payload"]  section[data-door~="payload"],
-  body[data-door="disks"]    section[data-door~="disks"],
-  body[data-door="advanced"] section[data-door~="advanced"] { display: block; }
+  body[data-door="disks"]    section[data-door~="disks"] { display: block; }
   /* With one screen open the second column is usually empty, so the grid
      collapses to a single readable column rather than leaving a gap. */
-  body[data-door="install"] main, body[data-door="advanced"] main,
-  body[data-door="disks"] main, body[data-door="payload"] main {
+  body[data-door="install"] main, body[data-door="payload"] main {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); }
-  body[data-door="clone"] main {
+  /* Disks is one panel: a disk, what it is, and what to do with it. */
+  body[data-door="disks"] main {
     grid-template-columns: minmax(0, 1fr); max-width: 900px; }
   /* Activity is pinned under the header on every screen, the start screen
      included. It used to sit under the work on the screens that had it, and on
@@ -258,7 +271,11 @@
   /* The Install dialog's stick-free actions, above the destructive one and
      visibly separate from it. */
   dialog .later { margin: 14px 0 4px; padding: 11px 0 2px; border-top: 1px solid var(--line); }
-  dialog .laterbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+  dialog .laterbtns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  dialog .moreopts { margin: 12px 0 4px; }
+  dialog .moreopts summary { cursor: pointer; color: var(--dim); font-size: 13px; padding: 4px 0; }
+  dialog .moreopts summary:hover { color: var(--text); }
+  dialog .moreopts[open] summary { margin-bottom: 4px; }
   dialog .later .sub { color: var(--dim); font-size: 12px; margin-top: 7px; }
   #instArm { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 4px; }
   /* ── First-run guide ───────────────────────────────────────────────────
@@ -414,6 +431,14 @@
   .updbar button { font-size: 11.5px; }
   header .ver, .toolbar .ver { font: 11px/1.4 var(--mono); letter-spacing: 1px;
     text-transform: uppercase; color: var(--dim); margin-left: 0; }
+  /* A label you can press, not a key: it reads as the version until a hand
+     goes to it. */
+  .toolbar button.ver { background: none; border: none; box-shadow: none;
+    padding: 6px 4px; min-height: 0; cursor: pointer;
+    text-decoration: underline dotted; text-underline-offset: 3px; }
+  .toolbar button.ver:hover { background: none; color: var(--text); }
+  .toolbar button.ver:active { transform: none; box-shadow: none; }
+  .toolbar button.ver:disabled { opacity: 1; cursor: progress; }
 
   /* ── Keys ──────────────────────────────────────────────────────────────────
      A button is a moulded key. The plain one is the dark panel key; `primary`
@@ -862,9 +887,13 @@
 <div class="toolbar">
   <nav class="cmdkeys" id="cmdkeys" aria-label="Screens"></nav>
   <span class="spacer"></span>
-  <span class="ver" id="ver" title="Check for a newer release"></span>
+  <!-- The version is the update check. It sat beside a "Check for updates"
+       button that said nothing the label did not, and two controls for one
+       fact is one more thing to read past. Pressing the version asks GitHub
+       now; the answer replaces what it says. -->
+  <button class="ver" id="ver" onclick="checkUpdate(true)" title="Check for a newer release now">Version</button>
   <button id="guideBtn" onclick="startGuide(door)" title="How this screen works" aria-label="How this screen works">?</button>
-  <button id="updBtn" onclick="checkUpdate(true)" title="Ask GitHub for the newest release now">Check for updates</button>
+  <button id="settingsBtn" title="Workspace, your installers, storage and sources" onclick="openSettings()">Settings</button>
   <button id="quitBtn" title="Stop the app" onclick="quitApp()">Quit</button>
 </div>
 <!-- Activity is a permanent instrument, not a panel that appears when
@@ -917,51 +946,62 @@
       </div>
       <div class="picknote" id="catalogNote"></div>
     </section>
-    <section data-door="clone" id="copySec"><h2>Copy a drive</h2>
-      <div class="pick">
-        <label class="picklabel" for="srcPick">Copy from</label>
-        <select id="srcPick" aria-label="Source disk"></select>
-      </div>
-      <div id="srcCard"></div>
-      <div class="picklabel dstlabel">Onto — tick every disk to write. Each one is erased.</div>
-      <div class="rows" id="dstList"></div>
-      <div id="dstCards"></div>
-      <div class="arm" id="copyArm" hidden>
-        <label for="copyConfirm" id="copyArmLabel"></label>
-        <input id="copyConfirm" autocomplete="off" spellcheck="false">
-        <button class="danger" id="copyGo" disabled>Erase and copy</button>
-      </div>
-    </section>
-    <section data-door="disks" id="diskSec"><h2>Disk utility <span class="spacer"></span><button onclick="loadDisks()">Rescan</button></h2>
+    <section data-door="disks" id="diskSec"><h2>Disks</h2>
       <div class="pick">
         <label class="picklabel" for="duPick">Disk</label>
         <select id="duPick" aria-label="Disk"></select>
       </div>
       <div id="duCard"></div>
+      <div class="diskacts" id="duActs" role="group" aria-label="What to do with this disk" hidden>
+        <button id="duCopy" aria-pressed="false" title="Copy this disk onto one or more others; each is erased">Copy it onto other disks…</button>
+        <button id="duPrep" title="Erase it and give it one volume this computer can read">Erase and prepare…</button>
+        <button id="duCap" title="Read the whole stick into the library as an image, to write again later">Capture to an image…</button>
+      </div>
+      <div id="copyPart" hidden>
+        <div class="picklabel dstlabel">Onto — tick every disk to write. Each one is erased.</div>
+        <div class="rows" id="dstList"></div>
+        <div id="dstCards"></div>
+        <div class="arm" id="copyArm" hidden>
+          <label for="copyConfirm" id="copyArmLabel"></label>
+          <input id="copyConfirm" autocomplete="off" spellcheck="false">
+          <button class="danger" id="copyGo" disabled>Erase and copy</button>
+        </div>
+      </div>
     </section>
-    <section data-door="advanced" id="wsSec"><h2>Workspace<span class="spacer"></span><span class="sub" id="wsHint"></span></h2>
-      <div class="rows" id="wsPanel"></div>
-    </section>
-    <section data-door="install advanced" id="downloadsSec"><h2>Downloaded <span class="spacer"></span><span class="sub" id="downloadsTotal"></span></h2><div class="rows" id="downloads"></div></section>
-    <section data-door="install advanced" id="recipesSec"><h2>Recipes <span class="spacer"></span><span class="sub" id="recipesWhere"></span></h2><div class="rows" id="recipes"></div></section>
     <section data-door="payload" id="payloadSec"><h2 id="payloadHead">Build a payload</h2>
       <div class="picknote" id="payloadNote">For a machine that already runs Windows. Choose what goes on it; DSKY builds one file you double-click there.</div>
       <div id="payloadOpts"><div class="empty">Loading…</div></div>
       <div class="pick"><span class="spacer"></span><button id="payloadCancel" hidden>Cancel editing</button><button class="primary" id="payloadGo">Build payload</button></div>
     </section>
-    <section data-door="payload" id="payloadRecipesSec"><h2>From a recipe <span class="spacer"></span><span class="sub">the same programs and drivers, without the OS</span></h2><div class="rows" id="payloadRecipes"></div></section>
-    <section data-door="install advanced" id="imagesSec"><h2>Built images <span class="spacer"></span><span class="sub">ready to write, no rebuilding</span></h2><div class="rows" id="artifacts"></div></section>
   </div>
   <div class="col" style="display:flex;flex-direction:column;gap:16px">
-    <section data-door="install advanced" id="devicesSec"><h2>Devices <span class="spacer"></span><button onclick="loadState()">Rescan</button></h2><div class="rows" id="devices"></div></section>
-    <section data-door="disks advanced" id="disksSec"><h2>Disks <span class="spacer"></span><button onclick="loadDisks()">Refresh</button></h2><div class="rows" id="disks"><div class="empty">Reading disks…</div></div></section>
-    <section data-door="payload advanced" id="payloadsSec"><h2>Built payloads <span class="spacer"></span><span class="sub">copy one to the machine and run it</span></h2><div class="rows" id="payloads"></div></section>
-    <section data-door="install payload" id="myappsSec"><h2>Your installers <span class="spacer"></span><button onclick="addInstaller()" title="Add a .msi or .exe from this machine">Add installer…</button></h2>
-      <div class="rows" id="myapps"></div>
-    </section>
-    <section data-door="advanced" id="sourcesSec"><h2>Sources</h2><div class="rows" id="sources"></div></section>
+    <section data-door="install" id="recipesSec"><h2>Saved setups <span class="spacer"></span><span class="sub" id="recipesWhere"></span></h2><div class="rows" id="recipes"></div></section>
+    <section data-door="payload" id="payloadsSec"><h2>Built payloads <span class="spacer"></span><span class="sub">copy one to the machine and run it</span></h2><div class="rows" id="payloads"></div></section>
   </div>
 </main>
+
+<!-- Settings: what is set up once and then left alone. These panels were the
+     Master key's, or sat on Install and Payload beside the work as though
+     they were part of it. A key of their own made them a fifth job, which
+     they are not; a dialog keeps them one press away without being one more
+     screen to learn. -->
+<dialog id="settingsDialog" aria-labelledby="settingsTitle">
+  <div class="body">
+    <div class="settingshead">
+      <h3 id="settingsTitle">Settings</h3>
+      <span class="spacer"></span>
+      <button onclick="settingsDialog.close()">Close</button>
+    </div>
+    <section id="wsSec"><h2>Workspace<span class="spacer"></span><span class="sub" id="wsHint"></span></h2>
+      <div class="rows" id="wsPanel"></div>
+    </section>
+    <section id="myappsSec"><h2>Your installers <span class="spacer"></span><button onclick="addInstaller()" title="Add a .msi or .exe from this machine">Add installer…</button></h2>
+      <div class="rows" id="myapps"></div>
+    </section>
+    <section id="downloadsSec"><h2>Storage <span class="spacer"></span><span class="sub" id="downloadsTotal"></span></h2><div class="rows" id="downloads"></div></section>
+    <section id="sourcesSec"><h2>Sources</h2><div class="rows" id="sources"></div></section>
+  </div>
+</dialog>
 
 <dialog id="appDialog">
   <div class="body">
@@ -995,12 +1035,15 @@
     <h3 id="rcTitle"></h3>
     <div class="sub" id="rcPath" style="color:var(--dim);font-size:12px;overflow-wrap:anywhere"></div>
     <dl class="facts" id="rcFacts"></dl>
+    <div id="rcImages"></div>
     <p id="rcNotEditable" hidden></p>
     <div id="rcFileWrap" hidden><textarea id="rcFile" spellcheck="false" aria-label="Recipe file"></textarea></div>
     <p id="rcErr" hidden style="color:var(--danger)"></p>
     <div class="actions">
       <button id="rcDelete" style="margin-right:auto">Delete recipe</button>
       <button id="rcFileBtn" title="Change the recipe's YAML file directly">Edit file</button>
+      <button id="rcSetup" title="Download what is missing and build the image, to write later">Set up image</button>
+      <button id="rcPayload" title="Build this recipe's programs and drivers, without the operating system, for a machine that already runs Windows">Build payload</button>
       <button id="rcSaveFile" class="primary" hidden>Save file</button>
       <button id="rcEdit" class="primary" title="Change these options in the install dialog">Edit</button>
       <button onclick="recipeDialog.close()">Close</button>
@@ -1018,7 +1061,7 @@
       <button id="pdDelete" style="margin-right:auto">Delete payload</button>
       <button id="pdEdit" title="Change what is in it, and build it again">Edit</button>
       <button id="pdCopy" title="Save a copy to a folder — a backup, a share, or a stick you don't want erased">Save a copy…</button>
-      <button id="pdWrite" class="primary" title="Erase a USB drive and put this payload on it">Write to USB…</button>
+      <button id="pdWrite" class="primary" title="Erase a USB stick and put this payload on it">Write to stick…</button>
       <button onclick="payloadDialog.close()">Close</button>
     </div>
   </div>
@@ -1063,9 +1106,12 @@
     <div id="instOpts"></div>
     <div class="later">
       <div class="laterbtns">
-        <button id="instDownload" title="Save the OS download in the library, nothing else">Download only</button>
         <button id="instSetup" title="Download and build the installer with these options, to write to a stick later">Set up image</button>
         <button id="instSave" title="Keep these options as a named recipe, to set up or install again later">Save as recipe…</button>
+        <!-- Set up image downloads too, so this is seldom what is wanted: a
+             link rather than a third key of the same weight. It stays for
+             fetching ahead, when Microsoft's download limit is the worry. -->
+        <button id="instDownload" class="linkish" title="Save the OS download in the library, nothing else">Download only</button>
       </div>
       <div class="sub" id="instLaterNote">No stick needed for these.</div>
     </div>
@@ -1075,7 +1121,7 @@
       <p id="instPrompt">Type the stick size (<b id="instSize"></b>) to arm:</p>
       <input id="instInput" autocomplete="off" aria-labelledby="instPrompt">
     </div>
-    <p id="instNoStick" hidden>No USB stick is plugged in. Set up the image now and write it from <b>Built images</b> when you have one.</p>
+    <p id="instNoStick" hidden>No USB stick is plugged in. Set up the image now and write it from <b>Saved setups</b> when you have one.</p>
     <div class="actions">
       <button onclick="installDialog.close()">Cancel</button>
       <button class="danger" id="instGo">Erase &amp; install</button>
@@ -1211,40 +1257,6 @@ function openAppForm(o) {
   (o.idLocked ? args : id).focus();
 }
 
-// ── disks ───────────────────────────────────────────────────────────────────
-// Shows what is actually on each disk, so "my 64 GB stick says 4 GB" is
-// answered on screen rather than by someone knowing to run diskpart.
-async function loadDisks() {
-  const box = $("disks");
-  let data;
-  try { data = await api("/api/disks"); }
-  catch (e) { box.replaceChildren(el("div", "empty", "Could not read disks: " + e.message)); return; }
-  box.replaceChildren();
-  for (const d of data.disks || []) {
-    const row = el("div", "row");
-    const grow = el("div", "grow");
-    grow.append(el("div", "title", `${d.model || d.id} — ${d.size_gib} GiB`));
-    const bits = [d.id];
-    if (d.scheme) bits.push(d.scheme.toUpperCase());
-    for (const p of d.parts || []) {
-      bits.push(`${p.size_gb.toFixed(1)} GB ${p.label || p.type}${p.mounts && p.mounts.length ? " (" + p.mounts.join(",") + ")" : ""}`);
-    }
-    if (d.unused_gb > 1) bits.push(`${d.unused_gb.toFixed(1)} GB unpartitioned`);
-    grow.append(el("div", "sub", bits.join(" · ")));
-    for (const n of d.notes || []) {
-      const note = el("div", "lint", n);   // amber: something needs attention
-      grow.append(note);
-    }
-    row.append(grow);
-    if (d.system) row.append(el("span", "badge err", "system"));
-    else if (!d.flashable) row.append(el("span", "badge", "internal"));
-    // Erasing lives in Disk utility, one button for one action; this list
-    // only says what is on each disk.
-    box.append(row);
-  }
-  if (!box.children.length) box.append(el("div", "empty", "No disks found."));
-}
-
 function openPrepare(disk) {
   const opts = $("prepOpts"); opts.replaceChildren();
   const scheme = selectOpt("Partition table", [["gpt", "GPT (modern, recommended)"], ["mbr", "MBR (very old systems)"]]);
@@ -1265,14 +1277,14 @@ function openPrepare(disk) {
       // The dialog closes at once and the work happens in a job, so say where
       // it went: with no word here, a failed erase looked like nothing at all.
       showOk(`Erasing ${disk.model || disk.id} — approve the password prompt if one appears; progress and any error are in Activity.`);
-      setTimeout(loadDisks, 4000);
     }).catch(e => showErr(e.message));
     $("prepDialog").close();
   };
   $("prepDialog").showModal(); input.focus();
 }
 
-// checkUpdate runs automatically on load, and on demand from the header.
+// checkUpdate runs automatically on load, and on demand when the version in
+// the toolbar is pressed.
 //
 // The banner only ever appeared when an update existed, which left no way to
 // ask and no way to see what you were running — "am I current, or did the
@@ -1284,16 +1296,17 @@ function openPrepare(disk) {
 // it, while an explicit one says so, because someone who just pressed a
 // button is owed a reply.
 async function checkUpdate(explicit) {
-  const btn = $("updBtn"), ver = $("ver");
-  if (explicit) { btn.disabled = true; btn.textContent = "Checking…"; }
+  const ver = $("ver");
+  const was = ver.textContent;
+  if (explicit) { ver.disabled = true; ver.textContent = "Checking…"; }
   let u;
   try {
     u = await api("/api/update" + (explicit ? "?force=1" : ""));
   } catch (e) {
-    if (explicit) showErr("Could not check for updates: " + e.message);
+    if (explicit) { ver.textContent = was; showErr("Could not check for updates: " + e.message); }
     return;
   } finally {
-    if (explicit) { btn.disabled = false; btn.textContent = "Check for updates"; }
+    if (explicit) ver.disabled = false;
   }
   if (!u) return;
   ver.textContent = u.current || "";
@@ -1301,11 +1314,11 @@ async function checkUpdate(explicit) {
   if (u.unavailable) {
     // Never leave an earlier "up to date" standing when this check failed.
     ver.textContent = `${u.current} · couldn't check for updates`;
-    ver.title = u.unavailable;
+    ver.title = u.unavailable + " — press to try again";
     if (explicit) showErr("Could not check for updates: " + u.unavailable);
     return;
   }
-  ver.title = "";
+  ver.title = "Check for a newer release now";
   if (!u.newer) {
     ver.textContent = `${u.current} · up to date`;
     if (explicit) showOk(`You are running the newest release (${u.current}).`);
@@ -1403,18 +1416,15 @@ function artifactRow(a) {
   grow.title = a.path;
   row.append(grow);
   if (payload) {
-    title.title = "Open to see what's in it";
+    // The row is its name and the one thing most often done with it. Open,
+    // Save a copy… and the rest were here and again in the dialog the name
+    // opens; they are only in the dialog now.
+    title.title = "Open to see what's in it, save a copy, edit or delete it";
     title.onclick = () => openPayload(a);
-    const open = el("button", "", "Open");
-    open.title = "See what's in it, edit or delete it";
-    open.onclick = () => openPayload(a);
-    const copy = el("button", "", "Save a copy…");
-    copy.title = "Save a copy to a folder — a backup, a share, or a stick you don't want erased";
-    copy.onclick = () => savePayloadCopy(a, copy);
-    const write = el("button", "primary", "Write to USB…");
-    write.title = "Erase a USB drive and put this payload on it";
+    const write = el("button", "primary", "Write to stick…");
+    write.title = "Erase a USB stick and put this payload on it";
     write.onclick = () => writePayload(a);
-    row.append(open, copy, write);
+    row.append(write);
     return row;
   }
   const del = el("button", "", "Delete");
@@ -1471,7 +1481,7 @@ function openPayload(a) {
   $("pdCopy").onclick = () => savePayloadCopy(a, $("pdCopy"));
   $("pdWrite").onclick = () => { payloadDialog.close(); writePayload(a); };
   $("pdDelete").onclick = async () => {
-    if (!confirm(`Delete the payload ${label}? Copies already saved or written to a USB drive are not touched.`)) return;
+    if (!confirm(`Delete the payload ${label}? Copies already saved or written to a stick are not touched.`)) return;
     try {
       await api("/api/artifacts/delete", { path: a.path });
       payloadDialog.close(); showOk("Deleted " + label);
@@ -1497,17 +1507,17 @@ async function savePayloadCopy(a, btn) {
   finally { btn.textContent = was; btn.disabled = false; }
 }
 
-// writePayload erases a USB drive and puts the payload on it, through the same
+// writePayload erases a USB stick and puts the payload on it, through the same
 // armed, verified write every stick gets.
 async function writePayload(a) {
   await loadState();
   const usable = state.devices.filter(d => d.flashable);
-  if (!usable.length) { showErr("No USB drive is plugged in — plug one in and Rescan."); return; }
+  if (!usable.length) { showErr("No USB stick is plugged in — plug one in and try again."); return; }
   const label = artifactLabel(a);
-  openArm(usable, `Write ${label} to a USB drive`,
-    "This <b>permanently erases</b> the drive. It will hold this payload and nothing else, " +
-    "then be read back to check the copy.<br><br>To keep what is already on a drive, " +
-    "use <b>Save a copy…</b> and choose the drive instead.",
+  openArm(usable, `Write ${label} to a stick`,
+    "This <b>permanently erases</b> the stick. It will hold this payload and nothing else, " +
+    "then be read back to check the copy.<br><br>To keep what is already on a stick, " +
+    "use <b>Save a copy…</b> and choose the stick instead.",
     (dev, confirm) => api("/api/payloads/write", { path: a.path, device_id: dev.id, confirm })
       .catch(e => showErr(e.message)));
 }
@@ -1528,10 +1538,9 @@ function renderPayloadForm() {
   const cat = state.catalog || [];
   const win = cat.find(o => o.id === "windows-11") || cat.find(o => o.family === "windows");
   if (!win) return;
-  const nm = textOpt("Name", "e.g. Acme Dental front desk", "What it's called in the list and on the USB drive. Leave empty to name it by what's in it.");
+  const nm = textOpt("Name", "e.g. Acme Dental front desk", "What it's called in the list and on the stick. Leave empty to name it by what's in it.");
   const ap = appsOpt("payload");
   const df = modelPickerOpt(win, "payload");
-  df.wrap.querySelector("label").textContent = "Drivers for these computer models";
   const db = selectOpt("Remove bloatware", [["off", "Keep everything"], ["standard", "Standard"], ["aggressive", "Aggressive"]]);
   $("payloadOpts").replaceChildren(nm.wrap, ap.wrap, df.wrap, db.wrap);
   const nameInput = nm.wrap.querySelector("input");
@@ -1595,12 +1604,9 @@ function editPayload(a) {
 const DOORS = {
   install:  { legend: "Install", name: "Install an operating system" },
   payload:  { legend: "Payload", name: "Payload" },
-  clone:    { legend: "Copy",    name: "Copy a drive" },
-  disks:    { legend: "Disks",   name: "Disk utility" },
-  // MASTER on the key, "Workspaces and sources" in its tooltip and its guide:
-  // a legend wants to be one word, and the long name is still there for
-  // anyone who hovers or asks for the guide.
-  advanced: { legend: "Master",  name: "Workspaces and sources" },
+  // Copy a drive and Disk utility were a key each, and both were "pick a
+  // disk, be told what it is, then act". Copying is one of the acts now.
+  disks:    { legend: "Disks",   name: "Look at, copy or erase a disk" },
 };
 const FIRST_DOOR = "install";
 let door = FIRST_DOOR;
@@ -1617,7 +1623,14 @@ function buildKeys() {
   }
 }
 
+// Screens that have been folded into another, so a reload on one -- or a
+// door remembered from before -- lands where its work went.
+// Master's panels went to Settings, which is not a screen; a reload on it
+// lands on Install, where most of what it showed is used.
+const MOVED_DOORS = { clone: "disks", advanced: "install" };
+
 function setDoor(name) {
+  name = MOVED_DOORS[name] || name;
   if (!DOORS[name]) name = FIRST_DOOR;
   door = name;
   document.body.setAttribute("data-door", name);
@@ -1629,15 +1642,13 @@ function setDoor(name) {
   }
   // Coming back to a door should show what is true now, not what was true
   // when it was last open — a stick may have been pulled out since.
-  if (name === "clone" || name === "disks") {
+  if (name === "disks") {
     // A disk's identity is cached so re-renders do not re-inspect it. Opening
     // the door is exactly when to throw that away: the whole point of the card
     // is that it describes the disk in front of you now.
     idCache.clear();
-    loadDisks();
+    renderDisks();
   }
-  if (name === "clone") renderCopy();
-  if (name === "disks") renderDiskUtil();
   try { localStorage.setItem("door", name); } catch (e) {}
   window.scrollTo(0, 0);
   // The first time a screen opens, its guide. A guide opening screens to point
@@ -1658,10 +1669,10 @@ function restoreDoor() {
   setDoor(start);
 }
 
-// ── Copy a drive, and Disk utility ────────────────────────────────────────
-// Both are the same shape: pick a disk, be told what it is, then act. The
-// telling is the point — see idCard.
-let copySrc = "", copyDsts = new Set(), duDisk = "";
+// ── Disks ───────────────────────────────────────────────────────────────────
+// Pick a disk, be told what it is, then act. The telling is the point — see
+// idCard.
+let duDisk = "", copying = false, copyDsts = new Set();
 const idCache = new Map();   // device id -> identity, so re-renders do not re-fetch
 
 async function identify(id) {
@@ -1690,39 +1701,76 @@ function idCard(v, role) {
   return card;
 }
 
-// disksForCopy is every disk the server knows, newest scan.
+// allDisks is every disk the server knows, newest scan.
 function allDisks() { return (state.devices || []); }
 
-async function renderCopy() {
-  const sel = $("srcPick"), list = $("dstList");
-  const disks = allDisks();
+// renderDisks is the whole Disks screen: one picker, the card for the disk
+// picked, and what can be done to it. Copy a drive and Disk utility used to be
+// a screen each, both "pick a disk, be told what it is, then act", and the
+// Install and Disks screens each listed every disk again underneath. Now the
+// picker is the one place a disk is chosen, and copying is one of the things
+// you can do with the disk you chose.
+async function renderDisks() {
+  const sel = $("duPick"), disks = allDisks();
   if (!disks.length) {
     sel.replaceChildren(new Option("No disks found", ""));
-    list.replaceChildren(el("div", "empty", "Nothing to copy onto."));
+    duDisk = ""; copying = false;
+  } else {
+    sel.replaceChildren(new Option("Choose a disk…", ""));
+    for (const d of disks) sel.append(new Option(diskLabel(d), d.id));
+    if (duDisk && disks.some(d => d.id === duDisk)) sel.value = duDisk;
+    else { duDisk = ""; copying = false; }
+  }
+  sel.onchange = () => {
+    duDisk = sel.value;
+    copyDsts.delete(duDisk);
+    copying = false;
+    renderDisks();
+  };
+
+  const card = $("duCard"), acts = $("duActs"), part = $("copyPart");
+  const d = disks.find(x => x.id === duDisk);
+  if (!d) {
+    card.replaceChildren();
+    acts.hidden = true; part.hidden = true;
     return;
   }
-  // Source: anything at all. Reading harms nothing, and the disk somebody most
-  // wants to copy is often the one they are running from.
-  sel.replaceChildren(new Option("Choose a disk…", ""));
-  for (const d of disks) sel.append(new Option(diskLabel(d), d.id));
-  if (copySrc && disks.some(d => d.id === copySrc)) sel.value = copySrc; else copySrc = "";
-  sel.onchange = () => { copySrc = sel.value; copyDsts.delete(copySrc); renderCopy(); };
+  let v;
+  try { v = await identify(duDisk); }
+  catch (e) { showErr(e.message); return; }
+  if (duDisk !== v.device_id) return; // another disk was picked meanwhile
+  card.replaceChildren(idCard(v, copying ? "source" : "target"));
 
-  $("srcCard").replaceChildren();
-  if (copySrc) identify(copySrc).then(v => {
-    if (copySrc === v.device_id) $("srcCard").replaceChildren(idCard(v, "source"));
-  }).catch(e => showErr(e.message));
+  // What can be done to it. Copying reads it, so any disk can be the source,
+  // the one this computer runs from included. Erasing needs a disk DSKY may
+  // write; capturing reads a stick into the library, as it did from the list
+  // of devices it used to sit on.
+  acts.hidden = false;
+  const copyBtn = $("duCopy"), prep = $("duPrep"), cap = $("duCap");
+  copyBtn.setAttribute("aria-pressed", copying ? "true" : "false");
+  copyBtn.classList.toggle("primary", copying);
+  copyBtn.onclick = () => { copying = !copying; if (!copying) copyDsts.clear(); renderDisks(); };
+  prep.hidden = !v.writable;
+  prep.onclick = () => openPrepare(d);
+  cap.hidden = !d.flashable;
+  cap.onclick = () => armCapture(d);
 
-  // Destinations: everything writable except the source.
+  part.hidden = !copying;
+  if (copying) await renderCopyTargets(disks);
+}
+
+// renderCopyTargets is the "onto" half of a copy: every disk but the source
+// and the one this computer runs from, each ticked one described, and the
+// sizes to type.
+async function renderCopyTargets(disks) {
+  const list = $("dstList");
   list.replaceChildren();
-  const targets = disks.filter(d => d.id !== copySrc && !d.system);
-  if (!targets.length) {
-    list.append(el("div", "empty", copySrc ? "No other disk to copy onto." : "Pick a source first."));
-  }
+  const targets = disks.filter(d => d.id !== duDisk && !d.system);
+  if (!targets.length) list.append(el("div", "empty", "No other disk to copy onto."));
   for (const d of targets) {
     const row = el("label", "dstrow");
     const cb = el("input"); cb.type = "checkbox"; cb.checked = copyDsts.has(d.id);
-    cb.onchange = () => { cb.checked ? copyDsts.add(d.id) : copyDsts.delete(d.id); renderCopy(); };
+    cb.onchange = () => { cb.checked ? copyDsts.add(d.id) : copyDsts.delete(d.id); renderDisks(); };
     const g = el("div", "grow");
     g.append(el("div", "", diskLabel(d)), el("div", "sub", d.id + (d.flashable ? "" : " · fixed disk")));
     row.append(cb, g, el("span", "badge" + (d.flashable ? " ok" : " warn"), d.flashable ? "usb" : d.bus || "fixed"));
@@ -1783,35 +1831,11 @@ function diskLabel(d) {
 async function startCopy(confirm) {
   const targets = [...copyDsts];
   try {
-    await api("/api/duplicate", { source_id: copySrc, target_ids: targets, confirm });
+    await api("/api/duplicate", { source_id: duDisk, target_ids: targets, confirm });
     copyDsts.clear();
+    copying = false;
     $("copyConfirm").value = "";
-    renderCopy();
-  } catch (e) { showErr(e.message); }
-}
-
-async function renderDiskUtil() {
-  const sel = $("duPick"), disks = allDisks();
-  if (!disks.length) { sel.replaceChildren(new Option("No disks found", "")); return; }
-  sel.replaceChildren(new Option("Choose a disk…", ""));
-  for (const d of disks) sel.append(new Option(diskLabel(d), d.id));
-  if (duDisk && disks.some(d => d.id === duDisk)) sel.value = duDisk; else duDisk = "";
-  sel.onchange = () => { duDisk = sel.value; renderDiskUtil(); };
-
-  const card = $("duCard"); card.replaceChildren();
-  if (!duDisk) return;
-  try {
-    const v = await identify(duDisk);
-    if (duDisk !== v.device_id) return;
-    card.append(idCard(v, "target"));
-    const d = disks.find(x => x.id === duDisk);
-    if (v.writable && d) {
-      const row = el("div", "arm");
-      const b = el("button", "danger", "Erase and prepare…");
-      b.onclick = () => openPrepare(d);
-      row.append(el("label", "", "Give it one full-size volume this computer can read:"), b);
-      card.append(row);
-    }
+    renderDisks();
   } catch (e) { showErr(e.message); }
 }
 
@@ -1838,8 +1862,18 @@ function renderCatalog() {
   }
   sel.disabled = false;
   sel.append(new Option("Choose an OS…", ""));
+  // What is already in the library comes first, under its own heading: it is
+  // what gets installed most, it needs no download, and it is where the
+  // Downloaded panel's own Install… buttons used to send people.
+  const have = list.filter(o => o.downloaded);
+  if (have.length) {
+    const g = el("optgroup");
+    g.label = "Already downloaded";
+    for (const os of have) g.append(new Option(os.name + (os.version ? " — " + os.version : ""), os.id));
+    sel.append(g);
+  }
   for (const [key, heading] of catalogGroups) {
-    const inGroup = list.filter(o => (o.category || "desktop") === key);
+    const inGroup = list.filter(o => !o.downloaded && (o.category || "desktop") === key);
     if (!inGroup.length) continue;
     const g = el("optgroup");
     g.label = heading;
@@ -1881,8 +1915,7 @@ function render() {
 
   // ── OS catalog (Quick Install) ──────────────────────────────────────────
   renderCatalog();
-  if (door === "clone") renderCopy();
-  if (door === "disks") renderDiskUtil();
+  if (door === "disks") renderDisks();
 
   // ── Workspace panel ─────────────────────────────────────────────────────
   const wp = $("wsPanel"); wp.replaceChildren();
@@ -1932,7 +1965,7 @@ function render() {
   $("downloadsTotal").textContent = downloads.length
     ? `${downloads.length} OS image${downloads.length === 1 ? "" : "s"} · ${mb(downloads.reduce((n, d) => n + d.size_mb, 0))}` : "";
   if (!downloads.length)
-    dls.append(el("div", "empty", "OS images you download show up here. Installing one again uses the copy here instead of downloading it."));
+    dls.append(el("div", "empty", "OS images you download are kept here, so installing one again needs no download. Delete one to free the space."));
   for (const d of downloads) {
     const row = el("div", "row");
     const grow = el("div", "grow");
@@ -1948,99 +1981,73 @@ function render() {
       try { const r = await api("/api/downloads/delete", { os_id: d.os_id }); showOk(`Deleted ${d.name}, freeing ${mb(r.freed_mb)}`); loadState(); }
       catch (e) { showErr(e.message); }
     };
-    const os = (state.catalog || []).find(o => o.id === d.os_id);
-    const inst = el("button", "primary", "Install…");
-    inst.onclick = () => os && openInstall(os);
-    inst.disabled = !os;
-    row.append(del, inst);
+    // Installing from here was a second Install… for what the OS picker
+    // already offers, at the top under "Already downloaded". This list is
+    // for seeing what the library holds and freeing the space.
+    row.append(del);
     dls.append(row);
   }
 
+  // Saved setups: a recipe and the images built from it are one thing to
+  // the person writing sticks ("Acme front desk"), so they are one row. It
+  // used to be a recipe row with Write to stick… and, under Built images,
+  // another row for its image with another Write to stick…, and nothing to
+  // say whether the image was still what the recipe asked for.
+  //
+  // Writing goes through the recipe, which builds only if it has to: the
+  // build is keyed on the recipe file, the workspace and the sources, so an
+  // image still matching them is used as it is ("cached" in Activity) and
+  // one that does not is built again first. The row says when it was last
+  // built and leaves the question of whether that is current to the key,
+  // which cannot be wrong about it.
+  //
+  // Images that belong to no recipe -- set up straight from the Install
+  // dialog, or captured from a stick -- are rows of their own, written as
+  // they are.
+  const images = state.artifacts.filter(a => a.kind !== "payload");
+  const payloads = state.artifacts.filter(a => a.kind === "payload");
+  const byRecipe = new Map();
+  for (const a of images) {
+    if (!state.recipes.some(rc => rc.id === a.recipe_id)) continue;
+    if (!byRecipe.has(a.recipe_id)) byRecipe.set(a.recipe_id, []);
+    byRecipe.get(a.recipe_id).push(a);
+  }
+  for (const list of byRecipe.values()) list.sort((x, y) => y.created.localeCompare(x.created));
+  const loose = images.filter(a => !byRecipe.has(a.recipe_id));
+
   const rr = $("recipes"); rr.replaceChildren();
   $("recipesWhere").textContent = state.has_workspace ? "in " + (state.org || "this workspace") : "";
-  if (!state.recipes.length)
-    rr.append(el("div", "empty", "Saved install settings show up here. Pick an OS above, choose its options, then Save as recipe."));
+  if (!state.recipes.length && !loose.length)
+    rr.append(el("div", "empty", "Setups you save show up here, to write to any number of sticks. Pick an OS, choose its options, then Save as recipe — or Set up image to build one without saving it."));
   for (const rc of state.recipes) {
     const row = el("div", "row");
     const grow = el("div", "grow");
     const osName = ((state.catalog || []).find(o => o.id === rc.source) || {}).name || rc.source || rc.type || "";
     const title = el("div", "title link", rc.name || rc.id);
-    title.title = "Open to see what's in it";
+    title.title = "Open to see what's in it, set it up, build a payload, edit or delete it";
     title.onclick = () => openRecipe(rc.id);
     grow.append(title, el("div", "sub", osName + " · " + rc.id));
     row.append(grow);
-    const open = el("button", "", "Open");
-    open.title = "See what's in it, edit or delete it";
-    open.onclick = () => openRecipe(rc.id);
-    row.append(open);
-    const build = el("button", "", "Set up image");
-    build.title = "Download what is missing and build the image, to write later";
-    build.onclick = () => api("/api/build", { recipe: rc.id }).catch(e => showErr(e.message));
-    row.append(build);
+    const built = byRecipe.get(rc.id);
+    row.append(built
+      ? el("span", "badge ok", "built " + built[0].created.slice(0, 10))
+      : el("span", "badge", "not built yet"));
     const flash = el("button", "primary", "Write to stick…");
+    flash.title = built
+      ? "Erase a stick and write this setup. Its image is used if it still matches the recipe, and built again first if not."
+      : "Erase a stick and write this setup. Its image is built first.";
     flash.onclick = () => armFlash({ recipe: rc.id, label: rc.name || rc.id });
     row.append(flash);
     rr.append(row);
     for (const l of rc.lint || [])
       rr.append(el("div", "lint" + (l.startsWith("error") ? " error" : ""), l));
   }
-
-  const dd = $("devices"); dd.replaceChildren();
-  if (!state.devices.length) dd.append(el("div", "empty", "No disks found."));
-  for (const d of state.devices) {
-    const row = el("div", "row");
-    const grow = el("div", "grow");
-    grow.append(el("div", "title", d.model || d.id),
-      el("div", "sub", d.id + " · " + d.size_gib + " GiB · " + d.bus +
-        (d.mounts && d.mounts.length ? " · " + d.mounts.join(", ") : "")));
-    row.append(grow);
-    if (d.system) row.append(el("span", "badge err", "SYSTEM"));
-    else if (d.flashable) row.append(el("span", "badge ok", "usb"));
-    else row.append(el("span", "badge", "not usb"));
-    if (d.flashable) {
-      const cap = el("button", "", "Capture");
-      cap.onclick = () => armCapture(d);
-      row.append(cap);
-    }
-    dd.append(row);
-  }
-
-  // Images and payloads are different things done with different verbs --
-  // one is written to a stick, the other carried to a machine -- so each is
-  // listed on the screen for its own job.
-  const images = state.artifacts.filter(a => a.kind !== "payload");
-  const payloads = state.artifacts.filter(a => a.kind === "payload");
-  const aa = $("artifacts"); aa.replaceChildren();
-  if (!images.length)
-    aa.append(el("div", "empty", "Images you set up show up here, to write to any number of sticks without building them again."));
-  for (const a of images) aa.append(artifactRow(a));
+  for (const a of loose) rr.append(artifactRow(a));
   const pp = $("payloads"); pp.replaceChildren();
   if (!payloads.length)
     pp.append(el("div", "empty", "Payloads you build show up here. Copy one to a stick or a share, then double-click it on the machine."));
   for (const a of payloads) pp.append(artifactRow(a));
 
-  // Recipes saved for installing Windows carry the programs and drivers a
-  // payload needs; the server says which ones the agent can carry out alone.
-  const pr = $("payloadRecipes"); pr.replaceChildren();
-  const payloadable = state.recipes.filter(rc => rc.payload);
-  if (!payloadable.length)
-    pr.append(el("div", "empty", "A Windows recipe saved on the Install screen can be built as a payload here too."));
-  for (const rc of payloadable) {
-    const row = el("div", "row");
-    const grow = el("div", "grow");
-    const title = el("div", "title link", rc.name || rc.id);
-    title.title = "Open to see what's in it";
-    title.onclick = () => openRecipe(rc.id);
-    grow.append(title, el("div", "sub", rc.id));
-    row.append(grow);
-    const build = el("button", "primary", "Build payload");
-    build.title = "Build this recipe's programs and drivers, without the operating system";
-    build.onclick = () => api("/api/build", { recipe: rc.id, payload: true })
-      .then(() => showOk("Building the payload for " + (rc.name || rc.id) + ". It shows up under Built payloads."))
-      .catch(e => showErr(e.message));
-    row.append(build);
-    pr.append(row);
-  }
   renderPayloadForm();
 
   const ss = $("sources"); ss.replaceChildren();
@@ -2109,7 +2116,7 @@ async function armFlash(what) {
   // must be in the list, and one pulled out must not.
   await loadState();
   const usable = state.devices.filter(d => d.flashable);
-  if (!usable.length) { showErr("No USB stick is plugged in — plug one in and Rescan."); return; }
+  if (!usable.length) { showErr("No USB stick is plugged in — plug one in and try again."); return; }
   openArm(usable, `Write ${what.label || what.recipe || "image"} to a stick`,
     "This <b>permanently erases</b> everything on the device, then writes and verifies the media." +
       (what.note ? "<br><br>" + what.note : ""),
@@ -2204,9 +2211,17 @@ const MODEL_VENDORS = [
   { id: "surface", name: "Surface" }, { id: "asus", name: "ASUS" }, { id: "nuc", name: "Intel NUC" },
   { id: "samsung", name: "Samsung" },
 ];
-function modelPickerOpt(os, carrier = "stick") {
+// With thisPC, the computer DSKY is running on is offered as one more pick, a
+// suggestion above the chips. It used to be a checkbox of its own, "Include
+// drivers for this computer", beside this picker: two controls for one
+// question, and the checkbox the more prominent although the PC running DSKY
+// is the technician's, and seldom the one the stick is for. Picked, it is
+// a chip like any model, and what it does is unchanged: the build looks up
+// this machine's own devices.
+function modelPickerOpt(os, carrier = "stick", opts = {}) {
   const wrap = el("div", "opt modelpick");
-  wrap.append(el("label", null, "Also stage drivers for other computer models"));
+  wrap.append(el("label", null, "Drivers for these computer models"));
+  const sets = el("div", "sets");
   const chips = el("div", "chips");
   const box = el("input"); box.type = "search"; box.autocomplete = "off";
   box.setAttribute("aria-label", "Search computer models to stage drivers for");
@@ -2215,14 +2230,32 @@ function modelPickerOpt(os, carrier = "stick") {
   const results = el("div", "modelresults"); results.hidden = true;
   results.setAttribute("role", "listbox");
   const note = el("div", "sub"); note.style.color = "var(--dim)"; note.style.marginTop = "4px";
-  note.textContent = `For machines you are not sitting at. One ${carrier} can carry packs for several models.`;
-  wrap.append(chips, box, results, note);
+  note.textContent = `For the machines this is for. One ${carrier} can carry packs for several models.`;
+  wrap.append(sets, chips, box, results, note);
 
   const picked = new Map(); // spec -> label
   let all = null, active = -1, shown = [];
+  // This computer, when offered: its name once detection answers, and
+  // whether it has been picked.
+  let here = null, hereOn = false;
 
   const drawChips = () => {
     chips.replaceChildren();
+    sets.replaceChildren();
+    if (here && !hereOn) {
+      const b = el("button", "setbtn", "+ This computer" + (here.name ? ": " + here.name : ""));
+      b.type = "button";
+      b.title = here.detail;
+      b.onclick = () => { hereOn = true; drawChips(); };
+      sets.append(b);
+    }
+    if (hereOn) {
+      const c = el("span", "chip", "This computer" + (here && here.name ? ": " + here.name : ""));
+      c.title = here ? here.detail : "";
+      const x = el("button", "", "✕"); x.type = "button"; x.title = "Remove this computer";
+      x.onclick = () => { hereOn = false; drawChips(); };
+      c.append(x); chips.append(c);
+    }
     for (const [spec, label] of picked) {
       const c = el("span", "chip", label);
       const x = el("button", "", "✕"); x.type = "button"; x.title = "Remove " + label;
@@ -2382,7 +2415,20 @@ function modelPickerOpt(os, carrier = "stick") {
     }
     drawChips();
   };
-  return { wrap, get: () => [...picked.keys()].join(","), set };
+  if (opts.thisPC) {
+    api("/api/detect").then(h => {
+      const name = ((h.vendor || "") + " " + (h.model || "")).trim();
+      const n = (h.lookup_ids || []).length;
+      let detail = n === 1 ? "1 device to look up" : `${n} devices to look up`;
+      if (h.feed) detail += `, plus ${h.feed_name || h.feed}'s drivers for this model`;
+      here = { name, detail };
+      drawChips();
+    }).catch(() => { /* no suggestion; the models are all still there */ });
+  }
+  return {
+    wrap, get: () => [...picked.keys()].join(","), set,
+    thisPC: () => hereOn, setThisPC: v => { hereOn = !!v; drawChips(); },
+  };
 }
 
 function checkOpt(label) {
@@ -2392,30 +2438,6 @@ function checkOpt(label) {
   wrap.append(cb, lb);
   return { wrap, get: () => cb.checked, set: v => { cb.checked = !!v; } };
 }
-// driverOpt is the hardware auto-detect toggle. The note under it fills in
-// from /api/detect so it names the machine and devices that will actually be
-// looked up, rather than promising drivers in the abstract.
-function driverOpt() {
-  const inner = checkOpt("Include drivers for this computer");
-  inner.wrap.style.margin = "0";
-  const note = el("div", "sub", "detecting this computer…");
-  note.style.color = "var(--dim)";
-  note.style.marginTop = "4px";
-  const wrap = el("div", "opt");
-  wrap.append(inner.wrap, note);
-  api("/api/detect").then(h => {
-    const bits = [];
-    const name = ((h.vendor || "") + " " + (h.model || "")).trim();
-    if (name) bits.push(name);
-    for (const g of h.gpus || []) bits.push(g.name);
-    const n = (h.lookup_ids || []).length;
-    let tail = n === 1 ? "1 device to look up" : `${n} devices to look up`;
-    if (h.feed) tail += `, plus ${h.feed_name || h.feed}'s drivers for this model`;
-    note.textContent = bits.join(" · ") + (bits.length ? " — " : "") + tail;
-  }).catch(e => { note.textContent = "Detection unavailable: " + e.message; });
-  return { wrap, get: inner.get };
-}
-
 // appsOpt is the program picker, built like the model picker: search, pick
 // from the results, picks shown as removable chips. Ninety checkboxes in a
 // collapsed section could not be scanned, and a checkbox list has nowhere to
@@ -2445,6 +2467,15 @@ function appsOpt(target = "windows", onChange = null) {
   results.setAttribute("role", "listbox");
   const note = el("div", "sub"); note.style.color = "var(--dim)"; note.style.marginTop = "4px";
   wrap.append(sets, chips, box, results, note);
+  // Your own installers are managed in Settings, but adding one is wanted
+  // here, at the moment a program turns out not to be in the list.
+  if (!linux) {
+    const add = el("button", "linkish addmine", "Add your own installer…");
+    add.type = "button";
+    add.title = "Add a .msi or .exe from this machine; it is carried along and needs no network";
+    add.onclick = () => addInstaller();
+    wrap.append(add);
+  }
 
   const picked = new Map(); // spec -> {label, labels, pending}
   let active = -1, shown = [];
@@ -2796,10 +2827,9 @@ function openInstall(os, edit) {
       "hands-off install, so without it the programs below have nowhere to " +
       "download from.");
     const wp = textOpt("Wi-Fi password", "leave blank if the network is open",
-      "Stored on the USB drive in clear text — a wireless profile has no other " +
+      "Stored on the stick in clear text — a wireless profile has no other " +
       "form for it. It is not saved in a recipe.", "password");
-    const dv = driverOpt();
-    const df = modelPickerOpt(os);
+    const df = modelPickerOpt(os, "stick", { thisPC: true });
     // The offline tick belongs to the program picker and means nothing
     // without it, so it appears when something is picked and goes away again
     // when the last program is removed.
@@ -2843,18 +2873,26 @@ function openInstall(os, edit) {
         keep.set(true);
       }
     }
-    opts.append(ed.wrap, am.wrap, au.wrap, aw.wrap, ne.wrap, db.wrap);
+    // What most installs change is in view; what few do waits under More
+    // options, so the dialog's first look is the decisions that matter. The
+    // account's name has a default nobody minds, "never expires" and the
+    // hardware-check bypass are for particular machines. Opened already when
+    // a recipe being edited has any of them set, so nothing set is hidden.
+    const more = el("details", "moreopts");
+    more.append(el("summary", null, "More options"), au.wrap, ne.wrap, bp.wrap);
+    more.open = !!(saved && (saved.admin_user || saved.password_never_expires || saved.bypass_requirement));
+    opts.append(ed.wrap, am.wrap, aw.wrap, db.wrap);
     if (keep) opts.append(keep.wrap);
-    opts.append(ws.wrap, wp.wrap, dv.wrap, df.wrap, ap.wrap, off.wrap);
+    opts.append(ws.wrap, wp.wrap, df.wrap, ap.wrap, off.wrap);
     opts.append(nm.wrap);
-    opts.append(bp.wrap);
     if (iso) opts.append(iso.wrap);
+    opts.append(more);
     showAccount();
     getOpts = () => ({
       edition: ed.get(), account_mode: am.get(), debloat: db.get(),
       admin_user: au.get(), admin_password: aw.get(), password_never_expires: ne.get(),
       wifi_ssid: ws.get(), wifi_password: wp.get(),
-      drivers: dv.get(), drivers_for: df.get(), apps: ap.get(), offline: off.get(), name_by_serial: nm.get(),
+      drivers: df.thisPC(), drivers_for: df.get(), apps: ap.get(), offline: off.get(), name_by_serial: nm.get(),
       bypass_requirement: bp.get(), iso: iso ? iso.get() : "", keep_drivers: keep ? keep.get() : false,
     });
   } else {
@@ -2941,6 +2979,16 @@ function openInstall(os, edit) {
   if (chosen()) input.focus();
 }
 
+// ── settings ────────────────────────────────────────────────────────────────
+const settingsDialog = $("settingsDialog");
+function openSettings() {
+  // What it lists is read fresh: an installer added from the program picker,
+  // or a download that finished, should be there the moment it opens.
+  loadMyApps();
+  loadState();
+  settingsDialog.showModal();
+}
+
 // ── recipe dialog ───────────────────────────────────────────────────────────
 // openRecipe shows what a recipe does in the install dialog's words, with its
 // file underneath for anything the dialog has no control for.
@@ -2957,6 +3005,29 @@ async function openRecipe(id) {
   $("rcPath").textContent = d.path;
   const facts = $("rcFacts"); facts.replaceChildren();
   for (const [k, v] of d.lines || []) facts.append(el("dt", null, k), el("dd", null, v));
+  // The images built from it, newest first. The row on the Install screen
+  // only says when the newest was built; this is where the older ones are
+  // seen and the space they take is given back.
+  const imgs = $("rcImages"); imgs.replaceChildren();
+  const built = state.artifacts
+    .filter(a => a.kind !== "payload" && a.recipe_id === d.id)
+    .sort((x, y) => y.created.localeCompare(x.created));
+  if (built.length) {
+    imgs.append(el("div", "rcimghead", built.length === 1 ? "Built image" : "Built images"));
+    for (const a of built) {
+      const row = el("div", "rcimg");
+      const when = el("span", "grow", "built " + a.created + " · " + a.size_mb + " MiB");
+      when.title = a.path;
+      const del = el("button", "", "Delete");
+      del.onclick = async () => {
+        if (!confirm(`Delete the image built ${a.created}? It can be built again from the recipe.`)) return;
+        try { await api("/api/artifacts/delete", { path: a.path }); row.remove(); loadState(); }
+        catch (e) { fail(e.message); }
+      };
+      row.append(when, del);
+      imgs.append(row);
+    }
+  }
   const ne = $("rcNotEditable");
   ne.hidden = !d.not_editable;
   ne.textContent = d.not_editable ? `Edit this one as a file: ${d.not_editable}.` : "";
@@ -2965,13 +3036,38 @@ async function openRecipe(id) {
   const wrap = $("rcFileWrap"), ta = $("rcFile");
   edit.hidden = !os;
   edit.onclick = () => { recipeDialog.close(); openInstall(os, { recipe: d }); };
-  // Editing the file is a last resort -- for a recipe this dialog cannot
-  // represent, or for somebody already in Advanced who wants the YAML. It is
-  // not the way to change a recipe that has an Edit button.
+  // Editing the file is for a recipe this dialog cannot represent, or for
+  // somebody who wants the YAML. It used to show only while the Master
+  // screen was open, which hid it from everybody who had not found that
+  // screen; it is offered always now, beside Edit rather than instead of it.
   wrap.hidden = true; saveFile.hidden = true;
-  fileBtn.hidden = !!os && door !== "advanced";
+  fileBtn.hidden = false;
+  // What can be made from it. Set up image builds the installer to write
+  // later; Build payload makes its programs and drivers into a payload, and
+  // only for a recipe the server says a payload can carry out. That button
+  // used to be a panel of its own on the Payload screen listing the same
+  // recipes again.
+  const rc = state.recipes.find(r => r.id === d.id);
+  const setup = $("rcSetup"), pay = $("rcPayload");
+  setup.hidden = false;
+  setup.onclick = () => {
+    recipeDialog.close();
+    api("/api/build", { recipe: d.id })
+      .then(() => showOk("Setting up the image for " + label + ". Progress is in Activity."))
+      .catch(e => showErr(e.message));
+  };
+  pay.hidden = !(rc && rc.payload);
+  pay.onclick = () => {
+    recipeDialog.close();
+    api("/api/build", { recipe: d.id, payload: true })
+      .then(() => showOk("Building the payload for " + label + ". It shows up under Built payloads."))
+      .catch(e => showErr(e.message));
+  };
   ta.value = d.yaml;
-  fileBtn.onclick = () => { wrap.hidden = false; fileBtn.hidden = true; edit.hidden = true; saveFile.hidden = false; ta.focus(); };
+  fileBtn.onclick = () => {
+    wrap.hidden = false; fileBtn.hidden = true; edit.hidden = true;
+    setup.hidden = true; pay.hidden = true; saveFile.hidden = false; ta.focus();
+  };
   saveFile.onclick = async () => {
     err.hidden = true;
     try { await api("/api/recipes/file", { id: d.id, yaml: ta.value }); recipeDialog.close(); showOk("Saved " + label); loadState(); }
@@ -2979,7 +3075,7 @@ async function openRecipe(id) {
   };
   $("rcDelete").onclick = async () => {
     err.hidden = true;
-    if (!confirm(`Delete the recipe ${label}? Its file is removed from the workspace. Images already built from it stay in Built images.`)) return;
+    if (!confirm(`Delete the recipe ${label}? Its file is removed from the workspace. Images already built from it stay in Saved setups, as images of their own.`)) return;
     try { await api("/api/recipes/delete", { id: d.id }); recipeDialog.close(); showOk("Deleted " + label); loadState(); }
     catch (e) { fail(e.message); }
   };
@@ -3538,6 +3634,9 @@ function upsertJob(ev) {
   // Which disk this run was about, and whether it ended badly. Both are read
   // when a disk is unplugged, to decide whether the record goes with it.
   if (ev.device) j.device = ev.device;
+  // A run that wrote a disk changed what it is, so the card describing it has
+  // to be read again rather than shown from before.
+  if (ev.final && ev.device) idCache.delete(ev.device);
   if (ev.final) j.failed = !!ev.error;
   setLamps(j, ev);
   if (ev.final && !j.final) {
@@ -3703,7 +3802,7 @@ const GUIDES = {
     {
       door: "install", target: onScreen("cmdkeys"),
       title: "Start here",
-      text: "DSKY does four jobs, one per key: install an operating system, put programs on a machine that already runs Windows, copy a drive, or look at a disk. The fifth holds saved settings. Press the one you came to do — they stay up, so changing your mind costs one press.",
+      text: "DSKY does three jobs, one per key: install an operating system, put programs on a machine that already runs Windows, or look at, copy and erase disks. Press the one you came to do — they stay up, so changing your mind costs one press. Settings, at the right, holds what you set up once: your workspace, your own installers, and the downloads kept on this computer.",
     },
     {
       door: "install", target: onScreen("jobsSec"), example: "activity",
@@ -3729,23 +3828,8 @@ const GUIDES = {
     },
     {
       door: "install", target: onScreen("recipesSec"),
-      title: "Recipes",
-      text: "Save the options you use often as a recipe, one per customer or type of machine, and use them again without choosing everything twice.",
-    },
-    {
-      door: "install", target: onScreen("imagesSec"),
-      title: "Built images",
-      text: "Images you've set up wait here. Write one to as many sticks as you like without building it again.",
-    },
-    {
-      door: "install", target: onScreen("devicesSec"),
-      title: "Devices",
-      text: "The disks this computer can see. USB sticks are the ones installers are written to. The disk this computer runs from is marked SYSTEM and is never written.",
-    },
-    {
-      door: "install", target: onScreen("myappsSec"),
-      title: "Your installers",
-      text: "Add your own .msi or .exe files, such as an RMM agent, to install along with Windows. They go on the stick, so the machine doesn't need a network connection for them.",
+      title: "Saved setups",
+      text: "Save the options you use often as a recipe, one per customer or type of machine, and write it to as many sticks as you like. Each setup says when its image was last built; Write to stick… uses that image if it still matches the recipe and builds it again first if not. Click a name to set it up ahead of time, build a payload from it, edit or delete it.",
     },
   ],
   payload: [
@@ -3757,58 +3841,29 @@ const GUIDES = {
     {
       door: "payload", target: onScreen("payloadsSec"),
       title: "Built payloads",
-      text: "Each payload is one file. Write to USB… puts it on a drive to carry to the machine; Save a copy… keeps a backup in any folder. Open shows what's in it, and is where you edit or delete it. On the machine, double-click it and approve the prompt.",
+      text: "Each payload is one file. Write to stick… puts it on a stick to carry to the machine. Click its name to see what's in it, save a copy to any folder, edit or delete it. On the machine, double-click it and approve the prompt.",
     },
     {
-      door: "payload", target: onScreen("payloadRecipesSec"),
+      door: "payload", target: () => null,
       title: "From a recipe",
-      text: "A Windows recipe from the Install screen can be built as a payload too, with the same programs and drivers and no operating system.",
-    },
-  ],
-  clone: [
-    {
-      door: "clone", target: () => $("srcPick").closest(".pick"),
-      title: "Copy from",
-      text: "Choose the disk to copy. Any disk will do, including the one this computer runs from: reading a disk changes nothing on it.",
-    },
-    {
-      door: "clone", target: onScreen("dstList"),
-      title: "Copy onto",
-      text: "Tick every disk to copy onto. Each one is erased. Several can be written at once from a single read, and every copy is checked against the original.",
-    },
-    {
-      door: "clone", target: () => null, example: "disk",
-      title: "Confirm which disks",
-      text: "Each disk you tick is described so you can recognise it. Type its size (or each size, in order) to confirm, and only then can the copy start.",
+      text: "A Windows recipe saved on the Install screen can be built as a payload too, with the same programs and drivers and no operating system: open the recipe and press Build payload.",
     },
   ],
   disks: [
     {
       door: "disks", target: () => $("duPick").closest(".pick"),
-      title: "Look at a disk",
-      text: "Choose any disk to see what's on it: its partitions, their labels, and what's using them. Looking changes nothing.",
+      title: "Pick a disk",
+      text: "Choose any disk to see what's on it: its partitions, their labels, and what's using them. Looking changes nothing. The list follows sticks going in and coming out by itself.",
     },
     {
       door: "disks", target: () => null,
-      title: "Erase and prepare",
-      text: "If a disk can't be used here, such as a stick that held a Linux installer, Erase and prepare wipes it and makes one full-size volume this computer can read: exFAT, FAT32 or NTFS.",
+      title: "Then choose what to do",
+      text: "Copy it onto other disks writes it to every disk you tick, all from a single read, and checks each copy against the original. Any disk can be copied, including the one this computer runs from. Erase and prepare wipes a stick and gives it one volume this computer can read. Capture reads a stick into the library as an image to write again later.",
     },
     {
-      door: "disks", target: onScreen("disksSec"),
-      title: "Every disk",
-      text: "All the disks this computer can see. Refresh after plugging one in or taking one out.",
-    },
-  ],
-  advanced: [
-    {
-      door: "advanced", target: onScreen("wsSec"),
-      title: "Workspaces",
-      text: "A workspace is a folder of recipes for one organisation, such as a customer. Open or create one here; saving a recipe on the Install screen creates one if you have none. It's an ordinary folder, so you can back it up or keep it in git.",
-    },
-    {
-      door: "advanced", target: onScreen("sourcesSec"),
-      title: "Sources",
-      text: "What each recipe downloads, whether it's pinned to a checksum, and whether it's already downloaded.",
+      door: "disks", target: () => null, example: "disk",
+      title: "Confirm which disks",
+      text: "Each disk about to be erased is described so you can recognise it. Type its size (or each size, in order) to confirm, and only then does anything start. The disk this computer runs from is never written.",
     },
   ],
 };
@@ -4235,10 +4290,11 @@ async function pollDevices() {
   state.devices = devices;
   refreshMachineLamps();
   if (!first) clearJobsForRemovedDisks();
-  // Everything else that lists drives -- Devices, Disks, the copy
-  // destinations -- would otherwise sit there disagreeing with the lamp.
-  // Skipped on the first tick, which is only learning what was already there.
-  if (!first) { loadState(); loadDisks(); }
+  // Everything else that lists drives -- the disk picker, the copy
+  // destinations, the stick choosers -- would otherwise sit there disagreeing
+  // with the lamp. Skipped on the first tick, which is only learning what was
+  // already there.
+  if (!first) loadState();
 }
 
 // A finished run is a note about a stick. Take the stick out and the note has
@@ -4270,7 +4326,6 @@ restoreDoor();
 loadState();
 pollDevices();
 setInterval(pollDevices, 5000);
-loadDisks();
 loadMyApps();
 loadWorkspaceDefaults();
 streamEvents();
