@@ -135,6 +135,12 @@
     border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: inherit; margin: 8px 0 14px; }
   dialog .actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
   #recipeDialog { width: min(640px, calc(100vw - 32px)); min-width: 0; }
+  #rcImages { margin: 0 0 12px; font-size: 13px; }
+  #rcImages .rcimghead { color: var(--dim); font: 11px var(--mono); letter-spacing: 1px;
+    text-transform: uppercase; margin-bottom: 4px; }
+  #rcImages .rcimg { display: flex; align-items: center; gap: 10px; padding: 3px 0;
+    font-variant-numeric: tabular-nums; }
+  #rcImages .rcimg .grow { flex: 1; }
   #settingsDialog { width: min(760px, calc(100vw - 32px)); min-width: 0; max-height: calc(100vh - 48px); }
   #settingsDialog .body { display: flex; flex-direction: column; gap: 14px; }
   #settingsDialog .settingshead { display: flex; align-items: center; gap: 10px; }
@@ -964,8 +970,7 @@
     </section>
   </div>
   <div class="col" style="display:flex;flex-direction:column;gap:16px">
-    <section data-door="install" id="recipesSec"><h2>Recipes <span class="spacer"></span><span class="sub" id="recipesWhere"></span></h2><div class="rows" id="recipes"></div></section>
-    <section data-door="install" id="imagesSec"><h2>Built images <span class="spacer"></span><span class="sub">ready to write, no rebuilding</span></h2><div class="rows" id="artifacts"></div></section>
+    <section data-door="install" id="recipesSec"><h2>Saved setups <span class="spacer"></span><span class="sub" id="recipesWhere"></span></h2><div class="rows" id="recipes"></div></section>
     <section data-door="payload" id="payloadsSec"><h2>Built payloads <span class="spacer"></span><span class="sub">copy one to the machine and run it</span></h2><div class="rows" id="payloads"></div></section>
   </div>
 </main>
@@ -1025,6 +1030,7 @@
     <h3 id="rcTitle"></h3>
     <div class="sub" id="rcPath" style="color:var(--dim);font-size:12px;overflow-wrap:anywhere"></div>
     <dl class="facts" id="rcFacts"></dl>
+    <div id="rcImages"></div>
     <p id="rcNotEditable" hidden></p>
     <div id="rcFileWrap" hidden><textarea id="rcFile" spellcheck="false" aria-label="Recipe file"></textarea></div>
     <p id="rcErr" hidden style="color:var(--danger)"></p>
@@ -1107,7 +1113,7 @@
       <p id="instPrompt">Type the stick size (<b id="instSize"></b>) to arm:</p>
       <input id="instInput" autocomplete="off" aria-labelledby="instPrompt">
     </div>
-    <p id="instNoStick" hidden>No USB stick is plugged in. Set up the image now and write it from <b>Built images</b> when you have one.</p>
+    <p id="instNoStick" hidden>No USB stick is plugged in. Set up the image now and write it from <b>Saved setups</b> when you have one.</p>
     <div class="actions">
       <button onclick="installDialog.close()">Cancel</button>
       <button class="danger" id="instGo">Erase &amp; install</button>
@@ -1402,18 +1408,15 @@ function artifactRow(a) {
   grow.title = a.path;
   row.append(grow);
   if (payload) {
-    title.title = "Open to see what's in it";
+    // The row is its name and the one thing most often done with it. Open,
+    // Save a copy… and the rest were here and again in the dialog the name
+    // opens; they are only in the dialog now.
+    title.title = "Open to see what's in it, save a copy, edit or delete it";
     title.onclick = () => openPayload(a);
-    const open = el("button", "", "Open");
-    open.title = "See what's in it, edit or delete it";
-    open.onclick = () => openPayload(a);
-    const copy = el("button", "", "Save a copy…");
-    copy.title = "Save a copy to a folder — a backup, a share, or a stick you don't want erased";
-    copy.onclick = () => savePayloadCopy(a, copy);
     const write = el("button", "primary", "Write to stick…");
     write.title = "Erase a USB stick and put this payload on it";
     write.onclick = () => writePayload(a);
-    row.append(open, copy, write);
+    row.append(write);
     return row;
   }
   const del = el("button", "", "Delete");
@@ -1978,44 +1981,61 @@ function render() {
     dls.append(row);
   }
 
+  // Saved setups: a recipe and the images built from it are one thing to
+  // the person writing sticks ("Acme front desk"), so they are one row. It
+  // used to be a recipe row with Write to stick… and, under Built images,
+  // another row for its image with another Write to stick…, and nothing to
+  // say whether the image was still what the recipe asked for.
+  //
+  // Writing goes through the recipe, which builds only if it has to: the
+  // build is keyed on the recipe file, the workspace and the sources, so an
+  // image still matching them is used as it is ("cached" in Activity) and
+  // one that does not is built again first. The row says when it was last
+  // built and leaves the question of whether that is current to the key,
+  // which cannot be wrong about it.
+  //
+  // Images that belong to no recipe -- set up straight from the Install
+  // dialog, or captured from a stick -- are rows of their own, written as
+  // they are.
+  const images = state.artifacts.filter(a => a.kind !== "payload");
+  const payloads = state.artifacts.filter(a => a.kind === "payload");
+  const byRecipe = new Map();
+  for (const a of images) {
+    if (!state.recipes.some(rc => rc.id === a.recipe_id)) continue;
+    if (!byRecipe.has(a.recipe_id)) byRecipe.set(a.recipe_id, []);
+    byRecipe.get(a.recipe_id).push(a);
+  }
+  for (const list of byRecipe.values()) list.sort((x, y) => y.created.localeCompare(x.created));
+  const loose = images.filter(a => !byRecipe.has(a.recipe_id));
+
   const rr = $("recipes"); rr.replaceChildren();
   $("recipesWhere").textContent = state.has_workspace ? "in " + (state.org || "this workspace") : "";
-  if (!state.recipes.length)
-    rr.append(el("div", "empty", "Saved install settings show up here. Pick an OS above, choose its options, then Save as recipe."));
+  if (!state.recipes.length && !loose.length)
+    rr.append(el("div", "empty", "Setups you save show up here, to write to any number of sticks. Pick an OS, choose its options, then Save as recipe — or Set up image to build one without saving it."));
   for (const rc of state.recipes) {
     const row = el("div", "row");
     const grow = el("div", "grow");
     const osName = ((state.catalog || []).find(o => o.id === rc.source) || {}).name || rc.source || rc.type || "";
     const title = el("div", "title link", rc.name || rc.id);
-    title.title = "Open to see what's in it";
+    title.title = "Open to see what's in it, set it up, build a payload, edit or delete it";
     title.onclick = () => openRecipe(rc.id);
     grow.append(title, el("div", "sub", osName + " · " + rc.id));
     row.append(grow);
-    const open = el("button", "", "Open");
-    open.title = "See what's in it, edit or delete it";
-    open.onclick = () => openRecipe(rc.id);
-    row.append(open);
-    const build = el("button", "", "Set up image");
-    build.title = "Download what is missing and build the image, to write later";
-    build.onclick = () => api("/api/build", { recipe: rc.id }).catch(e => showErr(e.message));
-    row.append(build);
+    const built = byRecipe.get(rc.id);
+    row.append(built
+      ? el("span", "badge ok", "built " + built[0].created.slice(0, 10))
+      : el("span", "badge", "not built yet"));
     const flash = el("button", "primary", "Write to stick…");
+    flash.title = built
+      ? "Erase a stick and write this setup. Its image is used if it still matches the recipe, and built again first if not."
+      : "Erase a stick and write this setup. Its image is built first.";
     flash.onclick = () => armFlash({ recipe: rc.id, label: rc.name || rc.id });
     row.append(flash);
     rr.append(row);
     for (const l of rc.lint || [])
       rr.append(el("div", "lint" + (l.startsWith("error") ? " error" : ""), l));
   }
-
-  // Images and payloads are different things done with different verbs --
-  // one is written to a stick, the other carried to a machine -- so each is
-  // listed on the screen for its own job.
-  const images = state.artifacts.filter(a => a.kind !== "payload");
-  const payloads = state.artifacts.filter(a => a.kind === "payload");
-  const aa = $("artifacts"); aa.replaceChildren();
-  if (!images.length)
-    aa.append(el("div", "empty", "Images you set up show up here, to write to any number of sticks without building them again."));
-  for (const a of images) aa.append(artifactRow(a));
+  for (const a of loose) rr.append(artifactRow(a));
   const pp = $("payloads"); pp.replaceChildren();
   if (!payloads.length)
     pp.append(el("div", "empty", "Payloads you build show up here. Copy one to a stick or a share, then double-click it on the machine."));
@@ -2956,6 +2976,29 @@ async function openRecipe(id) {
   $("rcPath").textContent = d.path;
   const facts = $("rcFacts"); facts.replaceChildren();
   for (const [k, v] of d.lines || []) facts.append(el("dt", null, k), el("dd", null, v));
+  // The images built from it, newest first. The row on the Install screen
+  // only says when the newest was built; this is where the older ones are
+  // seen and the space they take is given back.
+  const imgs = $("rcImages"); imgs.replaceChildren();
+  const built = state.artifacts
+    .filter(a => a.kind !== "payload" && a.recipe_id === d.id)
+    .sort((x, y) => y.created.localeCompare(x.created));
+  if (built.length) {
+    imgs.append(el("div", "rcimghead", built.length === 1 ? "Built image" : "Built images"));
+    for (const a of built) {
+      const row = el("div", "rcimg");
+      const when = el("span", "grow", "built " + a.created + " · " + a.size_mb + " MiB");
+      when.title = a.path;
+      const del = el("button", "", "Delete");
+      del.onclick = async () => {
+        if (!confirm(`Delete the image built ${a.created}? It can be built again from the recipe.`)) return;
+        try { await api("/api/artifacts/delete", { path: a.path }); row.remove(); loadState(); }
+        catch (e) { fail(e.message); }
+      };
+      row.append(when, del);
+      imgs.append(row);
+    }
+  }
   const ne = $("rcNotEditable");
   ne.hidden = !d.not_editable;
   ne.textContent = d.not_editable ? `Edit this one as a file: ${d.not_editable}.` : "";
@@ -3003,7 +3046,7 @@ async function openRecipe(id) {
   };
   $("rcDelete").onclick = async () => {
     err.hidden = true;
-    if (!confirm(`Delete the recipe ${label}? Its file is removed from the workspace. Images already built from it stay in Built images.`)) return;
+    if (!confirm(`Delete the recipe ${label}? Its file is removed from the workspace. Images already built from it stay in Saved setups, as images of their own.`)) return;
     try { await api("/api/recipes/delete", { id: d.id }); recipeDialog.close(); showOk("Deleted " + label); loadState(); }
     catch (e) { fail(e.message); }
   };
@@ -3756,13 +3799,8 @@ const GUIDES = {
     },
     {
       door: "install", target: onScreen("recipesSec"),
-      title: "Recipes",
-      text: "Save the options you use often as a recipe, one per customer or type of machine, and use them again without choosing everything twice.",
-    },
-    {
-      door: "install", target: onScreen("imagesSec"),
-      title: "Built images",
-      text: "Images you've set up wait here. Write one to as many sticks as you like without building it again.",
+      title: "Saved setups",
+      text: "Save the options you use often as a recipe, one per customer or type of machine, and write it to as many sticks as you like. Each setup says when its image was last built; Write to stick… uses that image if it still matches the recipe and builds it again first if not. Click a name to set it up ahead of time, build a payload from it, edit or delete it.",
     },
   ],
   payload: [
@@ -3774,7 +3812,7 @@ const GUIDES = {
     {
       door: "payload", target: onScreen("payloadsSec"),
       title: "Built payloads",
-      text: "Each payload is one file. Write to stick… puts it on a stick to carry to the machine; Save a copy… keeps a backup in any folder. Open shows what's in it, and is where you edit or delete it. On the machine, double-click it and approve the prompt.",
+      text: "Each payload is one file. Write to stick… puts it on a stick to carry to the machine. Click its name to see what's in it, save a copy to any folder, edit or delete it. On the machine, double-click it and approve the prompt.",
     },
     {
       door: "payload", target: () => null,
