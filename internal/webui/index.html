@@ -185,6 +185,7 @@
   .picklabel { color: var(--dim); font-size: 12px; white-space: nowrap; }
   .dstlabel { padding: 6px 14px 0; }
   .diskacts { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px; }
+  .diskacts[hidden] { display: none; }
   .idcard { margin: 8px 14px 12px; padding: 11px 13px; border-radius: 7px;
     background: var(--bg); border: 1px solid var(--line); font-size: 13px; }
   .idcard.warn { border-color: var(--warn); }
@@ -270,7 +271,11 @@
   /* The Install dialog's stick-free actions, above the destructive one and
      visibly separate from it. */
   dialog .later { margin: 14px 0 4px; padding: 11px 0 2px; border-top: 1px solid var(--line); }
-  dialog .laterbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+  dialog .laterbtns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  dialog .moreopts { margin: 12px 0 4px; }
+  dialog .moreopts summary { cursor: pointer; color: var(--dim); font-size: 13px; padding: 4px 0; }
+  dialog .moreopts summary:hover { color: var(--text); }
+  dialog .moreopts[open] summary { margin-bottom: 4px; }
   dialog .later .sub { color: var(--dim); font-size: 12px; margin-top: 7px; }
   #instArm { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 4px; }
   /* ── First-run guide ───────────────────────────────────────────────────
@@ -1101,9 +1106,12 @@
     <div id="instOpts"></div>
     <div class="later">
       <div class="laterbtns">
-        <button id="instDownload" title="Save the OS download in the library, nothing else">Download only</button>
         <button id="instSetup" title="Download and build the installer with these options, to write to a stick later">Set up image</button>
         <button id="instSave" title="Keep these options as a named recipe, to set up or install again later">Save as recipe…</button>
+        <!-- Set up image downloads too, so this is seldom what is wanted: a
+             link rather than a third key of the same weight. It stays for
+             fetching ahead, when Microsoft's download limit is the worry. -->
+        <button id="instDownload" class="linkish" title="Save the OS download in the library, nothing else">Download only</button>
       </div>
       <div class="sub" id="instLaterNote">No stick needed for these.</div>
     </div>
@@ -1533,7 +1541,6 @@ function renderPayloadForm() {
   const nm = textOpt("Name", "e.g. Acme Dental front desk", "What it's called in the list and on the stick. Leave empty to name it by what's in it.");
   const ap = appsOpt("payload");
   const df = modelPickerOpt(win, "payload");
-  df.wrap.querySelector("label").textContent = "Drivers for these computer models";
   const db = selectOpt("Remove bloatware", [["off", "Keep everything"], ["standard", "Standard"], ["aggressive", "Aggressive"]]);
   $("payloadOpts").replaceChildren(nm.wrap, ap.wrap, df.wrap, db.wrap);
   const nameInput = nm.wrap.querySelector("input");
@@ -2204,9 +2211,17 @@ const MODEL_VENDORS = [
   { id: "surface", name: "Surface" }, { id: "asus", name: "ASUS" }, { id: "nuc", name: "Intel NUC" },
   { id: "samsung", name: "Samsung" },
 ];
-function modelPickerOpt(os, carrier = "stick") {
+// With thisPC, the computer DSKY is running on is offered as one more pick, a
+// suggestion above the chips. It used to be a checkbox of its own, "Include
+// drivers for this computer", beside this picker: two controls for one
+// question, and the checkbox the more prominent although the PC running DSKY
+// is the technician's, and seldom the one the stick is for. Picked, it is
+// a chip like any model, and what it does is unchanged: the build looks up
+// this machine's own devices.
+function modelPickerOpt(os, carrier = "stick", opts = {}) {
   const wrap = el("div", "opt modelpick");
-  wrap.append(el("label", null, "Also stage drivers for other computer models"));
+  wrap.append(el("label", null, "Drivers for these computer models"));
+  const sets = el("div", "sets");
   const chips = el("div", "chips");
   const box = el("input"); box.type = "search"; box.autocomplete = "off";
   box.setAttribute("aria-label", "Search computer models to stage drivers for");
@@ -2215,14 +2230,32 @@ function modelPickerOpt(os, carrier = "stick") {
   const results = el("div", "modelresults"); results.hidden = true;
   results.setAttribute("role", "listbox");
   const note = el("div", "sub"); note.style.color = "var(--dim)"; note.style.marginTop = "4px";
-  note.textContent = `For machines you are not sitting at. One ${carrier} can carry packs for several models.`;
-  wrap.append(chips, box, results, note);
+  note.textContent = `For the machines this is for. One ${carrier} can carry packs for several models.`;
+  wrap.append(sets, chips, box, results, note);
 
   const picked = new Map(); // spec -> label
   let all = null, active = -1, shown = [];
+  // This computer, when offered: its name once detection answers, and
+  // whether it has been picked.
+  let here = null, hereOn = false;
 
   const drawChips = () => {
     chips.replaceChildren();
+    sets.replaceChildren();
+    if (here && !hereOn) {
+      const b = el("button", "setbtn", "+ This computer" + (here.name ? ": " + here.name : ""));
+      b.type = "button";
+      b.title = here.detail;
+      b.onclick = () => { hereOn = true; drawChips(); };
+      sets.append(b);
+    }
+    if (hereOn) {
+      const c = el("span", "chip", "This computer" + (here && here.name ? ": " + here.name : ""));
+      c.title = here ? here.detail : "";
+      const x = el("button", "", "✕"); x.type = "button"; x.title = "Remove this computer";
+      x.onclick = () => { hereOn = false; drawChips(); };
+      c.append(x); chips.append(c);
+    }
     for (const [spec, label] of picked) {
       const c = el("span", "chip", label);
       const x = el("button", "", "✕"); x.type = "button"; x.title = "Remove " + label;
@@ -2382,7 +2415,20 @@ function modelPickerOpt(os, carrier = "stick") {
     }
     drawChips();
   };
-  return { wrap, get: () => [...picked.keys()].join(","), set };
+  if (opts.thisPC) {
+    api("/api/detect").then(h => {
+      const name = ((h.vendor || "") + " " + (h.model || "")).trim();
+      const n = (h.lookup_ids || []).length;
+      let detail = n === 1 ? "1 device to look up" : `${n} devices to look up`;
+      if (h.feed) detail += `, plus ${h.feed_name || h.feed}'s drivers for this model`;
+      here = { name, detail };
+      drawChips();
+    }).catch(() => { /* no suggestion; the models are all still there */ });
+  }
+  return {
+    wrap, get: () => [...picked.keys()].join(","), set,
+    thisPC: () => hereOn, setThisPC: v => { hereOn = !!v; drawChips(); },
+  };
 }
 
 function checkOpt(label) {
@@ -2392,30 +2438,6 @@ function checkOpt(label) {
   wrap.append(cb, lb);
   return { wrap, get: () => cb.checked, set: v => { cb.checked = !!v; } };
 }
-// driverOpt is the hardware auto-detect toggle. The note under it fills in
-// from /api/detect so it names the machine and devices that will actually be
-// looked up, rather than promising drivers in the abstract.
-function driverOpt() {
-  const inner = checkOpt("Include drivers for this computer");
-  inner.wrap.style.margin = "0";
-  const note = el("div", "sub", "detecting this computer…");
-  note.style.color = "var(--dim)";
-  note.style.marginTop = "4px";
-  const wrap = el("div", "opt");
-  wrap.append(inner.wrap, note);
-  api("/api/detect").then(h => {
-    const bits = [];
-    const name = ((h.vendor || "") + " " + (h.model || "")).trim();
-    if (name) bits.push(name);
-    for (const g of h.gpus || []) bits.push(g.name);
-    const n = (h.lookup_ids || []).length;
-    let tail = n === 1 ? "1 device to look up" : `${n} devices to look up`;
-    if (h.feed) tail += `, plus ${h.feed_name || h.feed}'s drivers for this model`;
-    note.textContent = bits.join(" · ") + (bits.length ? " — " : "") + tail;
-  }).catch(e => { note.textContent = "Detection unavailable: " + e.message; });
-  return { wrap, get: inner.get };
-}
-
 // appsOpt is the program picker, built like the model picker: search, pick
 // from the results, picks shown as removable chips. Ninety checkboxes in a
 // collapsed section could not be scanned, and a checkbox list has nowhere to
@@ -2807,8 +2829,7 @@ function openInstall(os, edit) {
     const wp = textOpt("Wi-Fi password", "leave blank if the network is open",
       "Stored on the stick in clear text — a wireless profile has no other " +
       "form for it. It is not saved in a recipe.", "password");
-    const dv = driverOpt();
-    const df = modelPickerOpt(os);
+    const df = modelPickerOpt(os, "stick", { thisPC: true });
     // The offline tick belongs to the program picker and means nothing
     // without it, so it appears when something is picked and goes away again
     // when the last program is removed.
@@ -2852,18 +2873,26 @@ function openInstall(os, edit) {
         keep.set(true);
       }
     }
-    opts.append(ed.wrap, am.wrap, au.wrap, aw.wrap, ne.wrap, db.wrap);
+    // What most installs change is in view; what few do waits under More
+    // options, so the dialog's first look is the decisions that matter. The
+    // account's name has a default nobody minds, "never expires" and the
+    // hardware-check bypass are for particular machines. Opened already when
+    // a recipe being edited has any of them set, so nothing set is hidden.
+    const more = el("details", "moreopts");
+    more.append(el("summary", null, "More options"), au.wrap, ne.wrap, bp.wrap);
+    more.open = !!(saved && (saved.admin_user || saved.password_never_expires || saved.bypass_requirement));
+    opts.append(ed.wrap, am.wrap, aw.wrap, db.wrap);
     if (keep) opts.append(keep.wrap);
-    opts.append(ws.wrap, wp.wrap, dv.wrap, df.wrap, ap.wrap, off.wrap);
+    opts.append(ws.wrap, wp.wrap, df.wrap, ap.wrap, off.wrap);
     opts.append(nm.wrap);
-    opts.append(bp.wrap);
     if (iso) opts.append(iso.wrap);
+    opts.append(more);
     showAccount();
     getOpts = () => ({
       edition: ed.get(), account_mode: am.get(), debloat: db.get(),
       admin_user: au.get(), admin_password: aw.get(), password_never_expires: ne.get(),
       wifi_ssid: ws.get(), wifi_password: wp.get(),
-      drivers: dv.get(), drivers_for: df.get(), apps: ap.get(), offline: off.get(), name_by_serial: nm.get(),
+      drivers: df.thisPC(), drivers_for: df.get(), apps: ap.get(), offline: off.get(), name_by_serial: nm.get(),
       bypass_requirement: bp.get(), iso: iso ? iso.get() : "", keep_drivers: keep ? keep.get() : false,
     });
   } else {
