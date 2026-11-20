@@ -62,7 +62,6 @@
   header h1 { margin: 0; line-height: 0; }
   header h1 img { height: 32px; width: auto; display: block; }
   header .ver { color: var(--dim); font-size: 12px; margin-left: 14px; white-space: nowrap; }
-  #updBtn { margin-left: 10px; }
   #quitBtn { margin-left: 8px; }
   .wsrow input { flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--line);
     border-radius: 6px; padding: 6px 9px; font: inherit; font-size: 13px; min-width: 0; }
@@ -414,6 +413,14 @@
   .updbar button { font-size: 11.5px; }
   header .ver, .toolbar .ver { font: 11px/1.4 var(--mono); letter-spacing: 1px;
     text-transform: uppercase; color: var(--dim); margin-left: 0; }
+  /* A label you can press, not a key: it reads as the version until a hand
+     goes to it. */
+  .toolbar button.ver { background: none; border: none; box-shadow: none;
+    padding: 6px 4px; min-height: 0; cursor: pointer;
+    text-decoration: underline dotted; text-underline-offset: 3px; }
+  .toolbar button.ver:hover { background: none; color: var(--text); }
+  .toolbar button.ver:active { transform: none; box-shadow: none; }
+  .toolbar button.ver:disabled { opacity: 1; cursor: progress; }
 
   /* ── Keys ──────────────────────────────────────────────────────────────────
      A button is a moulded key. The plain one is the dark panel key; `primary`
@@ -862,9 +869,12 @@
 <div class="toolbar">
   <nav class="cmdkeys" id="cmdkeys" aria-label="Screens"></nav>
   <span class="spacer"></span>
-  <span class="ver" id="ver" title="Check for a newer release"></span>
+  <!-- The version is the update check. It sat beside a "Check for updates"
+       button that said nothing the label did not, and two controls for one
+       fact is one more thing to read past. Pressing the version asks GitHub
+       now; the answer replaces what it says. -->
+  <button class="ver" id="ver" onclick="checkUpdate(true)" title="Check for a newer release now">Version</button>
   <button id="guideBtn" onclick="startGuide(door)" title="How this screen works" aria-label="How this screen works">?</button>
-  <button id="updBtn" onclick="checkUpdate(true)" title="Ask GitHub for the newest release now">Check for updates</button>
   <button id="quitBtn" title="Stop the app" onclick="quitApp()">Quit</button>
 </div>
 <!-- Activity is a permanent instrument, not a panel that appears when
@@ -932,7 +942,7 @@
         <button class="danger" id="copyGo" disabled>Erase and copy</button>
       </div>
     </section>
-    <section data-door="disks" id="diskSec"><h2>Disk utility <span class="spacer"></span><button onclick="loadDisks()">Rescan</button></h2>
+    <section data-door="disks" id="diskSec"><h2>Disk utility</h2>
       <div class="pick">
         <label class="picklabel" for="duPick">Disk</label>
         <select id="duPick" aria-label="Disk"></select>
@@ -953,8 +963,8 @@
     <section data-door="install advanced" id="imagesSec"><h2>Built images <span class="spacer"></span><span class="sub">ready to write, no rebuilding</span></h2><div class="rows" id="artifacts"></div></section>
   </div>
   <div class="col" style="display:flex;flex-direction:column;gap:16px">
-    <section data-door="install advanced" id="devicesSec"><h2>Devices <span class="spacer"></span><button onclick="loadState()">Rescan</button></h2><div class="rows" id="devices"></div></section>
-    <section data-door="disks advanced" id="disksSec"><h2>Disks <span class="spacer"></span><button onclick="loadDisks()">Refresh</button></h2><div class="rows" id="disks"><div class="empty">Reading disks…</div></div></section>
+    <section data-door="install advanced" id="devicesSec"><h2>Devices</h2><div class="rows" id="devices"></div></section>
+    <section data-door="disks advanced" id="disksSec"><h2>Disks</h2><div class="rows" id="disks"><div class="empty">Reading disks…</div></div></section>
     <section data-door="payload advanced" id="payloadsSec"><h2>Built payloads <span class="spacer"></span><span class="sub">copy one to the machine and run it</span></h2><div class="rows" id="payloads"></div></section>
     <section data-door="install payload" id="myappsSec"><h2>Your installers <span class="spacer"></span><button onclick="addInstaller()" title="Add a .msi or .exe from this machine">Add installer…</button></h2>
       <div class="rows" id="myapps"></div>
@@ -1018,7 +1028,7 @@
       <button id="pdDelete" style="margin-right:auto">Delete payload</button>
       <button id="pdEdit" title="Change what is in it, and build it again">Edit</button>
       <button id="pdCopy" title="Save a copy to a folder — a backup, a share, or a stick you don't want erased">Save a copy…</button>
-      <button id="pdWrite" class="primary" title="Erase a USB drive and put this payload on it">Write to USB…</button>
+      <button id="pdWrite" class="primary" title="Erase a USB stick and put this payload on it">Write to stick…</button>
       <button onclick="payloadDialog.close()">Close</button>
     </div>
   </div>
@@ -1272,7 +1282,8 @@ function openPrepare(disk) {
   $("prepDialog").showModal(); input.focus();
 }
 
-// checkUpdate runs automatically on load, and on demand from the header.
+// checkUpdate runs automatically on load, and on demand when the version in
+// the toolbar is pressed.
 //
 // The banner only ever appeared when an update existed, which left no way to
 // ask and no way to see what you were running — "am I current, or did the
@@ -1284,16 +1295,17 @@ function openPrepare(disk) {
 // it, while an explicit one says so, because someone who just pressed a
 // button is owed a reply.
 async function checkUpdate(explicit) {
-  const btn = $("updBtn"), ver = $("ver");
-  if (explicit) { btn.disabled = true; btn.textContent = "Checking…"; }
+  const ver = $("ver");
+  const was = ver.textContent;
+  if (explicit) { ver.disabled = true; ver.textContent = "Checking…"; }
   let u;
   try {
     u = await api("/api/update" + (explicit ? "?force=1" : ""));
   } catch (e) {
-    if (explicit) showErr("Could not check for updates: " + e.message);
+    if (explicit) { ver.textContent = was; showErr("Could not check for updates: " + e.message); }
     return;
   } finally {
-    if (explicit) { btn.disabled = false; btn.textContent = "Check for updates"; }
+    if (explicit) ver.disabled = false;
   }
   if (!u) return;
   ver.textContent = u.current || "";
@@ -1301,11 +1313,11 @@ async function checkUpdate(explicit) {
   if (u.unavailable) {
     // Never leave an earlier "up to date" standing when this check failed.
     ver.textContent = `${u.current} · couldn't check for updates`;
-    ver.title = u.unavailable;
+    ver.title = u.unavailable + " — press to try again";
     if (explicit) showErr("Could not check for updates: " + u.unavailable);
     return;
   }
-  ver.title = "";
+  ver.title = "Check for a newer release now";
   if (!u.newer) {
     ver.textContent = `${u.current} · up to date`;
     if (explicit) showOk(`You are running the newest release (${u.current}).`);
@@ -1411,8 +1423,8 @@ function artifactRow(a) {
     const copy = el("button", "", "Save a copy…");
     copy.title = "Save a copy to a folder — a backup, a share, or a stick you don't want erased";
     copy.onclick = () => savePayloadCopy(a, copy);
-    const write = el("button", "primary", "Write to USB…");
-    write.title = "Erase a USB drive and put this payload on it";
+    const write = el("button", "primary", "Write to stick…");
+    write.title = "Erase a USB stick and put this payload on it";
     write.onclick = () => writePayload(a);
     row.append(open, copy, write);
     return row;
@@ -1471,7 +1483,7 @@ function openPayload(a) {
   $("pdCopy").onclick = () => savePayloadCopy(a, $("pdCopy"));
   $("pdWrite").onclick = () => { payloadDialog.close(); writePayload(a); };
   $("pdDelete").onclick = async () => {
-    if (!confirm(`Delete the payload ${label}? Copies already saved or written to a USB drive are not touched.`)) return;
+    if (!confirm(`Delete the payload ${label}? Copies already saved or written to a stick are not touched.`)) return;
     try {
       await api("/api/artifacts/delete", { path: a.path });
       payloadDialog.close(); showOk("Deleted " + label);
@@ -1497,17 +1509,17 @@ async function savePayloadCopy(a, btn) {
   finally { btn.textContent = was; btn.disabled = false; }
 }
 
-// writePayload erases a USB drive and puts the payload on it, through the same
+// writePayload erases a USB stick and puts the payload on it, through the same
 // armed, verified write every stick gets.
 async function writePayload(a) {
   await loadState();
   const usable = state.devices.filter(d => d.flashable);
-  if (!usable.length) { showErr("No USB drive is plugged in — plug one in and Rescan."); return; }
+  if (!usable.length) { showErr("No USB stick is plugged in — plug one in and try again."); return; }
   const label = artifactLabel(a);
-  openArm(usable, `Write ${label} to a USB drive`,
-    "This <b>permanently erases</b> the drive. It will hold this payload and nothing else, " +
-    "then be read back to check the copy.<br><br>To keep what is already on a drive, " +
-    "use <b>Save a copy…</b> and choose the drive instead.",
+  openArm(usable, `Write ${label} to a stick`,
+    "This <b>permanently erases</b> the stick. It will hold this payload and nothing else, " +
+    "then be read back to check the copy.<br><br>To keep what is already on a stick, " +
+    "use <b>Save a copy…</b> and choose the stick instead.",
     (dev, confirm) => api("/api/payloads/write", { path: a.path, device_id: dev.id, confirm })
       .catch(e => showErr(e.message)));
 }
@@ -1528,7 +1540,7 @@ function renderPayloadForm() {
   const cat = state.catalog || [];
   const win = cat.find(o => o.id === "windows-11") || cat.find(o => o.family === "windows");
   if (!win) return;
-  const nm = textOpt("Name", "e.g. Acme Dental front desk", "What it's called in the list and on the USB drive. Leave empty to name it by what's in it.");
+  const nm = textOpt("Name", "e.g. Acme Dental front desk", "What it's called in the list and on the stick. Leave empty to name it by what's in it.");
   const ap = appsOpt("payload");
   const df = modelPickerOpt(win, "payload");
   df.wrap.querySelector("label").textContent = "Drivers for these computer models";
@@ -2109,7 +2121,7 @@ async function armFlash(what) {
   // must be in the list, and one pulled out must not.
   await loadState();
   const usable = state.devices.filter(d => d.flashable);
-  if (!usable.length) { showErr("No USB stick is plugged in — plug one in and Rescan."); return; }
+  if (!usable.length) { showErr("No USB stick is plugged in — plug one in and try again."); return; }
   openArm(usable, `Write ${what.label || what.recipe || "image"} to a stick`,
     "This <b>permanently erases</b> everything on the device, then writes and verifies the media." +
       (what.note ? "<br><br>" + what.note : ""),
@@ -2796,7 +2808,7 @@ function openInstall(os, edit) {
       "hands-off install, so without it the programs below have nowhere to " +
       "download from.");
     const wp = textOpt("Wi-Fi password", "leave blank if the network is open",
-      "Stored on the USB drive in clear text — a wireless profile has no other " +
+      "Stored on the stick in clear text — a wireless profile has no other " +
       "form for it. It is not saved in a recipe.", "password");
     const dv = driverOpt();
     const df = modelPickerOpt(os);
@@ -3757,7 +3769,7 @@ const GUIDES = {
     {
       door: "payload", target: onScreen("payloadsSec"),
       title: "Built payloads",
-      text: "Each payload is one file. Write to USB… puts it on a drive to carry to the machine; Save a copy… keeps a backup in any folder. Open shows what's in it, and is where you edit or delete it. On the machine, double-click it and approve the prompt.",
+      text: "Each payload is one file. Write to stick… puts it on a stick to carry to the machine; Save a copy… keeps a backup in any folder. Open shows what's in it, and is where you edit or delete it. On the machine, double-click it and approve the prompt.",
     },
     {
       door: "payload", target: onScreen("payloadRecipesSec"),
@@ -3796,7 +3808,7 @@ const GUIDES = {
     {
       door: "disks", target: onScreen("disksSec"),
       title: "Every disk",
-      text: "All the disks this computer can see. Refresh after plugging one in or taking one out.",
+      text: "All the disks this computer can see. The list follows sticks going in and coming out by itself.",
     },
   ],
   advanced: [
