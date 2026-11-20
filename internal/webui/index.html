@@ -165,11 +165,12 @@
   .opt.check { display: flex; align-items: center; gap: 8px; }
   .opt.check input { width: auto; }
   .opt.check label { margin: 0; color: var(--text); }
-  /* ── Copy a drive / Disk utility ────────────────────────────────────────
+  /* ── Disks ─────────────────────────────────────────────────────────────────
      The identity card is the guardrail. Typing a size and clicking twice stops
      nobody; recognising "Samsung 990 PRO, one partition labelled Photos" does. */
   .picklabel { color: var(--dim); font-size: 12px; white-space: nowrap; }
   .dstlabel { padding: 6px 14px 0; }
+  .diskacts { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px; }
   .idcard { margin: 8px 14px 12px; padding: 11px 13px; border-radius: 7px;
     background: var(--bg); border: 1px solid var(--line); font-size: 13px; }
   .idcard.warn { border-color: var(--warn); }
@@ -201,16 +202,16 @@
      "disks" cannot match "disksomething". */
   main > .col > section { display: none; }
   body[data-door="install"]  section[data-door~="install"],
-  body[data-door="clone"]    section[data-door~="clone"],
   body[data-door="payload"]  section[data-door~="payload"],
   body[data-door="disks"]    section[data-door~="disks"],
   body[data-door="advanced"] section[data-door~="advanced"] { display: block; }
   /* With one screen open the second column is usually empty, so the grid
      collapses to a single readable column rather than leaving a gap. */
   body[data-door="install"] main, body[data-door="advanced"] main,
-  body[data-door="disks"] main, body[data-door="payload"] main {
+  body[data-door="payload"] main {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); }
-  body[data-door="clone"] main {
+  /* Disks is one panel: a disk, what it is, and what to do with it. */
+  body[data-door="disks"] main {
     grid-template-columns: minmax(0, 1fr); max-width: 900px; }
   /* Activity is pinned under the header on every screen, the start screen
      included. It used to sit under the work on the screens that had it, and on
@@ -927,27 +928,27 @@
       </div>
       <div class="picknote" id="catalogNote"></div>
     </section>
-    <section data-door="clone" id="copySec"><h2>Copy a drive</h2>
-      <div class="pick">
-        <label class="picklabel" for="srcPick">Copy from</label>
-        <select id="srcPick" aria-label="Source disk"></select>
-      </div>
-      <div id="srcCard"></div>
-      <div class="picklabel dstlabel">Onto — tick every disk to write. Each one is erased.</div>
-      <div class="rows" id="dstList"></div>
-      <div id="dstCards"></div>
-      <div class="arm" id="copyArm" hidden>
-        <label for="copyConfirm" id="copyArmLabel"></label>
-        <input id="copyConfirm" autocomplete="off" spellcheck="false">
-        <button class="danger" id="copyGo" disabled>Erase and copy</button>
-      </div>
-    </section>
-    <section data-door="disks" id="diskSec"><h2>Disk utility</h2>
+    <section data-door="disks" id="diskSec"><h2>Disks</h2>
       <div class="pick">
         <label class="picklabel" for="duPick">Disk</label>
         <select id="duPick" aria-label="Disk"></select>
       </div>
       <div id="duCard"></div>
+      <div class="diskacts" id="duActs" role="group" aria-label="What to do with this disk" hidden>
+        <button id="duCopy" aria-pressed="false" title="Copy this disk onto one or more others; each is erased">Copy it onto other disks…</button>
+        <button id="duPrep" title="Erase it and give it one volume this computer can read">Erase and prepare…</button>
+        <button id="duCap" title="Read the whole stick into the library as an image, to write again later">Capture to an image…</button>
+      </div>
+      <div id="copyPart" hidden>
+        <div class="picklabel dstlabel">Onto — tick every disk to write. Each one is erased.</div>
+        <div class="rows" id="dstList"></div>
+        <div id="dstCards"></div>
+        <div class="arm" id="copyArm" hidden>
+          <label for="copyConfirm" id="copyArmLabel"></label>
+          <input id="copyConfirm" autocomplete="off" spellcheck="false">
+          <button class="danger" id="copyGo" disabled>Erase and copy</button>
+        </div>
+      </div>
     </section>
     <section data-door="advanced" id="wsSec"><h2>Workspace<span class="spacer"></span><span class="sub" id="wsHint"></span></h2>
       <div class="rows" id="wsPanel"></div>
@@ -963,8 +964,6 @@
     <section data-door="install advanced" id="imagesSec"><h2>Built images <span class="spacer"></span><span class="sub">ready to write, no rebuilding</span></h2><div class="rows" id="artifacts"></div></section>
   </div>
   <div class="col" style="display:flex;flex-direction:column;gap:16px">
-    <section data-door="install advanced" id="devicesSec"><h2>Devices</h2><div class="rows" id="devices"></div></section>
-    <section data-door="disks advanced" id="disksSec"><h2>Disks</h2><div class="rows" id="disks"><div class="empty">Reading disks…</div></div></section>
     <section data-door="payload advanced" id="payloadsSec"><h2>Built payloads <span class="spacer"></span><span class="sub">copy one to the machine and run it</span></h2><div class="rows" id="payloads"></div></section>
     <section data-door="install payload" id="myappsSec"><h2>Your installers <span class="spacer"></span><button onclick="addInstaller()" title="Add a .msi or .exe from this machine">Add installer…</button></h2>
       <div class="rows" id="myapps"></div>
@@ -1221,40 +1220,6 @@ function openAppForm(o) {
   (o.idLocked ? args : id).focus();
 }
 
-// ── disks ───────────────────────────────────────────────────────────────────
-// Shows what is actually on each disk, so "my 64 GB stick says 4 GB" is
-// answered on screen rather than by someone knowing to run diskpart.
-async function loadDisks() {
-  const box = $("disks");
-  let data;
-  try { data = await api("/api/disks"); }
-  catch (e) { box.replaceChildren(el("div", "empty", "Could not read disks: " + e.message)); return; }
-  box.replaceChildren();
-  for (const d of data.disks || []) {
-    const row = el("div", "row");
-    const grow = el("div", "grow");
-    grow.append(el("div", "title", `${d.model || d.id} — ${d.size_gib} GiB`));
-    const bits = [d.id];
-    if (d.scheme) bits.push(d.scheme.toUpperCase());
-    for (const p of d.parts || []) {
-      bits.push(`${p.size_gb.toFixed(1)} GB ${p.label || p.type}${p.mounts && p.mounts.length ? " (" + p.mounts.join(",") + ")" : ""}`);
-    }
-    if (d.unused_gb > 1) bits.push(`${d.unused_gb.toFixed(1)} GB unpartitioned`);
-    grow.append(el("div", "sub", bits.join(" · ")));
-    for (const n of d.notes || []) {
-      const note = el("div", "lint", n);   // amber: something needs attention
-      grow.append(note);
-    }
-    row.append(grow);
-    if (d.system) row.append(el("span", "badge err", "system"));
-    else if (!d.flashable) row.append(el("span", "badge", "internal"));
-    // Erasing lives in Disk utility, one button for one action; this list
-    // only says what is on each disk.
-    box.append(row);
-  }
-  if (!box.children.length) box.append(el("div", "empty", "No disks found."));
-}
-
 function openPrepare(disk) {
   const opts = $("prepOpts"); opts.replaceChildren();
   const scheme = selectOpt("Partition table", [["gpt", "GPT (modern, recommended)"], ["mbr", "MBR (very old systems)"]]);
@@ -1275,7 +1240,6 @@ function openPrepare(disk) {
       // The dialog closes at once and the work happens in a job, so say where
       // it went: with no word here, a failed erase looked like nothing at all.
       showOk(`Erasing ${disk.model || disk.id} — approve the password prompt if one appears; progress and any error are in Activity.`);
-      setTimeout(loadDisks, 4000);
     }).catch(e => showErr(e.message));
     $("prepDialog").close();
   };
@@ -1607,8 +1571,9 @@ function editPayload(a) {
 const DOORS = {
   install:  { legend: "Install", name: "Install an operating system" },
   payload:  { legend: "Payload", name: "Payload" },
-  clone:    { legend: "Copy",    name: "Copy a drive" },
-  disks:    { legend: "Disks",   name: "Disk utility" },
+  // Copy a drive and Disk utility were a key each, and both were "pick a
+  // disk, be told what it is, then act". Copying is one of the acts now.
+  disks:    { legend: "Disks",   name: "Look at, copy or erase a disk" },
   // MASTER on the key, "Workspaces and sources" in its tooltip and its guide:
   // a legend wants to be one word, and the long name is still there for
   // anyone who hovers or asks for the guide.
@@ -1629,7 +1594,12 @@ function buildKeys() {
   }
 }
 
+// Screens that have been folded into another, so a reload on one -- or a
+// door remembered from before -- lands where its work went.
+const MOVED_DOORS = { clone: "disks" };
+
 function setDoor(name) {
+  name = MOVED_DOORS[name] || name;
   if (!DOORS[name]) name = FIRST_DOOR;
   door = name;
   document.body.setAttribute("data-door", name);
@@ -1641,15 +1611,13 @@ function setDoor(name) {
   }
   // Coming back to a door should show what is true now, not what was true
   // when it was last open — a stick may have been pulled out since.
-  if (name === "clone" || name === "disks") {
+  if (name === "disks") {
     // A disk's identity is cached so re-renders do not re-inspect it. Opening
     // the door is exactly when to throw that away: the whole point of the card
     // is that it describes the disk in front of you now.
     idCache.clear();
-    loadDisks();
+    renderDisks();
   }
-  if (name === "clone") renderCopy();
-  if (name === "disks") renderDiskUtil();
   try { localStorage.setItem("door", name); } catch (e) {}
   window.scrollTo(0, 0);
   // The first time a screen opens, its guide. A guide opening screens to point
@@ -1670,10 +1638,10 @@ function restoreDoor() {
   setDoor(start);
 }
 
-// ── Copy a drive, and Disk utility ────────────────────────────────────────
-// Both are the same shape: pick a disk, be told what it is, then act. The
-// telling is the point — see idCard.
-let copySrc = "", copyDsts = new Set(), duDisk = "";
+// ── Disks ───────────────────────────────────────────────────────────────────
+// Pick a disk, be told what it is, then act. The telling is the point — see
+// idCard.
+let duDisk = "", copying = false, copyDsts = new Set();
 const idCache = new Map();   // device id -> identity, so re-renders do not re-fetch
 
 async function identify(id) {
@@ -1702,39 +1670,76 @@ function idCard(v, role) {
   return card;
 }
 
-// disksForCopy is every disk the server knows, newest scan.
+// allDisks is every disk the server knows, newest scan.
 function allDisks() { return (state.devices || []); }
 
-async function renderCopy() {
-  const sel = $("srcPick"), list = $("dstList");
-  const disks = allDisks();
+// renderDisks is the whole Disks screen: one picker, the card for the disk
+// picked, and what can be done to it. Copy a drive and Disk utility used to be
+// a screen each, both "pick a disk, be told what it is, then act", and the
+// Install and Disks screens each listed every disk again underneath. Now the
+// picker is the one place a disk is chosen, and copying is one of the things
+// you can do with the disk you chose.
+async function renderDisks() {
+  const sel = $("duPick"), disks = allDisks();
   if (!disks.length) {
     sel.replaceChildren(new Option("No disks found", ""));
-    list.replaceChildren(el("div", "empty", "Nothing to copy onto."));
+    duDisk = ""; copying = false;
+  } else {
+    sel.replaceChildren(new Option("Choose a disk…", ""));
+    for (const d of disks) sel.append(new Option(diskLabel(d), d.id));
+    if (duDisk && disks.some(d => d.id === duDisk)) sel.value = duDisk;
+    else { duDisk = ""; copying = false; }
+  }
+  sel.onchange = () => {
+    duDisk = sel.value;
+    copyDsts.delete(duDisk);
+    copying = false;
+    renderDisks();
+  };
+
+  const card = $("duCard"), acts = $("duActs"), part = $("copyPart");
+  const d = disks.find(x => x.id === duDisk);
+  if (!d) {
+    card.replaceChildren();
+    acts.hidden = true; part.hidden = true;
     return;
   }
-  // Source: anything at all. Reading harms nothing, and the disk somebody most
-  // wants to copy is often the one they are running from.
-  sel.replaceChildren(new Option("Choose a disk…", ""));
-  for (const d of disks) sel.append(new Option(diskLabel(d), d.id));
-  if (copySrc && disks.some(d => d.id === copySrc)) sel.value = copySrc; else copySrc = "";
-  sel.onchange = () => { copySrc = sel.value; copyDsts.delete(copySrc); renderCopy(); };
+  let v;
+  try { v = await identify(duDisk); }
+  catch (e) { showErr(e.message); return; }
+  if (duDisk !== v.device_id) return; // another disk was picked meanwhile
+  card.replaceChildren(idCard(v, copying ? "source" : "target"));
 
-  $("srcCard").replaceChildren();
-  if (copySrc) identify(copySrc).then(v => {
-    if (copySrc === v.device_id) $("srcCard").replaceChildren(idCard(v, "source"));
-  }).catch(e => showErr(e.message));
+  // What can be done to it. Copying reads it, so any disk can be the source,
+  // the one this computer runs from included. Erasing needs a disk DSKY may
+  // write; capturing reads a stick into the library, as it did from the list
+  // of devices it used to sit on.
+  acts.hidden = false;
+  const copyBtn = $("duCopy"), prep = $("duPrep"), cap = $("duCap");
+  copyBtn.setAttribute("aria-pressed", copying ? "true" : "false");
+  copyBtn.classList.toggle("primary", copying);
+  copyBtn.onclick = () => { copying = !copying; if (!copying) copyDsts.clear(); renderDisks(); };
+  prep.hidden = !v.writable;
+  prep.onclick = () => openPrepare(d);
+  cap.hidden = !d.flashable;
+  cap.onclick = () => armCapture(d);
 
-  // Destinations: everything writable except the source.
+  part.hidden = !copying;
+  if (copying) await renderCopyTargets(disks);
+}
+
+// renderCopyTargets is the "onto" half of a copy: every disk but the source
+// and the one this computer runs from, each ticked one described, and the
+// sizes to type.
+async function renderCopyTargets(disks) {
+  const list = $("dstList");
   list.replaceChildren();
-  const targets = disks.filter(d => d.id !== copySrc && !d.system);
-  if (!targets.length) {
-    list.append(el("div", "empty", copySrc ? "No other disk to copy onto." : "Pick a source first."));
-  }
+  const targets = disks.filter(d => d.id !== duDisk && !d.system);
+  if (!targets.length) list.append(el("div", "empty", "No other disk to copy onto."));
   for (const d of targets) {
     const row = el("label", "dstrow");
     const cb = el("input"); cb.type = "checkbox"; cb.checked = copyDsts.has(d.id);
-    cb.onchange = () => { cb.checked ? copyDsts.add(d.id) : copyDsts.delete(d.id); renderCopy(); };
+    cb.onchange = () => { cb.checked ? copyDsts.add(d.id) : copyDsts.delete(d.id); renderDisks(); };
     const g = el("div", "grow");
     g.append(el("div", "", diskLabel(d)), el("div", "sub", d.id + (d.flashable ? "" : " · fixed disk")));
     row.append(cb, g, el("span", "badge" + (d.flashable ? " ok" : " warn"), d.flashable ? "usb" : d.bus || "fixed"));
@@ -1795,35 +1800,11 @@ function diskLabel(d) {
 async function startCopy(confirm) {
   const targets = [...copyDsts];
   try {
-    await api("/api/duplicate", { source_id: copySrc, target_ids: targets, confirm });
+    await api("/api/duplicate", { source_id: duDisk, target_ids: targets, confirm });
     copyDsts.clear();
+    copying = false;
     $("copyConfirm").value = "";
-    renderCopy();
-  } catch (e) { showErr(e.message); }
-}
-
-async function renderDiskUtil() {
-  const sel = $("duPick"), disks = allDisks();
-  if (!disks.length) { sel.replaceChildren(new Option("No disks found", "")); return; }
-  sel.replaceChildren(new Option("Choose a disk…", ""));
-  for (const d of disks) sel.append(new Option(diskLabel(d), d.id));
-  if (duDisk && disks.some(d => d.id === duDisk)) sel.value = duDisk; else duDisk = "";
-  sel.onchange = () => { duDisk = sel.value; renderDiskUtil(); };
-
-  const card = $("duCard"); card.replaceChildren();
-  if (!duDisk) return;
-  try {
-    const v = await identify(duDisk);
-    if (duDisk !== v.device_id) return;
-    card.append(idCard(v, "target"));
-    const d = disks.find(x => x.id === duDisk);
-    if (v.writable && d) {
-      const row = el("div", "arm");
-      const b = el("button", "danger", "Erase and prepare…");
-      b.onclick = () => openPrepare(d);
-      row.append(el("label", "", "Give it one full-size volume this computer can read:"), b);
-      card.append(row);
-    }
+    renderDisks();
   } catch (e) { showErr(e.message); }
 }
 
@@ -1893,8 +1874,7 @@ function render() {
 
   // ── OS catalog (Quick Install) ──────────────────────────────────────────
   renderCatalog();
-  if (door === "clone") renderCopy();
-  if (door === "disks") renderDiskUtil();
+  if (door === "disks") renderDisks();
 
   // ── Workspace panel ─────────────────────────────────────────────────────
   const wp = $("wsPanel"); wp.replaceChildren();
@@ -1995,26 +1975,6 @@ function render() {
     rr.append(row);
     for (const l of rc.lint || [])
       rr.append(el("div", "lint" + (l.startsWith("error") ? " error" : ""), l));
-  }
-
-  const dd = $("devices"); dd.replaceChildren();
-  if (!state.devices.length) dd.append(el("div", "empty", "No disks found."));
-  for (const d of state.devices) {
-    const row = el("div", "row");
-    const grow = el("div", "grow");
-    grow.append(el("div", "title", d.model || d.id),
-      el("div", "sub", d.id + " · " + d.size_gib + " GiB · " + d.bus +
-        (d.mounts && d.mounts.length ? " · " + d.mounts.join(", ") : "")));
-    row.append(grow);
-    if (d.system) row.append(el("span", "badge err", "SYSTEM"));
-    else if (d.flashable) row.append(el("span", "badge ok", "usb"));
-    else row.append(el("span", "badge", "not usb"));
-    if (d.flashable) {
-      const cap = el("button", "", "Capture");
-      cap.onclick = () => armCapture(d);
-      row.append(cap);
-    }
-    dd.append(row);
   }
 
   // Images and payloads are different things done with different verbs --
@@ -3550,6 +3510,9 @@ function upsertJob(ev) {
   // Which disk this run was about, and whether it ended badly. Both are read
   // when a disk is unplugged, to decide whether the record goes with it.
   if (ev.device) j.device = ev.device;
+  // A run that wrote a disk changed what it is, so the card describing it has
+  // to be read again rather than shown from before.
+  if (ev.final && ev.device) idCache.delete(ev.device);
   if (ev.final) j.failed = !!ev.error;
   setLamps(j, ev);
   if (ev.final && !j.final) {
@@ -3777,38 +3740,21 @@ const GUIDES = {
       text: "A Windows recipe from the Install screen can be built as a payload too, with the same programs and drivers and no operating system.",
     },
   ],
-  clone: [
-    {
-      door: "clone", target: () => $("srcPick").closest(".pick"),
-      title: "Copy from",
-      text: "Choose the disk to copy. Any disk will do, including the one this computer runs from: reading a disk changes nothing on it.",
-    },
-    {
-      door: "clone", target: onScreen("dstList"),
-      title: "Copy onto",
-      text: "Tick every disk to copy onto. Each one is erased. Several can be written at once from a single read, and every copy is checked against the original.",
-    },
-    {
-      door: "clone", target: () => null, example: "disk",
-      title: "Confirm which disks",
-      text: "Each disk you tick is described so you can recognise it. Type its size (or each size, in order) to confirm, and only then can the copy start.",
-    },
-  ],
   disks: [
     {
       door: "disks", target: () => $("duPick").closest(".pick"),
-      title: "Look at a disk",
-      text: "Choose any disk to see what's on it: its partitions, their labels, and what's using them. Looking changes nothing.",
+      title: "Pick a disk",
+      text: "Choose any disk to see what's on it: its partitions, their labels, and what's using them. Looking changes nothing. The list follows sticks going in and coming out by itself.",
     },
     {
-      door: "disks", target: () => null,
-      title: "Erase and prepare",
-      text: "If a disk can't be used here, such as a stick that held a Linux installer, Erase and prepare wipes it and makes one full-size volume this computer can read: exFAT, FAT32 or NTFS.",
+      door: "disks", target: () => null, example: "disk",
+      title: "Then choose what to do",
+      text: "Copy it onto other disks writes it to every disk you tick, all from a single read, and checks each copy against the original. Any disk can be copied, including the one this computer runs from. Erase and prepare wipes a stick and gives it one volume this computer can read. Capture reads a stick into the library as an image to write again later.",
     },
     {
-      door: "disks", target: onScreen("disksSec"),
-      title: "Every disk",
-      text: "All the disks this computer can see. The list follows sticks going in and coming out by itself.",
+      door: "disks", target: () => null, example: "disk",
+      title: "Confirm which disks",
+      text: "Each disk about to be erased is described so you can recognise it. Type its size (or each size, in order) to confirm, and only then does anything start. The disk this computer runs from is never written.",
     },
   ],
   advanced: [
@@ -4247,10 +4193,11 @@ async function pollDevices() {
   state.devices = devices;
   refreshMachineLamps();
   if (!first) clearJobsForRemovedDisks();
-  // Everything else that lists drives -- Devices, Disks, the copy
-  // destinations -- would otherwise sit there disagreeing with the lamp.
-  // Skipped on the first tick, which is only learning what was already there.
-  if (!first) { loadState(); loadDisks(); }
+  // Everything else that lists drives -- the disk picker, the copy
+  // destinations, the stick choosers -- would otherwise sit there disagreeing
+  // with the lamp. Skipped on the first tick, which is only learning what was
+  // already there.
+  if (!first) loadState();
 }
 
 // A finished run is a note about a stick. Take the stick out and the note has
@@ -4282,7 +4229,6 @@ restoreDoor();
 loadState();
 pollDevices();
 setInterval(pollDevices, 5000);
-loadDisks();
 loadMyApps();
 loadWorkspaceDefaults();
 streamEvents();
