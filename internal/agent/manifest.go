@@ -53,7 +53,6 @@ type Manifest struct {
 	Drivers Drivers  `json:"drivers"`
 	Debloat *Debloat `json:"debloat,omitempty"`
 	Apps    *Apps    `json:"apps,omitempty"`
-	Domain  *Domain  `json:"domain,omitempty"`
 	// WiFi is a wireless network to join before the programs are installed,
 	// for the machines that have no other way to reach them.
 	WiFi *WiFi `json:"wifi,omitempty"`
@@ -69,7 +68,7 @@ type Manifest struct {
 	Drives   []MappedDrive `json:"drives,omitempty"`
 
 	// Steps is the order to run in, using the recipe's own step names
-	// ("domain", "drivers", "wifi", "debloat", "apps", "settings"). Unknown steps are logged and skipped
+	// ("drivers", "wifi", "debloat", "apps", "settings"). Unknown steps are logged and skipped
 	// rather than failing the run.
 	Steps []string `json:"steps"`
 

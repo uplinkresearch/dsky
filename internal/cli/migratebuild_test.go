@@ -7,8 +7,8 @@ import (
 	"github.com/uplinkresearch/dsky/internal/migrate"
 )
 
-// A domain machine will not build without a password for the account it signs
-// itself in as, and the refusal has to say how to give one -- a message that
+// A machine replacing a domain PC will not build without a password for its
+// local administrator, and the refusal has to say how to give one -- a message that
 // only says "no" sends somebody to put it on the command line, which is the
 // one place it must not go.
 func TestADomainBuildNeedsAnAdminPassword(t *testing.T) {

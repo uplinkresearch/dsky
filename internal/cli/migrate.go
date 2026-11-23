@@ -276,7 +276,7 @@ func migrateValidate(args []string) error {
 		c.Apps, len(m.InstallOrder()), c.Unmapped, c.Blocked, c.Dropped, c.Manual)
 	fmt.Printf("  %d of %d settings can be applied on Windows 11\n", c.SettingsApplied, c.Settings)
 	if m.Identity.Domained() {
-		fmt.Printf("  joins %s", m.Identity.DomainFQDN)
+		fmt.Printf("  was in %s (join the new PC by hand)", m.Identity.DomainFQDN)
 		if m.Identity.ComputerOUDN != "" {
 			fmt.Printf(" in %s", m.Identity.ComputerOUDN)
 		}

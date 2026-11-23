@@ -30,7 +30,7 @@ type Result struct {
 
 // Outcome is one thing the plan asked for.
 type Outcome struct {
-	Kind  string `json:"kind"`  // app | setting | printer | drive | domain
+	Kind  string `json:"kind"`  // app | setting | printer | drive
 	Name  string `json:"name"`  // the plan's own name for it
 	State string `json:"state"` // done | failed | at-sign-in
 	Note  string `json:"note,omitempty"`
@@ -51,7 +51,7 @@ const (
 )
 
 // record adds one outcome. Kept in memory and written after every step, so a
-// machine that restarts mid-build -- which a domain join guarantees -- comes
+// machine that restarts mid-build -- which a driver install can ask for -- comes
 // back with what it had already done still in the file.
 func (a *Agent) record(kind, name, state, note string) {
 	a.outcomes = append(a.outcomes, Outcome{Kind: kind, Name: name, State: state, Note: note})
@@ -115,5 +115,4 @@ const (
 	KindSetting = "setting"
 	KindPrinter = "printer"
 	KindDrive   = "drive"
-	KindDomain  = "domain"
 )

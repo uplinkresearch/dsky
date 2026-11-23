@@ -29,22 +29,18 @@ func TestQuickTemplateIsValidXMLInEveryMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, bypass := range []string{"0", "1"} {
-		for _, mode := range []string{"", "offline", "credentialed", "agent"} {
-			for _, account := range []string{"local", "oobe"} {
-				vars := map[string]string{
-					"locale": "en-US", "computer_name": "*", "edition_key": "KEY",
-					"admin_user": "user", "admin_display_name": "User", "admin_password": "",
-					"account_mode": account, "bypass_requirements": bypass, "domain_mode": mode,
-					"domain_odj_blob": "QUJD", "domain_join": "corp.example.com", "domain_ou": "",
-					"domain_user": "u", "domain_account_domain": "CORP", "domain_password": "p",
-				}
-				out, err := recipe.RenderTemplate(path, recipe.Context{Vars: vars})
-				if err != nil {
-					t.Fatalf("bypass=%s mode=%q account=%s: %v", bypass, mode, account, err)
-				}
-				if p := undeclaredPrefix(t, out); p != "" {
-					t.Errorf("bypass=%s mode=%q account=%s: undeclared namespace prefix on %s", bypass, mode, account, p)
-				}
+		for _, account := range []string{"local", "oobe"} {
+			vars := map[string]string{
+				"locale": "en-US", "computer_name": "*", "edition_key": "KEY",
+				"admin_user": "user", "admin_display_name": "User", "admin_password": "",
+				"account_mode": account, "bypass_requirements": bypass,
+			}
+			out, err := recipe.RenderTemplate(path, recipe.Context{Vars: vars})
+			if err != nil {
+				t.Fatalf("bypass=%s account=%s: %v", bypass, account, err)
+			}
+			if p := undeclaredPrefix(t, out); p != "" {
+				t.Errorf("bypass=%s account=%s: undeclared namespace prefix on %s", bypass, account, p)
 			}
 		}
 	}
@@ -94,11 +90,10 @@ func TestTheAnswerFileCoversEveryRestartTheAgentMayTake(t *testing.T) {
 	}
 }
 
-// A domain-joined machine signs itself in to run its first boot, so the
-// administrator it signs in as needs a password. Two things have to be true at
-// once: the password must reach the answer file, and it must not be written
-// into the recipe the build leaves behind in the library -- a file somebody
-// can read later is not where the password to a domain member belongs.
+// When the administrator has a password, two things have to be true at once:
+// the password must reach the answer file, and it must not be written into
+// the recipe the build leaves behind in the library -- a file somebody can
+// read later is not where an administrator's password belongs.
 func TestAnAdminPasswordReachesTheAnswerFileAndNotTheRecipe(t *testing.T) {
 	const pass = "Sup3rSecret!pw"
 	opts := Options{Edition: "Pro", AccountMode: "local", AdminUser: "uplink", AdminPassword: pass}
@@ -129,9 +124,7 @@ func TestAnAdminPasswordReachesTheAnswerFileAndNotTheRecipe(t *testing.T) {
 		t.Errorf("a build with no password carries a password var: %v %v", v, err)
 	}
 
-	// Rendered: the account gets it, the automatic sign-in gets it, and so
-	// does the registry command that stands in for the sign-in OOBE refuses
-	// to set on a domain-joined machine.
+	// Rendered: the account gets it, and so does the automatic sign-in.
 	tmpl, err := templatesFS.ReadFile("templates/autounattend.xml.tmpl")
 	if err != nil {
 		t.Fatal(err)
@@ -143,17 +136,13 @@ func TestAnAdminPasswordReachesTheAnswerFileAndNotTheRecipe(t *testing.T) {
 	out, err := recipe.RenderTemplate(path, recipe.Context{Vars: map[string]string{
 		"locale": "en-US", "computer_name": "*", "edition_key": "KEY",
 		"admin_user": "uplink", "admin_display_name": "Uplink", "admin_password": pass,
-		"account_mode": "local", "bypass_requirements": "1", "domain_mode": "offline",
-		"domain_odj_blob": "QUJD",
+		"account_mode": "local", "bypass_requirements": "1",
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if n := strings.Count(out, "<Value>"+pass+"</Value>"); n != 2 {
 		t.Errorf("the password reached %d of the 2 places that need it", n)
-	}
-	if !strings.Contains(out, `/v DefaultPassword /t REG_SZ /d "`+pass+`"`) {
-		t.Errorf("the automatic sign-in has no password to use:\n%s", out)
 	}
 	if strings.Contains(out, "<Value></Value>") {
 		t.Errorf("an empty password element survived alongside a real password:\n%s", out)

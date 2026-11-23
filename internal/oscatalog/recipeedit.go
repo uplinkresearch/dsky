@@ -23,12 +23,14 @@ import (
 // RecipeForm is a saved recipe read back into the choices the install dialog
 // offers, so it can be opened there and changed.
 type RecipeForm struct {
-	OSID              string   `json:"os_id"`
-	Edition           string   `json:"edition,omitempty"`
-	AccountMode       string   `json:"account_mode,omitempty"`
-	Debloat           string   `json:"debloat,omitempty"`
-	BypassRequirement bool     `json:"bypass_requirement,omitempty"`
-	Apps              []string `json:"apps"`
+	OSID              string `json:"os_id"`
+	Edition           string `json:"edition,omitempty"`
+	AccountMode       string `json:"account_mode,omitempty"`
+	Debloat           string `json:"debloat,omitempty"`
+	BypassRequirement bool   `json:"bypass_requirement,omitempty"`
+	// PasswordNeverExpires is the tick under the administrator's password.
+	PasswordNeverExpires bool     `json:"password_never_expires,omitempty"`
+	Apps                 []string `json:"apps"`
 	// Offline is the recipe carrying its programs' installers rather than
 	// naming them for winget. The dialog shows it as a tick beside the
 	// program picker.
@@ -55,6 +57,8 @@ type RecipeForm struct {
 	// but not show them as its own pickers: they were resolved from whatever
 	// computer or models were chosen at the time.
 	Hardware []recipe.HardwareSpec `json:"hardware,omitempty"`
+	// NameBySerial names each machine PC-<serial number> while it installs.
+	NameBySerial bool `json:"name_by_serial,omitempty"`
 }
 
 // ErrNotEditable is why a recipe cannot be changed in the install dialog: it
@@ -118,9 +122,6 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 	switch {
 	case len(w.DriverPacks) > 0 || len(w.WinPEDrivers) > 0:
 		return notEditable("it lists driver packs by hand")
-	case w.Domain != nil:
-		// A join file is one computer's, so the dialog never saves one.
-		return notEditable("it joins a domain")
 	case w.StatusScreen != nil:
 		return notEditable("it has a status screen")
 	case w.Firstboot.Mode == "template":
@@ -169,6 +170,7 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 		f.AccountMode = "local"
 	}
 	f.BypassRequirement = vars["bypass_requirements"] == "1"
+	f.PasswordNeverExpires = vars["password_never_expires"] == "1"
 	f.Debloat = "off"
 	if w.Debloat != nil && w.Debloat.Preset != "" {
 		f.Debloat = w.Debloat.Preset
@@ -214,6 +216,7 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 		f.WiFiSSID, f.WiFiPassword = wf.SSID, wf.Password != ""
 	}
 	f.Hardware = w.Hardware
+	f.NameBySerial = w.NameBySerial
 	return f, sameAsDialog(r, f, e)
 }
 
@@ -222,9 +225,9 @@ func FormFromRecipe(wsDir string, r *recipe.Recipe) (RecipeForm, error) {
 // doesn't show. Compared as decoded YAML: comments and layout don't count.
 func sameAsDialog(r *recipe.Recipe, f RecipeForm, e Entry) error {
 	opts := Options{Edition: f.Edition, AccountMode: f.AccountMode, Debloat: f.Debloat,
-		BypassRequirement: f.BypassRequirement, Apps: f.Apps,
+		BypassRequirement: f.BypassRequirement, PasswordNeverExpires: f.PasswordNeverExpires, Apps: f.Apps,
 		ThirdPartyDrivers: f.ThirdPartyDrivers, WiFiSSID: f.WiFiSSID,
-		Offline: f.Offline, prepulled: f.prepulled, builtAt: f.builtAt}
+		Offline: f.Offline, prepulled: f.prepulled, builtAt: f.builtAt, NameBySerial: f.NameBySerial}
 	if f.WiFiPassword {
 		// Only whether there is one matters here: the recipe says
 		// "${var:wifi_password}" either way, and the value never reaches it.

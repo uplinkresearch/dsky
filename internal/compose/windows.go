@@ -127,38 +127,22 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 	}
 	refFiles := map[string]string{} // source ref -> staged filename under Scripts/
 
-	// An offline join is applied at first boot, never by Setup in specialize.
-	// See agentODJ for why this is not the obvious way round. Whichever runs
-	// first boot does it: the agent as its first step, or the generated script
-	// before anything else, restarting itself through RunOnce afterwards.
-	//
-	// A hand-written first-boot script is the one case nothing can be added
-	// to, so it is refused rather than built into a machine that strands.
-	deferredJoin := w.Domain.Offline()
-	if err := checkJoinCanBeDeferred(r); err != nil {
-		return nil, err
-	}
-	odjBase64 := ""
-
 	// Unattend.
 	if w.Unattend != nil {
 		uvars, err := overlayVars(vars, w.Unattend.Vars)
 		if err != nil {
 			return nil, fmt.Errorf("compose: unattend vars: %w", err)
 		}
-		if err := domainVars(uvars, ws.Dir, w.Domain, vars, func(ref string) (string, error) {
-			f, err := materializeFile(ctx, req, ref)
-			return f.host, err
-		}); err != nil {
-			return nil, fmt.Errorf("compose: %w", err)
-		}
-		if deferredJoin {
-			// The blob is read and validated exactly as before; what changes
-			// is who applies it. The answer file gets no join element at all,
-			// so Setup leaves the machine in a workgroup and OOBE takes the
-			// path DSKY has always shipped.
-			odjBase64 = uvars["domain_odj_blob"]
-			uvars["domain_mode"] = deferredDomainMode
+		// Always defined, and always empty. DSKY no longer joins a domain, but a
+		// workspace scaffolded before that has an answer file template with a
+		// domain block in it, guarded by domain_mode. Templates render with
+		// missingkey=error, so leaving it undefined would fail every build that
+		// used one of those templates; empty renders the block out.
+		uvars["domain_mode"] = ""
+		if w.NameBySerial {
+			// The script names the machine; a fixed name here would be one
+			// name for every machine from this stick if the script lost.
+			uvars["computer_name"] = "*"
 		}
 		rendered, err := recipe.RenderTemplate(
 			filepath.Join(ws.Dir, filepath.FromSlash(w.Unattend.Template)),
@@ -166,10 +150,16 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !deferredJoin {
-			if err := checkDomainRendered(rendered, w.Domain, w.Unattend.Template); err != nil {
+		if w.NameBySerial {
+			// Before the copy is added, so it ends up after it: see serialname.go.
+			if rendered, err = withSerialName(rendered); err != nil {
 				return nil, err
 			}
+			p := filepath.Join(buildTmp, recipe.SerialNameScriptName)
+			if err := os.WriteFile(p, []byte(recipe.SerialNameScriptFile()), 0o644); err != nil {
+				return nil, err
+			}
+			stage.AddFile(p, path.Join(scriptsImg, recipe.SerialNameScriptName))
 		}
 		if rendered, err = withOEMCopy(rendered); err != nil {
 			return nil, err
@@ -179,20 +169,6 @@ func buildWindows(ctx context.Context, req Request) (*Artifact, error) {
 			return nil, err
 		}
 		stage.AddFile(p, "/autounattend.xml")
-	}
-
-	// An offline join the agent applies once the machine is up: the same file
-	// `djoin /provision` made, written the way `/savefile` writes it, because
-	// that is what `djoin /requestodj /loadfile` reads.
-	if deferredJoin {
-		if odjBase64 == "" {
-			return nil, fmt.Errorf("compose: this recipe joins a domain from a single file, but no provisioning data was read from it")
-		}
-		p := filepath.Join(buildTmp, agentODJName)
-		if err := os.WriteFile(p, odjFileBytes(odjBase64), 0o600); err != nil {
-			return nil, err
-		}
-		stage.AddFile(p, path.Join(scriptsImg, agentODJName))
 	}
 
 	// ei.cfg.

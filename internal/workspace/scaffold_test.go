@@ -27,9 +27,8 @@ func read(t *testing.T, dir string, parts ...string) string {
 }
 
 // TestUnattendTemplateIsASCII: the answer file is parsed by Windows Setup in
-// WinPE, on hardware and in locales nobody here controls. It was pure ASCII
-// before domain join was added, there is no reason for it not to stay that
-// way, and a stray character in a comment is an entirely self-inflicted risk.
+// WinPE, on hardware and in locales nobody here controls. There is no reason
+// for it not to be pure ASCII, and a stray character in a comment is an entirely self-inflicted risk.
 func TestUnattendTemplateIsASCII(t *testing.T) {
 	b := read(t, scaffolded(t), "templates", "autounattend.xml.tmpl")
 	for i := 0; i < len(b); i++ {
@@ -53,8 +52,8 @@ func TestScaffoldRefusesToOverwrite(t *testing.T) {
 	}
 }
 
-// TestScaffoldKeepsSecretsOutOfGit: vars.local.yaml holds the domain-join
-// password and the autoinstall hash. It is only safe to tell people to put
+// TestScaffoldKeepsSecretsOutOfGit: vars.local.yaml holds the administrator's
+// password, the Wi-Fi passphrase and the autoinstall hash. It is only safe to tell people to put
 // secrets there because it is gitignored from the start.
 func TestScaffoldKeepsSecretsOutOfGit(t *testing.T) {
 	dir := scaffolded(t)
@@ -66,32 +65,19 @@ func TestScaffoldKeepsSecretsOutOfGit(t *testing.T) {
 	}
 }
 
-// TestScaffoldedUnattendHasBothJoinPaths: a workspace created today must be
-// able to do a domain join. A template without these blocks silently ignores
-// windows.domain — which is exactly what the build-time check exists to catch,
-// and what a fresh workspace must never trip.
-func TestScaffoldedUnattendHasBothJoinPaths(t *testing.T) {
+// TestScaffoldedUnattendJoinsNoDomain: DSKY no longer joins a PC to a
+// domain, so a workspace created today has no join in its answer file.
+func TestScaffoldedUnattendJoinsNoDomain(t *testing.T) {
 	got := read(t, scaffolded(t), "templates", "autounattend.xml.tmpl")
-	for _, want := range []string{
-		`name="Microsoft-Windows-UnattendedJoin"`,
-		"<JoinDomain>", "<AccountData>",
-		`{{if eq .Vars.domain_mode "offline"}}`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("a fresh workspace cannot do a domain join: missing %s", want)
+	for _, unwanted := range []string{"Microsoft-Windows-UnattendedJoin", "<JoinDomain>", "<AccountData>", "domain_"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("a fresh workspace's answer file still has %s", unwanted)
 		}
-	}
-	// The join belongs to specialize; the same element in offlineServicing is
-	// a differently-named thing and putting it in the wrong pass does nothing.
-	spec := got[strings.Index(got, `<settings pass="specialize">`):]
-	spec = spec[:strings.Index(spec, "</settings>")]
-	if !strings.Contains(spec, "Microsoft-Windows-UnattendedJoin") {
-		t.Error("the join component is not in the specialize pass")
 	}
 }
 
 // vars.local.yaml is the one file in a workspace whose purpose is holding
-// secrets — the domain password, the administrator's, the Wi-Fi passphrase.
+// secrets — the administrator's password and the Wi-Fi passphrase.
 // It was written 0644 like the README, so on any machine with more than one
 // account every one of them could read it. Gitignored keeps it out of a
 // repository and does nothing about the machine it sits on.

@@ -241,6 +241,11 @@ func (m *model) buildOptions() {
 			values: []string{"no", "yes"},
 			labels: []string{"No", "Yes (older or virtual hardware)"},
 		},
+		&choice{
+			label:  "Password never expires",
+			values: []string{"no", "yes"},
+			labels: []string{"No — Windows' policy (42 days)", "Yes"},
+		},
 	)
 }
 
@@ -550,11 +555,12 @@ func (m *model) keyConfirm(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *model) start() tea.Cmd {
 	e := m.entry()
 	opts := oscatalog.Options{
-		Edition:           m.opt("Edition"),
-		AccountMode:       m.opt("Account setup"),
-		Debloat:           m.opt("Remove bloatware"),
-		BypassRequirement: m.opt("Skip TPM / Secure Boot checks") == "yes",
-		Apps:              append([]string(nil), m.appOrder...),
+		Edition:              m.opt("Edition"),
+		AccountMode:          m.opt("Account setup"),
+		Debloat:              m.opt("Remove bloatware"),
+		BypassRequirement:    m.opt("Skip TPM / Secure Boot checks") == "yes",
+		PasswordNeverExpires: m.opt("Password never expires") == "yes",
+		Apps:                 append([]string(nil), m.appOrder...),
 	}
 	// "Drivers for this computer" means two different jobs. On Windows it
 	// stages the packs this machine's hardware needs; on Ubuntu it tells the

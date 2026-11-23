@@ -36,21 +36,6 @@ func TestAgentCoversOnlyWhatItCanDo(t *testing.T) {
 		t.Error("a hand-written first-boot script was replaced by the agent")
 	}
 
-	// A single offline join file is the agent's to apply, after OOBE, on a
-	// machine that is up. A migration joins a domain by definition.
-	withDomain := base
-	withDomain.Domain = &recipe.DomainSpec{Blob: "pc.txt"}
-	if covered, why := agentCovers(&recipe.Recipe{ID: "d", Windows: &withDomain}); !covered {
-		t.Errorf("an offline join kept the agent away: %s", why)
-	}
-	// A credentialed join stays with the generated scripts: it is proven as
-	// it stands, and its password handling is the part least worth
-	// disturbing.
-	withCreds := base
-	withCreds.Domain = &recipe.DomainSpec{Join: "corp.example.com", Username: "svc", Password: "x"}
-	if covered, _ := agentCovers(&recipe.Recipe{ID: "e", Windows: &withCreds}); covered {
-		t.Error("a credentialed join was handed to the agent")
-	}
 }
 
 // What the operator asked for reaches the manifest unchanged, including the
@@ -119,87 +104,6 @@ func TestAgentFirstbootJustRunsTheAgent(t *testing.T) {
 	for i := 0; i < len(agentFirstboot); i++ {
 		if agentFirstboot[i] > 127 {
 			t.Fatalf("non-ASCII byte in the launcher at %d", i)
-		}
-	}
-}
-
-// The join a migration needs does not go in the answer file. A machine that is
-// a domain member while OOBE runs never reaches a desktop: OOBE refuses to
-// sign a local account in on one ("Not setting autologon for new local user.
-// e.g. upgrade, domain-joined, or system-managed user"), hands the sign-in to
-// defaultuser0 for user OOBE, and user OOBE cannot finish with nobody at the
-// keyboard -- so the OOBE monitor resets the image state and reboots into OOBE,
-// for as long as anybody lets it. The agent applies the blob afterwards.
-func TestAnOfflineJoinIsTheAgentsToDoAfterOOBE(t *testing.T) {
-	r := &recipe.Recipe{ID: "front-desk", Windows: &recipe.WindowsSpec{
-		// Blob and nothing else, which is the only shape an offline join has:
-		// a domain name alongside it would make the spec credentialed.
-		Domain:    &recipe.DomainSpec{Blob: "newdesk01.txt"},
-		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{{Drivers: true}, {Debloat: true}, {Apps: true}}},
-	}}
-	m := buildManifest(r, recipe.ResolvedDrivers{}, nil, nil, "", migrateParts{})
-	if m.Domain == nil {
-		t.Fatal("the manifest does not carry the join, so the machine would install into a workgroup and look fine")
-	}
-	if m.Domain.File != agentODJName {
-		t.Errorf("join: %+v", m.Domain)
-	}
-	// First, not last: a machine that has to restart for the join should do
-	// it before an hour of installing programs, not after.
-	if got := strings.Join(m.Steps, ","); got != "domain,drivers,debloat,apps" {
-		t.Errorf("steps are %q", got)
-	}
-	// And with no domain there is no such step, so every recipe that worked
-	// before this still produces the manifest it did.
-	plain := &recipe.Recipe{ID: "p", Windows: &recipe.WindowsSpec{
-		Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{{Drivers: true}}},
-	}}
-	if m := buildManifest(plain, recipe.ResolvedDrivers{}, nil, nil, "", migrateParts{}); m.Domain != nil ||
-		strings.Join(m.Steps, ",") != "drivers" {
-		t.Errorf("a build with no domain grew a join: %+v %v", m.Domain, m.Steps)
-	}
-}
-
-// A hand-written first-boot script and a domain join cannot be combined, and
-// the build says so instead of writing a stick that strands the machine.
-//
-// The join has to be applied by first boot rather than by Windows Setup, and
-// DSKY cannot add that to a script it did not write. The refusal names the
-// command, so somebody who wants both can put it in their own script.
-func TestAHandWrittenFirstBootCannotAlsoJoinADomain(t *testing.T) {
-	r := &recipe.Recipe{Version: 1, ID: "bench", Name: "Bench",
-		OS: recipe.OSSpec{Type: "windows", Source: "win11", SourceMode: recipe.SourceISO},
-		Windows: &recipe.WindowsSpec{
-			Domain:    &recipe.DomainSpec{Blob: "PC-042.txt"},
-			Firstboot: recipe.FirstbootSpec{Mode: "template", Template: "mine.cmd"},
-		}}
-	err := checkJoinCanBeDeferred(r)
-	if err == nil {
-		t.Fatal("a hand-written first boot was combined with a domain join")
-	}
-	for _, want := range []string{"hand-written", "djoin /requestodj", "firstboot.mode: generate"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the refusal never mentions %q:\n%v", want, err)
-		}
-	}
-}
-
-// And the shapes that can be deferred are not refused.
-func TestAJoinThatCanBeDeferredIsAllowed(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		w    recipe.WindowsSpec
-	}{
-		{"generated first boot", recipe.WindowsSpec{
-			Domain:    &recipe.DomainSpec{Blob: "PC-042.txt"},
-			Firstboot: recipe.FirstbootSpec{Mode: "generate", Steps: []recipe.Step{{Drivers: true}}},
-		}},
-		{"a hand-written script with no domain", recipe.WindowsSpec{
-			Firstboot: recipe.FirstbootSpec{Mode: "template", Template: "mine.cmd"},
-		}},
-	} {
-		if err := checkJoinCanBeDeferred(&recipe.Recipe{ID: "x", Windows: &tc.w}); err != nil {
-			t.Errorf("%s was refused: %v", tc.name, err)
 		}
 	}
 }

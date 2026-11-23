@@ -89,12 +89,6 @@ func NeededVars(r *Recipe, vars map[string]string) []string {
 			add("wifi_password", w.WiFi.Password)
 			add("wifi_ssid", w.WiFi.SSID)
 		}
-		if w.Domain != nil {
-			add("domain_password", w.Domain.Password)
-			add("domain_username", w.Domain.Username)
-			add("domain_join", w.Domain.Join)
-			add("domain_ou", w.Domain.OU)
-		}
 	}
 	if l := r.Linux; l != nil {
 		if l.Autoinstall != nil {

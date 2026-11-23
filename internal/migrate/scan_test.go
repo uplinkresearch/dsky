@@ -142,7 +142,7 @@ func TestScanCleansUpIdentityAndDrives(t *testing.T) {
 		t.Errorf("identity: %+v", m.Identity)
 	}
 	if m.Identity.ComputerOUDN != "OU=Front Desk,OU=Workstations,DC=mead,DC=local" {
-		t.Errorf("the OU is what djoin needs: %q", m.Identity.ComputerOUDN)
+		t.Errorf("the OU is where the new PC goes: %q", m.Identity.ComputerOUDN)
 	}
 	// Groups every Windows machine has say nothing about this one, and a
 	// group left with no members worth naming is dropped entirely.
