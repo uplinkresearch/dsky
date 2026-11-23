@@ -65,7 +65,7 @@ func scaffold(dir, orgName string, examples bool) error {
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
 // SecretsFile is the one file in a workspace whose purpose is holding
-// secrets: the domain password, the administrator's, the Wi-Fi passphrase.
+// secrets: the administrator's password and the Wi-Fi passphrase.
 // Everything else in a workspace is meant to be read, committed and shared.
 const SecretsFile = "vars.local.yaml"
 
@@ -73,7 +73,7 @@ const SecretsFile = "vars.local.yaml"
 // exception: it was written 0644 like the README, so on any machine with more
 // than one account -- a shared bench, a jump box, a technician's laptop that
 // somebody else also signs in to -- every one of those accounts could read the
-// domain password out of it. Being gitignored keeps it out of a repository and
+// administrator's password out of it. Being gitignored keeps it out of a repository and
 // does nothing about the machine it sits on.
 func fileMode(rel string) os.FileMode {
 	if rel == SecretsFile {
@@ -197,68 +197,8 @@ const scaffoldUnattend = `<?xml version="1.0" encoding="utf-8"?>
   <settings pass="specialize">
     <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64"
                publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      {{if eq .Vars.domain_mode "offline"}}
-      <!-- No ComputerName on an offline join, deliberately.
-           djoin /provision creates the computer account for ONE named machine
-           and the blob carries that name. Setting a name here too - and the
-           default is "*", meaning random - renames the machine to something
-           its own computer account does not match, which breaks the trust
-           relationship the join just established.
-           For the same reason do not add UserData/FullName: on Windows 11
-           24H2 that silently overrides the blob's name as well.
-           The component stays, empty: the specialize Shell-Setup component is
-           documented as needing to exist. -->
-      {{else}}
       <ComputerName>{{.Vars.computer_name}}</ComputerName>
-      {{end}}
     </component>
-    {{if eq .Vars.domain_mode "offline"}}
-    <!-- Offline domain join (windows.domain.blob). The computer account was
-         created in advance by djoin /provision, and this blob carries its
-         machine-account password, so no user credential appears here and no
-         domain controller has to be reachable while Setup runs. The blob
-         belongs to exactly one machine, and is as sensitive as a password.
-
-         Provisioning and Credentials are mutually exclusive - Provisioning
-         wins if both appear, so only one is ever emitted. -->
-    <component name="Microsoft-Windows-UnattendedJoin" processorArchitecture="amd64"
-               publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <Identification>
-        <Provisioning>
-          <AccountData>{{xml .Vars.domain_odj_blob}}</AccountData>
-        </Provisioning>
-      </Identification>
-    </component>
-    {{else if eq .Vars.domain_mode "credentialed"}}
-    <!-- Credentialed domain join (windows.domain.join).
-
-         The password below is CLEARTEXT and cannot be otherwise: the
-         PlainText/base64 obfuscation local-account passwords can use does not
-         exist for this element. Nothing removes this file from the USB either
-         - Setup copies it to Panther and scrubs the copy, never the media. So
-         the stick carries a live domain credential for as long as it exists.
-         Use an account delegated "Create Computer Objects" on the target OU
-         and nothing more.
-
-         Credentials/Domain authenticates the account; JoinDomain is the domain
-         being joined. -->
-    <component name="Microsoft-Windows-UnattendedJoin" processorArchitecture="amd64"
-               publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <Identification>
-        <Credentials>
-          <Domain>{{xml .Vars.domain_account_domain}}</Domain>
-          <Password>{{xml .Vars.domain_password}}</Password>
-          <Username>{{xml .Vars.domain_user}}</Username>
-        </Credentials>
-        <JoinDomain>{{xml .Vars.domain_join}}</JoinDomain>
-        {{if .Vars.domain_ou}}<MachineObjectOU>{{xml .Vars.domain_ou}}</MachineObjectOU>{{end}}
-        <!-- Deliberately no DebugJoin element: its purpose is to break
-             into a kernel debugger on failure and Microsoft says to leave it
-             unmodified. The first-boot check already captures netsetup.log and
-             both UnattendGC logs, which is the diagnostic that matters. -->
-      </Identification>
-    </component>
-    {{end}}
   </settings>
 
   <settings pass="oobeSystem">

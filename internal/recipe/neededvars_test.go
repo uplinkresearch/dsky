@@ -62,23 +62,22 @@ func TestAPasswordHashIsNotAPassword(t *testing.T) {
 	if IsPasswordVar("admin_password_hash") {
 		t.Error("admin_password_hash was treated as a typed password")
 	}
-	for _, name := range []string{"admin_password", "domain_password", "wifi_password"} {
+	for _, name := range []string{"admin_password", "wifi_password"} {
 		if !IsPasswordVar(name) {
 			t.Errorf("%s was not treated as a password", name)
 		}
 	}
 }
 
-// The passphrase and the join credential live in their own fields rather than
-// in the unattend map, and getting those wrong is silent in the worst way: a
-// wireless profile with an empty key joins nothing.
-func TestTheWirelessPassphraseAndJoinCredentialAreChecked(t *testing.T) {
+// The passphrase lives in its own field rather than in the unattend map, and
+// getting it wrong is silent in the worst way: a wireless profile with an
+// empty key joins nothing.
+func TestTheWirelessPassphraseIsChecked(t *testing.T) {
 	r := &Recipe{Windows: &WindowsSpec{
-		WiFi:   &WiFiSpec{SSID: "DeepCreekRanch4", Password: "${var:wifi_password}"},
-		Domain: &DomainSpec{Join: "corp.example.com", Username: "svc", Password: "${var:domain_password}"},
+		WiFi: &WiFiSpec{SSID: "DeepCreekRanch4", Password: "${var:wifi_password}"},
 	}}
-	got := NeededVars(r, map[string]string{"domain_password": ""})
-	want := []string{"domain_password", "wifi_password"}
+	got := NeededVars(r, map[string]string{"wifi_password": ""})
+	want := []string{"wifi_password"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %q, want %q", got, want)
 	}

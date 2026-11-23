@@ -147,6 +147,12 @@ func GenerateVerifyPS(r *Recipe, drivers ResolvedDrivers, resolveRef func(ref st
 			p(`else { FAIL "expected %s, got: $it" }`, want)
 		}
 	}
+	// A name that did not take is not an error anybody would notice: the
+	// machine works, under a name nobody can find it by.
+	if w.NameBySerial {
+		p(`if ($env:COMPUTERNAME -like '%s*') { OK ("named " + $env:COMPUTERNAME + " after its serial number") }`, SerialNamePrefix)
+		p(`else { FAIL ("not named after its serial number: it is " + $env:COMPUTERNAME + " - see C:\Windows\Setup\Scripts\%s") }`, "dsky-name.log")
+	}
 	if w.Unattend != nil {
 		if user := w.Unattend.Vars["admin_user"]; user != "" && accountMode(w) == "local" {
 			p(`if (Get-LocalUser -Name '%s' -ErrorAction SilentlyContinue) { OK "local account '%s' exists" }`, user, user)
@@ -154,32 +160,6 @@ func GenerateVerifyPS(r *Recipe, drivers ResolvedDrivers, resolveRef func(ref st
 		}
 	}
 	p(``)
-
-	// ── Domain ───────────────────────────────────────────────────────────
-	// The silent one: Setup does not report a failed join, it just carries on.
-	if w.Domain.Enabled() {
-		p(`Head "Domain"`)
-		p(`$cs = Get-CimInstance Win32_ComputerSystem`)
-		p(`if ($cs.PartOfDomain) {`)
-		if d := w.Domain; !d.Offline() && d.Join != "" && !strings.Contains(d.Join, "${var:") {
-			p(`  if ($cs.Domain -eq '%s') { OK "joined %s" }`, d.Join, d.Join)
-			p(`  else { FAIL ("joined the wrong domain: " + $cs.Domain + ", expected %s") }`, d.Join)
-		} else {
-			p(`  OK ("joined " + $cs.Domain)`)
-		}
-		// A join that succeeded but left a broken trust is the failure mode an
-		// offline blob hits when something else renames the machine.
-		p(`  if (Test-ComputerSecureChannel -ErrorAction SilentlyContinue) { OK "secure channel to the domain is healthy" }`)
-		p(`  else { FAIL "domain trust relationship is broken - the machine name may not match its computer account" }`)
-		p(`} else {`)
-		p(`  FAIL ("NOT joined to a domain - this machine is in workgroup " + $cs.Workgroup)`)
-		p(`  Write-Host "         Windows Setup does not report a failed join; it installs into a workgroup." -ForegroundColor Yellow`)
-		p(`  foreach ($l in @('C:\DOMAIN-JOIN-FAILED-netsetup.log','C:\DOMAIN-JOIN-FAILED-setuperr.log','C:\DOMAIN-JOIN-FAILED-setupact.log')) {`)
-		p(`    if (Test-Path $l) { Write-Host ("         evidence: " + $l) -ForegroundColor Yellow }`)
-		p(`  }`)
-		p(`}`)
-		p(``)
-	}
 
 	// ── Programs ─────────────────────────────────────────────────────────
 	if w.Apps.Enabled() || len(customInstallers(w, resolveRef)) > 0 {

@@ -143,7 +143,7 @@ func Verify(plan, after *Manifest) *Verification {
 		v.Identity = append(v.Identity, fmt.Sprintf("the plan named this machine %s and it is called %s", want, got))
 	}
 	if plan.Identity.Domained() && !after.Identity.Domained() {
-		v.Identity = append(v.Identity, fmt.Sprintf("the plan joins %s and this machine is in a workgroup", plan.Identity.DomainFQDN))
+		v.Identity = append(v.Identity, fmt.Sprintf("the old PC was in %s and this one is in a workgroup: join it by hand", plan.Identity.DomainFQDN))
 	}
 	sort.SliceStable(v.Missing, func(i, j int) bool {
 		return v.Missing[i].Wanted.DisplayName < v.Missing[j].Wanted.DisplayName

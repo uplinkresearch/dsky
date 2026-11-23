@@ -41,6 +41,10 @@ func newMultiProgress(devs []device.Device) *multiProgress {
 }
 
 func (m *multiProgress) report(devID, stage string, doneBytes, total int64) {
+	// A stage may carry a second line for the page to show under it (see
+	// splitStage in index.html). A status line that is redrawn in place has
+	// room for one, so the terminal shows the stage itself.
+	stage, _, _ = strings.Cut(stage, "\n")
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

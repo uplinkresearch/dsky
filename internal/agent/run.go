@@ -156,8 +156,6 @@ func Apply(dir string, opts RunOptions) (int, error) {
 		before := len(a.J.Failures())
 		a.UI.Doing(step, "")
 		switch step {
-		case stepDomain:
-			a.domainStep()
 		case stepDrivers:
 			a.driversStep()
 		case stepWiFi:
@@ -368,8 +366,8 @@ func Main(args []string) error {
 			// A machine whose agent cannot read its manifest is the worst
 			// thing this program can produce: it installs, signs itself in,
 			// does nothing, and leaves no trace of why. Found in the lab on a
-			// machine that looked untouched -- no log, no record, a domain
-			// join file still sitting unused beside an agent that had refused
+			// machine that looked untouched -- no log, no record, the
+			// files it was meant to use still sitting unused beside an agent that had refused
 			// its own manifest and exited. The error went to a console at
 			// first boot, which nobody is watching.
 			//
@@ -449,7 +447,7 @@ func noteUnreadableManifest(dir string, cause error) {
 	fmt.Fprintf(f, "[%s] NOTHING WAS DONE. This agent could not read %s: %v\r\n",
 		time.Now().Format("2006-01-02 15:04:05"), ManifestName, cause)
 	fmt.Fprintf(f, "[%s]   Nothing on this machine has been set up: no programs, no settings, "+
-		"no domain join. It is a plain Windows installation.\r\n", time.Now().Format("2006-01-02 15:04:05"))
+		"no drivers. It is a plain Windows installation.\r\n", time.Now().Format("2006-01-02 15:04:05"))
 	// The one cause worth naming, because it is the one that happens: an
 	// agent built before the manifest it was handed. The build embeds the
 	// agent, so a DSKY built without rebuilding it stages an old one.

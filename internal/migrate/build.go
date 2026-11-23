@@ -2,7 +2,6 @@ package migrate
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -21,11 +20,11 @@ import (
 //   - Build a plan with an application nobody placed. "It will sort itself
 //     out at first boot" is how a machine arrives missing the software its
 //     owner needs.
-//   - Put a domain credential on the drive. The join is an offline join file
-//     made for this one machine, as the rest of DSKY already does.
+//   - Join a domain. DSKY no longer does; a plan whose machine was in one
+//     says so as a warning, with the OU and groups, for whoever joins it.
 
 // BuildPlan is the manifest expressed as the choices the rest of DSKY
-// already takes: which Windows, which programs, which join file. Nothing in
+// already takes: which Windows, which programs, which name. Nothing in
 // here decides anything -- every field comes from the approved manifest.
 //
 // It is plain data rather than the build pipeline's own options type, and
@@ -40,8 +39,7 @@ type BuildPlan struct {
 	Locale      string
 	Timezone    string
 	AdminUser   string
-	Hostname    string // empty on an offline join: the join file names it
-	DomainBlob  string
+	Hostname    string
 	Apps        []string // picker ids, winget:<id>, or an operator's installer id
 
 	Manual   []App    // for the checklist, not installed
@@ -66,17 +64,11 @@ func Preflight(m *Manifest) error {
 	if c.UnackedBlockers > 0 {
 		return fmt.Errorf("%d blocker(s) are unanswered — review the plan again", c.UnackedBlockers)
 	}
-	if m.Identity.Domained() && m.Identity.ComputerOUDN == "" {
-		return fmt.Errorf("this machine joins %s but the plan does not say which OU — review it and set one",
-			m.Identity.DomainFQDN)
-	}
 	return nil
 }
 
-// PlanBuild turns an approved manifest into the build's choices. odjBlob is
-// the join file made for this machine, which the caller provisions (it needs
-// a domain-joined Windows machine and is not this package's business).
-func PlanBuild(m *Manifest, odjBlob string) (*BuildPlan, error) {
+// PlanBuild turns an approved manifest into the build's choices.
+func PlanBuild(m *Manifest) (*BuildPlan, error) {
 	if err := Preflight(m); err != nil {
 		return nil, err
 	}
@@ -89,23 +81,19 @@ func PlanBuild(m *Manifest, odjBlob string) (*BuildPlan, error) {
 		AdminUser:   m.Target.LocalAdmin,
 		Hostname:    m.Target.Hostname,
 	}
-	if m.Identity.Domained() {
-		if odjBlob == "" {
-			return nil, fmt.Errorf("this machine joins %s, so the build needs its offline join file", m.Identity.DomainFQDN)
+	if id := m.Identity; id.Domained() {
+		// DSKY does not join domains, so the machine arrives in a workgroup
+		// under the plan's name. Said before the build rather than found at
+		// the first domain sign-in, with what whoever joins it needs.
+		w := fmt.Sprintf("the old PC was in %s; DSKY does not join domains, so join %s to it by hand once it is installed",
+			id.DomainFQDN, m.Target.Hostname)
+		if id.ComputerOUDN != "" {
+			w += ", in " + id.ComputerOUDN
 		}
-		p.DomainBlob = odjBlob
-		// No name from here. The blob names the computer, and it does so
-		// even though the agent now applies it after OOBE rather than Setup
-		// applying it in specialize: a lab machine built with no name of its
-		// own (the answer file's default is "*", meaning random) came back
-		// from the agent's join as NEWDESK01, in lab.dsky.local, which is the
-		// name its computer account was provisioned for.
-		//
-		// I was about to send the name from here as belt and braces, on the
-		// theory that a machine already running has to be renamed by
-		// somebody. The lab says djoin does it. Sending a name too is the
-		// untested configuration, so it does not go in.
-		p.Hostname = ""
+		if len(id.ComputerGroups) > 0 {
+			w += ", and add it to " + strings.Join(id.ComputerGroups, ", ")
+		}
+		p.Warnings = append(p.Warnings, w)
 	}
 
 	// Applications: winget packages by id, and the operator's own installers
@@ -222,31 +210,6 @@ func Installers(m *Manifest) []Installer {
 	return out
 }
 
-// DjoinCommand is the provisioning command for this machine, as it must be
-// run on a domain-joined Windows computer. It is printed rather than guessed
-// at: an operator on a Mac or a Linux box needs to run this somewhere else
-// and bring the file back.
-func DjoinCommand(m *Manifest, savefile string) string {
-	return fmt.Sprintf(`djoin /provision /domain %s /machine %s /machineou "%s" /savefile %s /reuse`,
-		m.Identity.DomainFQDN, m.Target.Hostname, m.Identity.ComputerOUDN, savefile)
-}
-
-// GroupCommands add the new computer to the groups the old one was in. RSAT
-// is not on every workstation, so these are printed for somebody to run where
-// the tools are, rather than failed over.
-func GroupCommands(m *Manifest) []string {
-	// Single quotes, not double: a computer account is NAME$, and PowerShell
-	// would read the $ in a double-quoted string as the start of a variable
-	// and send the group an empty member. Go's %q would escape the backslash
-	// in DOMAIN\Group too, which PowerShell does not undo.
-	var out []string
-	for _, g := range m.Identity.ComputerGroups {
-		out = append(out, fmt.Sprintf(`Add-ADGroupMember -Identity '%s' -Members '%s$'`,
-			psQuote(g), psQuote(m.Target.Hostname)))
-	}
-	return out
-}
-
 // edition maps what Windows called itself on the old machine to the edition
 // the new one installs. A migration is like for like unless somebody says
 // otherwise: a practice on Pro does not want Home, and Enterprise media is
@@ -262,16 +225,6 @@ func edition(was string) string {
 	default:
 		return "Pro"
 	}
-}
-
-// BlobName is what to call the join file for this machine, so that a folder
-// of them stays readable.
-func BlobName(m *Manifest) string {
-	name := m.Target.Hostname
-	if name == "" {
-		name = m.Source.Hostname
-	}
-	return filepath.Base(name) + "-odj.txt"
 }
 
 // SettingActions splits the plan's settings into what the agent applies to the

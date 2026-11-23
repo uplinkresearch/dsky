@@ -35,7 +35,8 @@ func (a *Agent) findWinget() string {
 		candidates = append(candidates, filepath.Join(local, `Microsoft\WindowsApps\winget.exe`))
 	}
 	deadline := time.Now().Add(5 * time.Minute)
-	announced := false
+	registerAt := time.Now().Add(time.Minute)
+	announced, registered := false, false
 	for {
 		for _, c := range candidates {
 			if _, err := os.Stat(c); err == nil {
@@ -51,6 +52,11 @@ func (a *Agent) findWinget() string {
 		if !announced {
 			a.J.Info(stepApps, "waiting for winget (App Installer) to become available")
 			announced = true
+		}
+		// A minute in, stop waiting for Windows to register it on its own.
+		if !registered && time.Now().After(registerAt) {
+			a.registerAppInstaller()
+			registered = true
 		}
 		time.Sleep(10 * time.Second)
 	}
@@ -129,14 +135,7 @@ func (a *Agent) appsStep() {
 			a.J.Fail(stepApps, "winget never appeared, no programs installed (a Windows 10 image may need App Installer from the Store first)")
 		} else {
 			a.J.Info(stepApps, "winget at %s", wg)
-			a.UI.Detail("waiting for the network")
-			if !a.waitOnline() {
-				a.J.Info(stepApps, "no network yet; installs will be attempted anyway and can be re-run")
-			}
-			for i, id := range ap.Winget {
-				a.UI.Detail(id + " (" + itoa(i+1) + " of " + itoa(len(ap.Winget)) + ")")
-				a.installPackage(wg, id, ap.Scope)
-			}
+			a.installAll(wg, ap.Winget, ap.Scope)
 		}
 	}
 	for _, in := range ap.Installers {
@@ -151,12 +150,56 @@ func (a *Agent) appsStep() {
 	a.tidyDesktop()
 }
 
+// installAll installs the winget packages in order. When winget cannot read
+// its catalog at all -- no internet, or an App Installer too old for today's
+// catalog -- no package can install, so the cause is said once, in words,
+// instead of as one bare "could not install" per program.
+func (a *Agent) installAll(wg string, ids []string, scope string) {
+	a.UI.Detail("waiting for the network")
+	online := a.waitOnline()
+	if !online {
+		a.J.Info(stepApps, "no network yet; installs will be attempted anyway and can be re-run")
+	}
+	ready, why := a.prepareWinget(wg, online)
+	if !ready {
+		// Not conclusive on its own, so the first package is still tried.
+		a.J.Info(stepApps, "%s; trying the first program anyway", why)
+	}
+
+	var skipped []string
+	for i, id := range ids {
+		if len(skipped) > 0 {
+			skipped = append(skipped, id)
+			a.failed(KindApp, id, why)
+			continue
+		}
+		a.UI.Detail(id + " (" + itoa(i+1) + " of " + itoa(len(ids)) + ")")
+		code := a.installPackage(wg, id, scope)
+		switch {
+		case code == 0:
+			ready = true
+		case isCatalogError(code):
+			if why == "" {
+				why = "winget could not read its catalog: " + wingetMeaning(code)
+			}
+			skipped = append(skipped, id)
+		case !online && !ready:
+			why = "this PC could not reach the internet, so winget could not fetch any installer"
+			skipped = append(skipped, id)
+		}
+	}
+	if len(skipped) > 1 {
+		a.J.Fail(stepApps, "%d programs were not installed because %s. Not installed: %s",
+			len(skipped), why, strings.Join(skipped, ", "))
+	}
+}
+
 // installPackage installs one winget package, handling the two ways Windows
 // refuses: a package with no machine-wide installer, and a package whose
-// installer refuses to run elevated at all.
-func (a *Agent) installPackage(wg, id, scope string) {
-	base := []string{"install", "--id", id, "--exact", "--silent",
-		"--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity"}
+// installer refuses to run elevated at all. It returns 0 if the package is
+// installed, or the last exit code winget gave.
+func (a *Agent) installPackage(wg, id, scope string) int {
+	base := installArgs(id)
 
 	attempts := [][]string{}
 	if scope != "user" {
@@ -164,9 +207,10 @@ func (a *Agent) installPackage(wg, id, scope string) {
 	}
 	attempts = append(attempts, base, base)
 
+	last := 0
 	for i, args := range attempts {
 		if i > 0 {
-			time.Sleep(15 * time.Second)
+			time.Sleep(retryPause)
 		}
 		a.J.Info(stepApps, "installing %s (attempt %d)", id, i+1)
 		r := run(30*time.Minute, wg, args...)
@@ -175,11 +219,11 @@ func (a *Agent) installPackage(wg, id, scope string) {
 		case 0:
 			a.J.Info(stepApps, "installed %s", id)
 			a.done(KindApp, id)
-			return
+			return 0
 		case wingetAlreadyInstalled:
 			a.J.Info(stepApps, "%s is already present", id)
 			a.done(KindApp, id)
-			return
+			return 0
 		case wingetProhibitsElev:
 			// The agent runs elevated because pnputil requires it, and these
 			// installers refuse an administrator outright. Run it as the
@@ -191,14 +235,16 @@ func (a *Agent) installPackage(wg, id, scope string) {
 			case err != nil:
 				a.J.FailDetail(stepApps, id+" could not be installed as the signed-in user", err.Error())
 				a.failed(KindApp, id, "it refuses an elevated install and could not be run as the signed-in user")
+				return wingetProhibitsElev
 			case code == 0 || code == wingetAlreadyInstalled:
 				a.J.Info(stepApps, "installed %s as the signed-in user", id)
 				a.done(KindApp, id)
+				return 0
 			default:
-				a.J.Fail(stepApps, "%s as the signed-in user exited %d", id, code)
-				a.failed(KindApp, id, "the installer exited "+itoa(code))
+				a.J.Fail(stepApps, "%s as the signed-in user: %s", id, wingetMeaning(code))
+				a.failed(KindApp, id, wingetMeaning(code))
+				return code
 			}
-			return
 		case wingetHashMismatch:
 			// The vendor has shipped since winget's catalog was updated. The
 			// same file comes back on every attempt, so retrying is four
@@ -207,24 +253,30 @@ func (a *Agent) installPackage(wg, id, scope string) {
 			a.J.Info(stepApps, "%s: winget's catalog is behind the vendor's download (installer hash does not match)", id)
 			if a.installFromVendor(id, r.Out) {
 				a.done(KindApp, id)
-			} else {
-				a.J.Fail(stepApps, "could not install %s", id)
-				a.failed(KindApp, id, "winget's catalog is behind the vendor's download, and the vendor's own installer did not run")
+				return 0
 			}
-			return
+			a.J.Fail(stepApps, "could not install %s", id)
+			a.failed(KindApp, id, "winget's catalog is behind the vendor's download, and the vendor's own installer did not run")
+			return wingetHashMismatch
 		case wingetNoInstaller:
 			a.J.Info(stepApps, "%s has no installer for that scope, trying the next", id)
 		default:
-			a.J.Info(stepApps, "%s attempt %d exited %d", id, i+1, r.Code)
+			a.J.Info(stepApps, "%s attempt %d: %s", id, i+1, wingetMeaning(r.Code))
 		}
+		last = r.Code
 		if r.Err != nil {
 			a.J.FailDetail(stepApps, id+" did not finish", r.Err.Error())
 			a.failed(KindApp, id, "the installer did not finish")
-			return
+			return last
+		}
+		// One retry is enough to tell a catalog that is down from a blip.
+		if isCatalogError(r.Code) && i >= 1 {
+			break
 		}
 	}
-	a.J.Fail(stepApps, "could not install %s", id)
-	a.failed(KindApp, id, "every attempt to install it failed")
+	a.J.Fail(stepApps, "could not install %s: %s", id, wingetMeaning(last))
+	a.failed(KindApp, id, wingetMeaning(last))
+	return last
 }
 
 // runInstaller runs one of the operator's own installers from the stick.
