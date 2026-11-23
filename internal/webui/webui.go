@@ -1053,7 +1053,7 @@ func (s *Server) handleFlash(w http.ResponseWriter, r *http.Request) {
 	// ISO". Refused before any device is looked at.
 	if req.Artifact != "" {
 		if a, err := compose.LoadArtifact(compose.MetaPath(req.Artifact)); err == nil && a.Kind == "payload" {
-			httpErr(w, 400, "%s is a payload, not a disk image — use Write to USB… on the Payload screen, which puts it on the drive as a file", filepath.Base(req.Artifact))
+			httpErr(w, 400, "%s is a payload, not a disk image — use Write to stick… on the Payload screen, which puts it on the stick as a file", filepath.Base(req.Artifact))
 			return
 		}
 	}
@@ -1367,7 +1367,7 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 			if label == "" {
 				label = filepath.Base(art.Path)
 			}
-			job.Finish("the payload is in Built payloads — write it to a USB drive, or save a copy: " + label)
+			job.Finish("the payload is in Built payloads — write it to a stick, or save a copy: " + label)
 		case "setup":
 			art, err := oscatalog.BuildQuick(context.Background(), s.Lib, e, opts, progress)
 			if err != nil {
